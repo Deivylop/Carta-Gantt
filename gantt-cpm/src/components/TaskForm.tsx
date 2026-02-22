@@ -7,11 +7,9 @@ import { fmtDate, addDays } from '../utils/cpm';
 import type { Activity } from '../types/gantt';
 import SCurveChart from './SCurveChart';
 
-const ZOOM_PX: Record<string, number> = { day: 28, week: 8, month: 2.2 };
-
 export default function TaskForm() {
     const { state, dispatch } = useGantt();
-    const { activities, selIdx, resourcePool, tableW, totalDays, zoom, projStart } = state;
+    const { activities, selIdx, resourcePool, tableW, totalDays, projStart, pxPerDay } = state;
     const [tab, setTab] = useState<'pred' | 'res' | 'scurve'>('pred');
     const a = selIdx >= 0 ? activities[selIdx] : null;
 
@@ -293,7 +291,7 @@ export default function TaskForm() {
                             <SCurveChart
                                 hideHeader
                                 multiSelectIds={scurveMode === 'selected' ? scurveSelection : undefined}
-                                exactWidth={totalDays * ZOOM_PX[zoom]}
+                                exactWidth={totalDays * pxPerDay}
                                 startDateMs={projStart.getTime()}
                                 endDateMs={addDays(projStart, totalDays).getTime()}
                             />

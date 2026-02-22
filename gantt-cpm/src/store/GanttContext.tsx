@@ -51,8 +51,9 @@ export interface GanttState {
     activities: Activity[];
     resourcePool: PoolResource[];
     visRows: VisibleRow[];
-    selIdx: number;
+    selIdx: number;       // active row index in Gantt mode
     zoom: ZoomLevel;
+    pxPerDay: number;
     totalDays: number;
     lightMode: boolean;
     showProjRow: boolean;
@@ -86,6 +87,7 @@ export type Action =
     | { type: 'COMMIT_EDIT'; index: number; key: string; value: string }
     | { type: 'SET_SELECTION'; index: number }
     | { type: 'SET_ZOOM'; zoom: ZoomLevel }
+    | { type: 'SET_PX_PER_DAY'; px: number }
     | { type: 'TOGGLE_THEME' }
     | { type: 'SET_VIEW'; view: 'gantt' | 'resources' | 'scurve' | 'usage' }
     | { type: 'SET_TABLE_W', width: number }
@@ -205,6 +207,8 @@ function recalc(state: GanttState): GanttState {
     return { ...state, activities: result.activities, totalDays: result.totalDays, visRows };
 }
 
+const ZOOM_PX: Record<ZoomLevel, number> = { day: 28, week: 8, month: 2.2 };
+
 // ─── Reducer ────────────────────────────────────────────────────
 function reducer(state: GanttState, action: Action): GanttState {
     switch (action.type) {
@@ -296,7 +300,10 @@ function reducer(state: GanttState, action: Action): GanttState {
             return { ...state, selIdx: action.index };
 
         case 'SET_ZOOM':
-            return { ...state, zoom: action.zoom };
+            return { ...state, zoom: action.zoom, pxPerDay: ZOOM_PX[action.zoom] };
+
+        case 'SET_PX_PER_DAY':
+            return { ...state, pxPerDay: action.px };
 
         case 'TOGGLE_THEME':
             return { ...state, lightMode: !state.lightMode };
@@ -622,6 +629,7 @@ const initialState: GanttState = {
     resourcePool: [],
     visRows: [],
     zoom: 'week',
+    pxPerDay: 8,
     totalDays: 400,
     lightMode: false,
     showProjRow: true,

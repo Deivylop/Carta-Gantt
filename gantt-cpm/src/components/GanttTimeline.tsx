@@ -9,7 +9,6 @@ import type { ThemeColors } from '../types/gantt';
 
 const ROW_H = 26;
 const HDR_H = 36;
-const ZOOM_PX: Record<string, number> = { day: 28, week: 8, month: 2.2 };
 const CAL_F: Record<number, number> = { 5: 7 / 5, 6: 7 / 6, 7: 1 };
 
 function th(light: boolean): ThemeColors {
@@ -54,8 +53,8 @@ interface DragPreview {
 
 export default function GanttTimeline() {
     const { state, dispatch } = useGantt();
-    const { visRows, zoom, totalDays, projStart, statusDate, selIdx, lightMode, activities, defCal } = state;
-    const PX = ZOOM_PX[zoom];
+    const { visRows, zoom, totalDays, projStart, statusDate, selIdx, lightMode, activities, defCal, pxPerDay } = state;
+    const PX = pxPerDay;
     const hdrRef = useRef<HTMLCanvasElement>(null);
     const barRef = useRef<HTMLCanvasElement>(null);
     const bodyRef = useRef<HTMLDivElement>(null);
@@ -69,6 +68,9 @@ export default function GanttTimeline() {
     const dragPreviewRef = useRef<DragPreview | null>(null);
     const didDragRef = useRef(false);
     const suppressClickRef = useRef(false);
+
+    // Continuous timescale zoom state
+    const [headerDrag, setHeaderDrag] = useState<{ startX: number; startPX: number } | null>(null);
 
     // Measure container
     useEffect(() => {
@@ -424,6 +426,23 @@ export default function GanttTimeline() {
         return () => body.removeEventListener('scroll', handler);
     }, []);
 
+    // ─── Header Continuous Zoom Handlers ───
+    const handleHeaderMouseDown = useCallback((e: React.MouseEvent) => {
+        setHeaderDrag({ startX: e.clientX, startPX: PX });
+    }, [PX]);
+
+    const handleHeaderMouseMove = useCallback((e: React.MouseEvent) => {
+        if (!headerDrag) return;
+        const dx = e.clientX - headerDrag.startX;
+        let newPX = headerDrag.startPX * (1 + dx / 400);
+        newPX = Math.max(0.5, Math.min(newPX, 150)); // Clamp scale
+        dispatch({ type: 'SET_PX_PER_DAY', px: newPX });
+    }, [headerDrag, dispatch]);
+
+    const handleHeaderMouseUpOrLeave = useCallback(() => {
+        setHeaderDrag(null);
+    }, []);
+
     // ─── Bar Drag Interactions (move/resize/link) ────────────
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
         if (e.button !== 0) return;
@@ -638,8 +657,15 @@ export default function GanttTimeline() {
     return (
         <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden', position: 'relative' }}>
             {/* Header canvas */}
-            <div style={{ overflowX: 'hidden', flexShrink: 0, height: HDR_H }}>
-                <canvas ref={hdrRef} style={{ display: 'block' }} />
+            <div style={{ flexShrink: 0, overflow: 'hidden', borderBottom: `1px solid ${t.hdrBotBorder}` }}>
+                <canvas
+                    ref={hdrRef}
+                    style={{ display: 'block', cursor: 'ew-resize' }}
+                    onMouseDown={handleHeaderMouseDown}
+                    onMouseMove={handleHeaderMouseMove}
+                    onMouseUp={handleHeaderMouseUpOrLeave}
+                    onMouseLeave={handleHeaderMouseUpOrLeave}
+                />
             </div>
             {/* Body canvas */}
             <div ref={bodyRef} id="gantt-timeline-scroll" style={{ flex: 1, overflow: 'auto', outline: 'none', position: 'relative' }} tabIndex={0}
