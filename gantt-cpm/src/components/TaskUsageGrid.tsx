@@ -5,8 +5,6 @@ import type { ThemeColors } from '../types/gantt';
 
 const ROW_H = 26;
 const HDR_H = 36;
-// In usage view, we need a minimum cell width for text
-const ZOOM_PX: Record<string, number> = { day: 30, week: 40, month: 50 };
 
 function th(light: boolean): ThemeColors {
     return light ? {
@@ -28,11 +26,11 @@ function th(light: boolean): ThemeColors {
 
 export default function TaskUsageGrid() {
     const { state, dispatch } = useGantt();
-    const { visRows, usageZoom, usageMode, totalDays, timelineStart: projStart, selIdx, lightMode, activities } = state;
+    const { visRows, usageZoom, usageMode, totalDays, timelineStart: projStart, selIdx, lightMode, activities, pxPerDay } = state;
 
-    // Fallback to zoom if usageZoom doesn't exist
+    // Use Gantt's pxPerDay for synchronized column widths
+    const PX = pxPerDay;
     const activeZoom = usageZoom || 'week';
-    const PX = ZOOM_PX[activeZoom] || 40;
 
     const hdrRef = useRef<HTMLCanvasElement>(null);
     const bodyCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -54,7 +52,7 @@ export default function TaskUsageGrid() {
         return () => ro.disconnect();
     }, []);
 
-    // Get time intervals based on zoom
+    // Get time intervals based on zoom - using pxPerDay for width so columns match Gantt
     const getIntervals = useCallback(() => {
         const intervals = [];
         let cur = new Date(projStart);
@@ -68,21 +66,23 @@ export default function TaskUsageGrid() {
             while (cur < end) {
                 const next = addDays(cur, 7);
                 const dd = String(cur.getDate()).padStart(2, '0') + '/' + String(cur.getMonth() + 1).padStart(2, '0');
-                intervals.push({ start: new Date(cur), end: next, label: dd, w: PX, isWeekend: false });
+                intervals.push({ start: new Date(cur), end: next, label: dd, w: 7 * PX, isWeekend: false });
                 cur = next;
             }
         } else {
             // month
             while (cur < end) {
                 const next = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
-                intervals.push({ start: new Date(cur), end: next, label: cur.toLocaleDateString('es-CL', { month: 'short' }), w: PX, isWeekend: false });
+                const daysInMonth = dayDiff(cur, next);
+                intervals.push({ start: new Date(cur), end: next, label: cur.toLocaleDateString('es-CL', { month: 'short' }), w: daysInMonth * PX, isWeekend: false });
                 cur = next;
             }
         }
         return intervals;
     }, [projStart, totalDays, activeZoom, PX]);
 
-    const W = Math.max(getIntervals().length * PX, containerSize.w);
+    // Total width matches Gantt: totalDays * pxPerDay
+    const W = Math.max(totalDays * PX, containerSize.w);
     const H = Math.max(visRows.length * ROW_H + 20 * ROW_H, containerSize.h);
 
     const draw = useCallback(() => {
@@ -96,16 +96,15 @@ export default function TaskUsageGrid() {
         const hCtx = hdrC.getContext('2d')!;
         hCtx.clearRect(0, 0, W, HDR_H);
 
-        // Top Header (Months/Years)
+        // Top Header (Months/Years) - using dayDiff * PX to match Gantt
         let cur = new Date(projStart);
         const end = addDays(projStart, totalDays);
-        let xOffset = 0;
 
         if (activeZoom === 'day' || activeZoom === 'week') {
             while (cur < end) {
-                const x = dayDiff(projStart, cur) * (activeZoom === 'day' ? PX : PX / 7);
+                const x = dayDiff(projStart, cur) * PX;
                 const nm = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
-                const w = Math.min(dayDiff(cur, nm) * (activeZoom === 'day' ? PX : PX / 7), W - x);
+                const w = Math.min(dayDiff(cur, nm) * PX, W - x);
                 hCtx.fillStyle = t.hdrTopBg; hCtx.fillRect(x, 0, w, 17);
                 hCtx.strokeStyle = t.hdrTopBorder; hCtx.strokeRect(x, 0, w, 17);
                 hCtx.fillStyle = t.hdrTopText; hCtx.font = 'bold 10px Segoe UI';
@@ -116,10 +115,9 @@ export default function TaskUsageGrid() {
         } else {
             // For month zoom, top header is Year
             while (cur < end) {
-                const x = (cur.getMonth() + (cur.getFullYear() - projStart.getFullYear()) * 12) * PX;
+                const x = dayDiff(projStart, cur) * PX;
                 const ny = new Date(cur.getFullYear() + 1, 0, 1);
-                const diffM = 12 - cur.getMonth();
-                const w = diffM * PX;
+                const w = dayDiff(cur, ny) * PX;
                 hCtx.fillStyle = t.hdrTopBg; hCtx.fillRect(x, 0, w, 17);
                 hCtx.strokeStyle = t.hdrTopBorder; hCtx.strokeRect(x, 0, w, 17);
                 hCtx.fillStyle = t.hdrTopText; hCtx.font = 'bold 10px Segoe UI';
@@ -129,16 +127,15 @@ export default function TaskUsageGrid() {
         }
 
         // Bottom Header (Intervals)
-        xOffset = 0;
         intervals.forEach(inv => {
+            const x = dayDiff(projStart, inv.start) * PX;
             hCtx.fillStyle = inv.isWeekend ? t.hdrWeekend : t.hdrBotBg;
-            hCtx.fillRect(xOffset, 17, inv.w, 19);
+            hCtx.fillRect(x, 17, inv.w, 19);
             hCtx.strokeStyle = t.hdrBotBorder;
-            hCtx.beginPath(); hCtx.moveTo(xOffset, 17); hCtx.lineTo(xOffset, HDR_H); hCtx.stroke();
+            hCtx.beginPath(); hCtx.moveTo(x, 17); hCtx.lineTo(x, HDR_H); hCtx.stroke();
             hCtx.fillStyle = inv.isWeekend ? (lightMode ? '#94a3b8' : '#374151') : t.hdrBotText;
             hCtx.font = '9px Segoe UI';
-            hCtx.fillText(inv.label, xOffset + 4, 30);
-            xOffset += inv.w;
+            hCtx.fillText(inv.label, x + 4, 30);
         });
 
         // ─── Body ───────────────────────────────────────────
@@ -171,8 +168,9 @@ export default function TaskUsageGrid() {
             ctx.font = '10px Segoe UI';
             ctx.textAlign = 'right';
 
-            xOffset = 0;
             intervals.forEach(inv => {
+                const x = dayDiff(projStart, inv.start) * PX;
+
                 // Sum the values falling in this interval
                 let sum = 0;
                 let cDate = new Date(inv.start);
@@ -183,14 +181,12 @@ export default function TaskUsageGrid() {
 
                 if (sum > 0) {
                     const txt = sum.toFixed(1).replace('.0', '');
-                    ctx.fillText(txt, xOffset + inv.w - 4, y + 17);
+                    ctx.fillText(txt, x + inv.w - 4, y + 17);
                 }
 
                 // Draw vertical grid line
                 ctx.strokeStyle = t.gridLine;
-                ctx.beginPath(); ctx.moveTo(xOffset, y); ctx.lineTo(xOffset, y + ROW_H); ctx.stroke();
-
-                xOffset += inv.w;
+                ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + ROW_H); ctx.stroke();
             });
         });
 
