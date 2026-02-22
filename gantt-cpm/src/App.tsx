@@ -14,6 +14,7 @@ import ProjectModal from './components/modals/ProjectModal';
 import LinkModal from './components/modals/LinkModal';
 import SupabaseModal from './components/modals/SupabaseModal';
 import SaveProgressModal from './components/modals/SaveProgressModal';
+import BaselineModal from './components/modals/BaselineModal';
 import SCurveChart from './components/SCurveChart';
 import TaskUsageGrid from './components/TaskUsageGrid';
 import ResourceUsageTable from './components/ResourceUsageTable';
@@ -307,6 +308,7 @@ function AppInner() {
       <LinkModal />
       <SupabaseModal />
       <SaveProgressModal />
+      <BaselineModal />
     </div>
   );
 }

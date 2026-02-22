@@ -312,7 +312,26 @@ export default function GanttTimeline() {
                 // Draw resize/link hit zones as subtle handles (only on hover)
                 // This is pure visual — actual hit-test is in hitTestBar
             }
-            // Baseline
+            // Baselines – draw non-active baselines as thin ghost bars, active as the main bar
+            const baselines = (r as any).baselines || [];
+            const activeBlIdx = state.activeBaselineIdx ?? 0;
+            const blColors = ['#94a3b8', '#f59e0b', '#10b981', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6', '#a855f7'];
+            if (r.type !== 'summary') {
+                baselines.forEach((bl: any, blIdx: number) => {
+                    if (!bl || blIdx === activeBlIdx) return; // active drawn below
+                    if (!bl.ES || !bl.EF) return;
+                    if (r.type === 'milestone') return; // skip ghost milestones
+                    const gBx = Math.max(0, dayDiff(projStart, bl.ES) * PX);
+                    const gEx = dayDiff(projStart, bl.EF) * PX;
+                    const gBw = Math.max(2, gEx - gBx);
+                    const gBy = y + ROW_H - 8, gBh = 2;
+                    ctx.globalAlpha = 0.35;
+                    ctx.fillStyle = blColors[blIdx % blColors.length];
+                    rrect(ctx, gBx, gBy, gBw, gBh, 1); ctx.fill();
+                    ctx.globalAlpha = 1;
+                });
+            }
+            // Active baseline (prominent)
             if (r.blES && r.blEF && r.type !== 'milestone' && r.type !== 'summary') {
                 const blBx = Math.max(0, dayDiff(projStart, r.blES) * PX);
                 const blEx = dayDiff(projStart, r.blEF) * PX;
@@ -399,7 +418,7 @@ export default function GanttTimeline() {
 
         // Draw drag overlay if active
         if (dragPreviewRef.current) drawDragOverlay();
-    }, [visRows, zoom, totalDays, projStart, statusDate, selIdx, lightMode, activities, W, H, t, PX, defCal, drawDragOverlay]);
+    }, [visRows, zoom, totalDays, projStart, statusDate, selIdx, lightMode, activities, W, H, t, PX, defCal, drawDragOverlay, state.activeBaselineIdx]);
 
     useEffect(() => { draw(); }, [draw]);
 

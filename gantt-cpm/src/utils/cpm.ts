@@ -117,6 +117,7 @@ export function newActivity(id?: string, defCal: CalendarType = 6): Activity {
         ES: null, EF: null, LS: null, LF: null, TF: null,
         crit: false,
         blDur: null, blES: null, blEF: null, blCal: null,
+        baselines: [],
         txt1: '', txt2: '', txt3: '', txt4: '', txt5: '',
     };
 }
@@ -134,7 +135,8 @@ export function calcCPM(
     projStart: Date,
     defCal: CalendarType,
     statusDate: Date | null,
-    projName: string
+    projName: string,
+    activeBaselineIdx: number = 0
 ): CPMResult {
     if (!activities.length) {
         return { activities: [], totalDays: 90, projectDays: 90 };
@@ -327,6 +329,8 @@ export function calcCPM(
 
     activities.forEach(a => {
         if (a.type === 'summary') return;
+        // Use active baseline data if available
+        const activeBl = (a.baselines || [])[activeBaselineIdx] || null;
         const start = a.blES || a.ES;
         const end = a.blEF || a.EF;
         if (!start || !end) {
@@ -334,7 +338,47 @@ export function calcCPM(
             return;
         }
 
-        a._plannedPct = getExactElapsedRatio(start, end, sDateEnd, a.cal || defCal) * 100;
+        // If the baseline has a saved pct and statusDate, interpolate:
+        // Before baseline statusDate: use time ratio scaled to baseline pct
+        // At baseline statusDate: use baseline pct exactly
+        // After baseline statusDate: interpolate from baseline pct to 100% over remaining time
+        if (activeBl && activeBl.pct != null && activeBl.statusDate) {
+            const blStatusEnd = new Date(activeBl.statusDate);
+            blStatusEnd.setHours(0, 0, 0, 0);
+            blStatusEnd.setDate(blStatusEnd.getDate() + 1);
+            const blPct = activeBl.pct;
+
+            const stObj = new Date(start); stObj.setHours(0, 0, 0, 0);
+            const endObj = new Date(end); endObj.setHours(0, 0, 0, 0);
+
+            if (sDateEnd <= stObj) {
+                a._plannedPct = 0;
+            } else if (sDateEnd >= endObj) {
+                a._plannedPct = 100;
+            } else if (blPct === 0) {
+                // No progress at baseline time → pure time ratio
+                a._plannedPct = getExactElapsedRatio(start, end, sDateEnd, a.cal || defCal) * 100;
+            } else {
+                // Two-segment interpolation:
+                // Segment 1: from start to blStatusDate → 0% to blPct
+                // Segment 2: from blStatusDate to end → blPct to 100%
+                if (sDateEnd <= blStatusEnd) {
+                    // Before or at baseline status date
+                    const totalWdSeg1 = getExactWorkDays(stObj, blStatusEnd, a.cal || defCal);
+                    const elapsedWd = getExactWorkDays(stObj, sDateEnd <= stObj ? stObj : new Date(sDateEnd), a.cal || defCal);
+                    const ratioSeg1 = totalWdSeg1 > 0 ? elapsedWd / totalWdSeg1 : 1;
+                    a._plannedPct = ratioSeg1 * blPct;
+                } else {
+                    // After baseline status date
+                    const totalWdSeg2 = getExactWorkDays(blStatusEnd, endObj, a.cal || defCal);
+                    const elapsedWd = getExactWorkDays(blStatusEnd, new Date(sDateEnd), a.cal || defCal);
+                    const ratioSeg2 = totalWdSeg2 > 0 ? elapsedWd / totalWdSeg2 : 1;
+                    a._plannedPct = blPct + ratioSeg2 * (100 - blPct);
+                }
+            }
+        } else {
+            a._plannedPct = getExactElapsedRatio(start, end, sDateEnd, a.cal || defCal) * 100;
+        }
     });
 
     // ═══ Summary Tasks: work + weighted pct (bottom-up) ═══
@@ -427,10 +471,10 @@ export function calcCPM(
 
 // ─── Usage Distribution Helper ──────────────────────────────────
 
-export function getUsageDailyValues(a: Activity, mode: 'Trabajo' | 'Trabajo real' | 'Trabajo acumulado' | 'Trabajo previsto', calcTotalAccumulated = false, defCal: number = 6): Map<number, number> {
+export function getUsageDailyValues(a: Activity, mode: 'Trabajo' | 'Trabajo real' | 'Trabajo acumulado' | 'Trabajo previsto', calcTotalAccumulated = false, defCal: number = 6, resId?: string): Map<number, number> {
     const map = new Map<number, number>();
     if (a.type === 'summary' || a._isProjRow) return map; // Summaries are aggregated bottom-up by the UI
-    const work = a.work || 0;
+    const work = resId ? (a.resources?.find(r => String(r.rid) === String(resId))?.work || 0) : (a.work || 0);
     if (work === 0) return map;
 
     const ES = (mode === 'Trabajo previsto' ? a.blES : a.ES) || a.ES;

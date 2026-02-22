@@ -26,7 +26,7 @@ function th(light: boolean): ThemeColors {
 
 export default function TaskUsageGrid() {
     const { state, dispatch } = useGantt();
-    const { visRows, usageZoom, usageMode, totalDays, timelineStart: projStart, selIdx, lightMode, activities, pxPerDay } = state;
+    const { visRows, usageZoom, usageMode, totalDays, timelineStart: projStart, selIdx, lightMode, activities, pxPerDay, statusDate } = state;
 
     // Use Gantt's pxPerDay for synchronized column widths
     const PX = pxPerDay;
@@ -150,8 +150,11 @@ export default function TaskUsageGrid() {
         // Draw rows
         visRows.forEach((r, i) => {
             const y = i * ROW_H;
-            ctx.fillStyle = i % 2 === 0 ? t.rowEven : t.rowOdd;
-            if (selIdx === r._idx) ctx.fillStyle = lightMode ? '#e0f2fe' : '#0c4a6e';
+            const isResAssign = r._isResourceAssignment;
+            ctx.fillStyle = isResAssign
+                ? (lightMode ? '#f0f9ff' : '#0c1929')
+                : (i % 2 === 0 ? t.rowEven : t.rowOdd);
+            if (selIdx === r._idx && !isResAssign) ctx.fillStyle = lightMode ? '#e0f2fe' : '#0c4a6e';
             ctx.fillRect(0, y, W, ROW_H);
             ctx.strokeStyle = t.gridLine;
             ctx.beginPath(); ctx.moveTo(0, y + ROW_H); ctx.lineTo(W, y + ROW_H); ctx.stroke();
@@ -161,11 +164,13 @@ export default function TaskUsageGrid() {
             const a = activities[r._idx];
             if (!a || a._isProjRow) return;
 
-            // Get precalculated daily values for this activity
-            const dailyValues = getUsageDailyValues(a, usageMode as any, false);
+            // Get precalculated daily values for this activity (or specific resource assignment)
+            const dailyValues = getUsageDailyValues(a, usageMode as any, false, 6, r._isResourceAssignment ? r.res : undefined);
 
-            ctx.fillStyle = lightMode ? '#1e293b' : '#f8fafc';
-            ctx.font = '10px Segoe UI';
+            ctx.fillStyle = r._isResourceAssignment
+                ? (lightMode ? '#2563eb' : '#60a5fa')
+                : (lightMode ? '#1e293b' : '#f8fafc');
+            ctx.font = r._isResourceAssignment ? 'italic 10px Segoe UI' : '10px Segoe UI';
             ctx.textAlign = 'right';
 
             intervals.forEach(inv => {
@@ -190,7 +195,18 @@ export default function TaskUsageGrid() {
             });
         });
 
-    }, [W, H, visRows, activities, activeZoom, PX, usageMode, projStart, totalDays, t, selIdx, lightMode, getIntervals]);
+        // Current status date line
+        if (statusDate) {
+            const sdX = dayDiff(projStart, statusDate) * PX;
+            ctx.beginPath();
+            ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 1.5;
+            ctx.setLineDash([4, 4]);
+            ctx.moveTo(sdX, 0); ctx.lineTo(sdX, H);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+    }, [W, H, visRows, activities, activeZoom, PX, usageMode, projStart, totalDays, t, selIdx, lightMode, getIntervals, statusDate]);
 
     useEffect(() => {
         draw();

@@ -6,7 +6,7 @@ import { useGantt } from '../store/GanttContext';
 import { newActivity, isoDate, parseDate } from '../utils/cpm';
 import { autoId, exportJSON, exportCSV, importJSONData, importCSVData } from '../utils/helpers';
 import {
-    Save, Plus, Trash2, ArrowRight, ClipboardPaste, Scissors, Settings, Calculator, BarChart3, Sun, Moon, Clock,
+    Plus, Trash2, ArrowRight, ClipboardPaste, Scissors, Settings, Calculator, BarChart3, Sun, Moon, Clock,
     TrendingUp, LineChart, FileText, Diamond, ArrowLeft, ArrowUp, ArrowDown, Info, Undo2, Cloud, Database, Upload, Download, LayoutTemplate, Users
 } from 'lucide-react';
 import type { ZoomLevel }
@@ -139,7 +139,17 @@ export default function Ribbon() {
                         </div>
                     </RG>
                     <RG label="LÍNEA BASE">
-                        <RB icon={<Save size={16} />} label="Guardar LB" onClick={() => { dispatch({ type: 'PUSH_UNDO' }); dispatch({ type: 'SAVE_BASELINE' }); alert('Línea Base guardada'); }} />
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'center' }}>
+                            <button className="rbtn" style={{ fontSize: 10, padding: '4px 10px', whiteSpace: 'nowrap' }}
+                                onClick={() => dispatch({ type: 'OPEN_BL_MODAL' })}>
+                                📊 Líneas Base
+                            </button>
+                            {state.activities.some(a => a.baselines?.[state.activeBaselineIdx]) && (
+                                <span style={{ fontSize: 9, color: '#60a5fa', fontWeight: 600, textAlign: 'center', lineHeight: 1.1 }}>
+                                    LB {state.activeBaselineIdx} activa
+                                </span>
+                            )}
+                        </div>
                     </RG>
                     <RG label="PROGRESO">
                         <RB icon={<TrendingUp size={16} />} label="Progreso Semanal" onClick={() => dispatch({ type: 'OPEN_PROGRESS_MODAL' })} />

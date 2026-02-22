@@ -98,9 +98,31 @@ export default function GanttTable() {
         return () => document.removeEventListener('click', handler);
     }, [ctxMenu]);
 
+    const isUsageView = state.currentView === 'usage';
+
     const getCellValue = useCallback((a: any, c: any, vi: number): string => {
+        if (a._isResourceAssignment) {
+            if (c.key === 'name') return '👤 ' + (a.name || '');
+            if (c.key === 'work') return (a.work || 0) + ' hrs';
+            if (c.key === '_num') return '';
+            if (c.key === '_mode') return '';
+            // Show parent activity dates for resource assignment context
+            const parent = activities[a._idx];
+            if (parent) {
+                if (c.key === 'startDate') return parent.ES ? fmtDate(parent.ES) : '';
+                if (c.key === 'endDate') return parent.EF ? fmtDate(addDays(parent.EF, -1)) : '';
+                if (c.key === 'dur') return parent.type === 'milestone' ? '0 días' : (parent.dur || 0) + ' días';
+            }
+            return ''; // Leave other cells empty for resource sub-rows
+        }
+
         if (c.key === '_num') return String(vi + 1);
-        if (c.key === '_mode') return a.type === 'summary' ? (state.collapsed.has(a.id) ? '▶' : '▼') : '';
+        if (c.key === '_mode') {
+            if (a.type === 'summary') return state.collapsed.has(a.id) ? '▶' : '▼';
+            // In usage view, show expand/collapse for activities with resources
+            if (isUsageView && a.resources && a.resources.length > 0) return state.expResources.has(a.id) ? '▼' : '▶';
+            return '';
+        }
         if (c.key === '_info') return 'ⓘ';
         if (c.key === 'outlineNum') return a.outlineNum || '';
         if (c.key === 'id') return a.id || '';
@@ -130,9 +152,14 @@ export default function GanttTable() {
         if (c.key === 'constraintDate') return a.constraintDate || '';
         if (c.key === 'notes') return (a.notes || '').substring(0, 40);
         return a[c.key] != null ? String(a[c.key]) : '';
-    }, [activities, defCal, state.collapsed, state.statusDate]);
+    }, [activities, defCal, state.collapsed, state.statusDate, isUsageView, state.expResources]);
 
     const getRawValue = useCallback((a: any, key: string): string => {
+        if (a._isResourceAssignment) {
+            if (key === 'work') return String(a.work || 0);
+            return '';
+        }
+
         if (key === 'dur') return String(a.dur || 0);
         if (key === 'remDur') return String(a.remDur != null ? a.remDur : '');
         if (key === 'pct') return String(a.pct || 0);
@@ -215,13 +242,24 @@ export default function GanttTable() {
                                 </div>
                             );
                         }
-                        const a = activities[vr._idx];
+                        const actualAct = activities[vr._idx];
+                        const a = vr._isResourceAssignment ? vr : actualAct;
                         const isProj = a._isProjRow;
                         const isSummary = a.type === 'summary';
-                        const rowCls = `trow ${isProj ? 'trow-proj' : `trow-lv${Math.min(a.lv, 2)}`} ${!isProj && isSummary ? 'trow-summary' : ''} ${selIdx === vr._idx ? 'sel' : ''}`;
+                        const isResRow = vr._isResourceAssignment;
+                        const hasResources = isUsageView && !isResRow && actualAct?.resources && actualAct.resources.length > 0;
+                        const rowCls = `trow ${isProj ? 'trow-proj' : `trow-lv${Math.min(a.lv, 2)}`} ${!isProj && isSummary ? 'trow-summary' : ''} ${selIdx === vr._idx ? 'sel' : ''} ${isResRow ? 'trow-resource-assign' : ''}`;
 
                         return (
-                            <div key={vi} className={rowCls} style={{ width: totalW }}
+                            <div key={vi} className={rowCls} style={{
+                                width: totalW,
+                                ...(isResRow ? {
+                                    fontStyle: 'italic',
+                                    opacity: 0.85,
+                                    background: lightMode ? '#f0f9ff' : '#0c1929',
+                                } : {}),
+                                ...(hasResources ? { fontWeight: 600 } : {})
+                            }}
                                 onClick={() => dispatch({ type: 'SET_SELECTION', index: vr._idx })}
                                 onDoubleClick={() => { dispatch({ type: 'SET_SELECTION', index: vr._idx }); dispatch({ type: 'OPEN_ACT_MODAL' }); }}
                                 onMouseEnter={e => showTooltip(e, a)}
@@ -232,7 +270,13 @@ export default function GanttTable() {
                                     const style: React.CSSProperties = { width: colWidths[ci] };
 
                                     // Name cell indent
-                                    if (c.key === 'name') style.paddingLeft = 2 + Math.max(0, a.lv) * 14;
+                                    if (c.key === 'name') {
+                                        style.paddingLeft = 2 + Math.max(0, a.lv) * 14;
+                                        if (isResRow) {
+                                            style.paddingLeft = 2 + Math.max(0, (a.lv || 0)) * 14 + 10;
+                                            style.color = lightMode ? '#2563eb' : '#60a5fa';
+                                        }
+                                    }
 
                                     // Center alignment for Dur, RemDur, Pct
                                     if (['dur', 'remDur', 'pct'].includes(c.key)) {
@@ -258,11 +302,20 @@ export default function GanttTable() {
                                         );
                                     }
 
-                                    // Mode column (collapse/expand)
+                                    // Mode column (collapse/expand for summaries and resource toggles)
                                     if (c.key === '_mode' && isSummary) {
                                         return (
                                             <div key={c.key} className={`tcell ${c.cls}`} style={{ ...style, cursor: 'pointer' }}
                                                 onClick={e => { e.stopPropagation(); dispatch({ type: 'TOGGLE_COLLAPSE', id: a.id }); }}>
+                                                {val}
+                                            </div>
+                                        );
+                                    }
+                                    // In usage view, show expand/collapse for activities with resources
+                                    if (c.key === '_mode' && hasResources) {
+                                        return (
+                                            <div key={c.key} className={`tcell ${c.cls}`} style={{ ...style, cursor: 'pointer', color: lightMode ? '#2563eb' : '#60a5fa' }}
+                                                onClick={e => { e.stopPropagation(); dispatch({ type: 'TOGGLE_RES_COLLAPSE', id: a.id }); }}>
                                                 {val}
                                             </div>
                                         );

@@ -39,6 +39,21 @@ export interface ActivityResource {
     units: string;    // e.g. "100%"
 }
 
+// ─── Baseline Entry (stored per activity, up to 11: BL0-BL10) ──
+export interface BaselineEntry {
+    dur: number;
+    ES: Date | null;
+    EF: Date | null;
+    cal: CalendarType;
+    savedAt: string; // ISO date when this baseline was saved
+    name: string;        // user-given name for traceability
+    description: string; // observations / description
+    pct: number;         // % complete at baseline save time
+    work: number;        // work hours at baseline save time
+    weight: number | null; // weight at baseline save time
+    statusDate: string;  // ISO date of status date when baseline was saved
+}
+
 // ─── Activity ───────────────────────────────────────────────────
 export interface Activity {
     id: string;           // unique local ID (e.g. "A", "1.1")
@@ -67,11 +82,12 @@ export interface Activity {
     TF: number | null;    // Total Float
     crit: boolean;        // is critical
 
-    // ── Baseline Fields ──
+    // ── Baseline Fields (active baseline = baselines[activeBaselineIdx]) ──
     blDur: number | null;
     blES: Date | null;    // Baseline Early Start
     blEF: Date | null;    // Baseline Early Finish
     blCal: CalendarType | null; // Baseline Calendar
+    baselines: BaselineEntry[]; // 0-10 baselines
 
     // ── Custom Text Fields ──
     txt1: string;
@@ -124,6 +140,8 @@ export interface VisibleRow extends Activity {
     _isGroupHeader?: boolean;
     _groupLabel?: string;
     _groupCount?: number;
+    _isResourceAssignment?: boolean;
+    _parentTaskId?: string;
 }
 
 // ─── Column Definition ──────────────────────────────────────────

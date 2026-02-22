@@ -3,7 +3,7 @@
 // All state management matching HTML globals + actions
 // ═══════════════════════════════════════════════════════════════════
 import React, { createContext, useContext, useReducer, type ReactNode } from 'react';
-import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, VisibleRow, ProgressHistoryEntry } from '../types/gantt';
+import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, VisibleRow, ProgressHistoryEntry, BaselineEntry } from '../types/gantt';
 import { calcCPM, newActivity, isoDate, parseDate, addDays } from '../utils/cpm';
 import { autoId, computeOutlineNumbers, syncResFromString, deriveResString, distributeWork, strToPreds } from '../utils/helpers';
 
@@ -78,6 +78,8 @@ export interface GanttState {
     sbModalOpen: boolean;
     progressModalOpen: boolean;
     progressHistory: ProgressHistoryEntry[];
+    activeBaselineIdx: number; // 0-10, which baseline is displayed
+    blModalOpen: boolean;      // baseline manager modal
 }
 
 // ─── Actions ────────────────────────────────────────────────────
@@ -113,7 +115,9 @@ export type Action =
     | { type: 'MOVE_ROW'; dir: number }
     | { type: 'CUT_ACTIVITY' }
     | { type: 'PASTE_ACTIVITY' }
-    | { type: 'SAVE_BASELINE' }
+    | { type: 'SAVE_BASELINE'; index?: number; name?: string; description?: string }
+    | { type: 'SET_ACTIVE_BASELINE'; index: number }
+    | { type: 'CLEAR_BASELINE'; index: number }
     | { type: 'OPEN_ACT_MODAL' }
     | { type: 'CLOSE_ACT_MODAL' }
     | { type: 'OPEN_PROJ_MODAL' }
@@ -124,6 +128,8 @@ export type Action =
     | { type: 'CLOSE_SB_MODAL' }
     | { type: 'OPEN_PROGRESS_MODAL' }
     | { type: 'CLOSE_PROGRESS_MODAL' }
+    | { type: 'OPEN_BL_MODAL' }
+    | { type: 'CLOSE_BL_MODAL' }
     | { type: 'ADD_PRED'; actIdx: number; pred: { id: string; type: string; lag: number } }
     | { type: 'UPDATE_PRED'; actIdx: number; predIdx: number; updates: Partial<{ type: any; lag: number }> }
     | { type: 'REMOVE_PRED'; actIdx: number; predIdx: number }
@@ -168,7 +174,7 @@ function applyGroupFilter(rows: VisibleRow[], activities: Activity[], activeGrou
     return rows;
 }
 
-function buildVisRows(activities: Activity[], collapsed: Set<string>, activeGroup: string, columns: ColumnDef[]): VisibleRow[] {
+function buildVisRows(activities: Activity[], collapsed: Set<string>, activeGroup: string, columns: ColumnDef[], currentView: string = 'gantt', expResources: Set<string> = new Set()): VisibleRow[] {
     const rows: VisibleRow[] = [];
     let skipLv = -999;
     activities.forEach((a, i) => {
@@ -182,6 +188,23 @@ function buildVisRows(activities: Activity[], collapsed: Set<string>, activeGrou
             return;
         }
         rows.push({ ...a, _idx: i });
+
+        // Generate resource pseudo-rows for Task Usage view (only if activity is expanded)
+        if (currentView === 'usage' && a.resources && a.resources.length > 0 && expResources.has(a.id)) {
+            a.resources.forEach((r, rIdx) => {
+                rows.push({
+                    id: `res_${a.id}_${r.rid}_${rIdx}`,
+                    name: r.name,
+                    type: 'task', // treated structurally as a normal task row for grid logic
+                    _isResourceAssignment: true,
+                    _parentTaskId: a.id,
+                    res: String(r.rid), // Store rid here so getUsageDailyValues can explicitly filter it
+                    work: r.work,
+                    lv: a.lv + 1, // Indent it strictly under its parent task
+                    _idx: i,      // Points back to parent activity to fetch properties
+                } as any);
+            });
+        }
     });
     return applyGroupFilter(rows, activities, activeGroup, columns);
 }
@@ -204,9 +227,9 @@ function ensureProjRow(activities: Activity[], showProjRow: boolean, projName: s
 
 function recalc(state: GanttState): GanttState {
     let acts = ensureProjRow([...state.activities], state.showProjRow, state.projName, state.defCal);
-    const result = calcCPM(acts, state.projStart, state.defCal, state.statusDate, state.projName);
+    const result = calcCPM(acts, state.projStart, state.defCal, state.statusDate, state.projName, state.activeBaselineIdx);
     computeOutlineNumbers(result.activities);
-    const visRows = buildVisRows(result.activities, state.collapsed, state.activeGroup, state.columns);
+    const visRows = buildVisRows(result.activities, state.collapsed, state.activeGroup, state.columns, state.currentView, state.expResources);
     // Auto-fit: pxPerDay based on PROJECT span (not totalDays) so project fills viewport
     // but totalDays extends beyond for scrollable buffer
     const timelineW = Math.max(400, (typeof window !== 'undefined' ? window.innerWidth : 1200) - state.tableW - 10);
@@ -321,31 +344,33 @@ function reducer(state: GanttState, action: Action): GanttState {
             return { ...state, lightMode: !state.lightMode };
 
         case 'SET_VIEW': {
-            return { ...state, currentView: action.view };
+            const visRows = buildVisRows(state.activities, state.collapsed, state.activeGroup, state.columns, action.view, state.expResources);
+            return { ...state, currentView: action.view, visRows };
         }
         case 'SET_USAGE_MODE': return { ...state, usageMode: action.mode };
         case 'SET_USAGE_ZOOM': return { ...state, usageZoom: action.zoom };
         case 'TOGGLE_COLLAPSE': {
             const c = new Set(state.collapsed);
             c.has(action.id) ? c.delete(action.id) : c.add(action.id);
-            const visRows = buildVisRows(state.activities, c, state.activeGroup, state.columns);
+            const visRows = buildVisRows(state.activities, c, state.activeGroup, state.columns, state.currentView, state.expResources);
             return { ...state, collapsed: c, visRows };
         }
         case 'TOGGLE_RES_COLLAPSE': {
             const c = new Set(state.expResources);
             c.has(action.id) ? c.delete(action.id) : c.add(action.id);
-            return { ...state, expResources: c };
+            const visRows = buildVisRows(state.activities, state.collapsed, state.activeGroup, state.columns, state.currentView, c);
+            return { ...state, expResources: c, visRows };
         }
 
         case 'COLLAPSE_ALL': {
             const c = new Set<string>();
             state.activities.forEach(a => { if (a.type === 'summary') c.add(a.id); });
-            const visRows = buildVisRows(state.activities, c, state.activeGroup, state.columns);
+            const visRows = buildVisRows(state.activities, c, state.activeGroup, state.columns, state.currentView, state.expResources);
             return { ...state, collapsed: c, visRows };
         }
 
         case 'EXPAND_ALL': {
-            const visRows = buildVisRows(state.activities, new Set(), state.activeGroup, state.columns);
+            const visRows = buildVisRows(state.activities, new Set(), state.activeGroup, state.columns, state.currentView, state.expResources);
             return { ...state, collapsed: new Set(), visRows };
         }
 
@@ -357,19 +382,19 @@ function reducer(state: GanttState, action: Action): GanttState {
                     c.add(a.id);
                 }
             });
-            const visRows = buildVisRows(state.activities, c, state.activeGroup, state.columns);
+            const visRows = buildVisRows(state.activities, c, state.activeGroup, state.columns, state.currentView, state.expResources);
             return { ...state, collapsed: c, visRows };
         }
 
         case 'SET_GROUP': {
-            const visRows = buildVisRows(state.activities, state.collapsed, action.group, state.columns);
+            const visRows = buildVisRows(state.activities, state.collapsed, action.group, state.columns, state.currentView, state.expResources);
             return { ...state, activeGroup: action.group, visRows };
         }
 
         case 'SET_PROJECT_CONFIG': {
             const newState = { ...state, ...action.config };
             const acts = ensureProjRow([...newState.activities], newState.showProjRow, newState.projName, newState.defCal);
-            const visRows = buildVisRows(acts, newState.collapsed, newState.activeGroup, newState.columns);
+            const visRows = buildVisRows(acts, newState.collapsed, newState.activeGroup, newState.columns, newState.currentView, newState.expResources);
             return { ...newState, activities: acts, visRows };
         }
 
@@ -484,14 +509,70 @@ function reducer(state: GanttState, action: Action): GanttState {
 
         case 'SAVE_BASELINE': {
             if (!state.activities.length) return state;
-            const acts = state.activities.map(a => ({
-                ...a,
-                blDur: a.dur,
-                blES: a.ES ? new Date(a.ES) : null,
-                blEF: a.EF ? new Date(a.EF) : null,
-                blCal: a.cal,
-            }));
-            return { ...state, activities: acts, visRows: buildVisRows(acts, state.collapsed, state.activeGroup, state.columns) };
+            const blIdx = action.index != null ? action.index : state.activeBaselineIdx;
+            const blName = action.name || `Línea Base ${blIdx}`;
+            const blDesc = action.description || '';
+            const now = new Date().toISOString();
+            const acts = state.activities.map(a => {
+                const baselines = [...(a.baselines || [])];
+                // Ensure array has slots up to blIdx
+                while (baselines.length <= blIdx) baselines.push(null as any);
+                baselines[blIdx] = {
+                    dur: a.dur,
+                    ES: a.ES ? new Date(a.ES) : null,
+                    EF: a.EF ? new Date(a.EF) : null,
+                    cal: a.cal,
+                    savedAt: now,
+                    name: blName,
+                    description: blDesc,
+                    pct: a.pct || 0,
+                    work: a.work || 0,
+                    weight: a.weight != null ? a.weight : null,
+                    statusDate: state.statusDate ? state.statusDate.toISOString() : now,
+                } as BaselineEntry;
+                // Set active baseline fields from the currently displayed baseline
+                const active = baselines[state.activeBaselineIdx] || baselines[blIdx];
+                return {
+                    ...a,
+                    baselines,
+                    blDur: active ? active.dur : null,
+                    blES: active ? active.ES : null,
+                    blEF: active ? active.EF : null,
+                    blCal: active ? active.cal : null,
+                };
+            });
+            return { ...state, activities: acts, visRows: buildVisRows(acts, state.collapsed, state.activeGroup, state.columns, state.currentView, state.expResources) };
+        }
+
+        case 'SET_ACTIVE_BASELINE': {
+            const blIdx = action.index;
+            const acts = state.activities.map(a => {
+                const bl = (a.baselines || [])[blIdx];
+                return {
+                    ...a,
+                    blDur: bl ? bl.dur : null,
+                    blES: bl ? bl.ES : null,
+                    blEF: bl ? bl.EF : null,
+                    blCal: bl ? bl.cal : null,
+                };
+            });
+            return { ...state, activeBaselineIdx: blIdx, activities: acts, visRows: buildVisRows(acts, state.collapsed, state.activeGroup, state.columns, state.currentView, state.expResources) };
+        }
+
+        case 'CLEAR_BASELINE': {
+            const blIdx = action.index;
+            const acts = state.activities.map(a => {
+                const baselines = [...(a.baselines || [])];
+                if (baselines[blIdx]) baselines[blIdx] = null as any;
+                // If clearing the active baseline, clear active fields
+                const isActive = blIdx === state.activeBaselineIdx;
+                return {
+                    ...a,
+                    baselines,
+                    ...(isActive ? { blDur: null, blES: null, blEF: null, blCal: null } : {}),
+                };
+            });
+            return { ...state, activities: acts, visRows: buildVisRows(acts, state.collapsed, state.activeGroup, state.columns, state.currentView, state.expResources) };
         }
 
         // Modal toggles
@@ -508,6 +589,8 @@ function reducer(state: GanttState, action: Action): GanttState {
 
         case 'OPEN_PROGRESS_MODAL': return { ...state, progressModalOpen: true, actModalOpen: false, projModalOpen: false, linkModalOpen: false, sbModalOpen: false };
         case 'CLOSE_PROGRESS_MODAL': return { ...state, progressModalOpen: false };
+        case 'OPEN_BL_MODAL': return { ...state, blModalOpen: true };
+        case 'CLOSE_BL_MODAL': return { ...state, blModalOpen: false };
 
         case 'ADD_PRED': {
             const acts = [...state.activities];
@@ -670,6 +753,8 @@ const initialState: GanttState = {
     sbModalOpen: false,
     progressModalOpen: false,
     progressHistory: [],
+    activeBaselineIdx: 0,
+    blModalOpen: false,
 };
 
 // ─── Context ────────────────────────────────────────────────────

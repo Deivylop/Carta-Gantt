@@ -110,6 +110,7 @@ export function exportJSON(
             constraintDate: a.constraintDate, manual: a.manual, res: a.res, work: a.work || 0,
             weight: a.weight, resources: a.resources || [], notes: a.notes,
             blDur: a.blDur, blES: a.blES ? isoDate(a.blES) : null, blEF: a.blEF ? isoDate(a.blEF) : null,
+            baselines: (a.baselines || []).map(bl => bl ? { dur: bl.dur, ES: bl.ES ? isoDate(bl.ES) : null, EF: bl.EF ? isoDate(bl.EF) : null, cal: bl.cal, savedAt: bl.savedAt, name: bl.name || '', description: bl.description || '', pct: bl.pct || 0, work: bl.work || 0, weight: bl.weight, statusDate: bl.statusDate || '' } : null),
             txt1: a.txt1 || '', txt2: a.txt2 || '', txt3: a.txt3 || '', txt4: a.txt4 || '', txt5: a.txt5 || '',
         })),
     };
@@ -139,6 +140,15 @@ export function importJSONData(
             const na = { ...newActivity(), ...a };
             if (a.blES) na.blES = parseDate(a.blES);
             if (a.blEF) na.blEF = parseDate(a.blEF);
+            // Restore multiple baselines
+            if (Array.isArray(a.baselines)) {
+                na.baselines = a.baselines.map((bl: any) => {
+                    if (!bl) return null;
+                    return { dur: bl.dur, ES: bl.ES ? parseDate(bl.ES) : null, EF: bl.EF ? parseDate(bl.EF) : null, cal: bl.cal, savedAt: bl.savedAt || '', name: bl.name || '', description: bl.description || '', pct: bl.pct || 0, work: bl.work || 0, weight: bl.weight != null ? bl.weight : null, statusDate: bl.statusDate || '' };
+                });
+            } else {
+                na.baselines = [];
+            }
             return na;
         });
         activities.forEach((a: Activity) => {

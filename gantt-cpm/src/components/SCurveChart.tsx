@@ -3,7 +3,7 @@ import { useGantt } from '../store/GanttContext';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine
 } from 'recharts';
-import { isoDate, getExactElapsedRatio, dayDiff, addDays } from '../utils/cpm';
+import { isoDate, getExactElapsedRatio, getExactWorkDays, dayDiff, addDays } from '../utils/cpm';
 import type { ZoomLevel } from '../types/gantt';
 
 interface SCurveChartProps {
@@ -140,7 +140,35 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                     wBackup = t.dur || 1;
                 }
 
-                const ratio = getExactElapsedRatio(rawStart, rawEnd, evalDate, t.blCal || t.cal || state.defCal);
+                // Check if active baseline has pct data for two-segment interpolation
+                const activeBl = (t.baselines || [])[state.activeBaselineIdx] || null;
+                let ratio: number;
+                if (activeBl && activeBl.pct != null && activeBl.pct > 0 && activeBl.statusDate) {
+                    const stObj = new Date(rawStart); stObj.setHours(0, 0, 0, 0);
+                    const endObj = new Date(rawEnd); endObj.setHours(0, 0, 0, 0);
+                    const blStatusEnd = new Date(activeBl.statusDate);
+                    blStatusEnd.setHours(0, 0, 0, 0);
+                    blStatusEnd.setDate(blStatusEnd.getDate() + 1);
+                    const blPct = activeBl.pct / 100;
+
+                    if (evalDate <= stObj) {
+                        ratio = 0;
+                    } else if (evalDate >= endObj) {
+                        ratio = 1;
+                    } else if (evalDate <= blStatusEnd) {
+                        const totalWdSeg1 = getExactWorkDays(stObj, blStatusEnd, t.blCal || t.cal || state.defCal);
+                        const elapsedWd = getExactWorkDays(stObj, evalDate, t.blCal || t.cal || state.defCal);
+                        const ratioSeg1 = totalWdSeg1 > 0 ? elapsedWd / totalWdSeg1 : 1;
+                        ratio = ratioSeg1 * blPct;
+                    } else {
+                        const totalWdSeg2 = getExactWorkDays(blStatusEnd, endObj, t.blCal || t.cal || state.defCal);
+                        const elapsedWd = getExactWorkDays(blStatusEnd, evalDate, t.blCal || t.cal || state.defCal);
+                        const ratioSeg2 = totalWdSeg2 > 0 ? elapsedWd / totalWdSeg2 : 1;
+                        ratio = blPct + ratioSeg2 * (1 - blPct);
+                    }
+                } else {
+                    ratio = getExactElapsedRatio(rawStart, rawEnd, evalDate, t.blCal || t.cal || state.defCal);
+                }
 
                 earned += w * ratio;
                 fallbackEarned += wBackup * ratio;
@@ -416,6 +444,7 @@ interface SCurveCanvasProps {
 function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, statusDate, points, statusDateMs, maxValue, isHours }: SCurveCanvasProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const yAxisCanvasRef = useRef<HTMLCanvasElement>(null);
     const PX = pxPerDay;
     const HDR_H = 36; // timeline axis height
     const LEGEND_H = 24;
@@ -468,15 +497,40 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
         const formatY = (v: number) => isHours ? v.toLocaleString('es-CL', { maximumFractionDigits: 0 }) + 'h' : Math.round(v) + '%';
         yTicks.forEach(val => {
             const y = chartBot - (val / yMax) * chartH;
-            // Grid line
+            // Grid line on MAIN canvas
             ctx.strokeStyle = gridColor;
             ctx.setLineDash([3, 3]);
             ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
             ctx.setLineDash([]);
-            // Label
-            ctx.fillStyle = textColor;
-            ctx.fillText(formatY(val), 4, y - 3);
         });
+
+        // ─── Fixed Y-Axis overlay ───────────────────────
+        const yc = yAxisCanvasRef.current;
+        if (yc) {
+            const yw = 55;
+            yc.width = yw; yc.height = totalH;
+            yc.style.width = yw + 'px'; yc.style.height = totalH + 'px';
+            const yCtx = yc.getContext('2d')!;
+            yCtx.clearRect(0, 0, yw, totalH);
+
+            const grad = yCtx.createLinearGradient(yw - 15, 0, yw, 0);
+            const rgb = lightMode ? '255,255,255' : '15,23,42';
+            grad.addColorStop(0, `rgba(${rgb},1)`);
+            grad.addColorStop(1, `rgba(${rgb},0)`);
+            yCtx.fillStyle = `rgb(${rgb})`;
+            yCtx.fillRect(0, 0, yw - 15, totalH);
+            yCtx.fillStyle = grad;
+            yCtx.fillRect(yw - 15, 0, 15, totalH);
+
+            yCtx.fillStyle = textColor;
+            yCtx.font = '10px Segoe UI';
+            yCtx.textAlign = 'left';
+            yCtx.textBaseline = 'bottom';
+            yTicks.forEach(val => {
+                const y = chartBot - (val / yMax) * chartH;
+                yCtx.fillText(formatY(val), 4, y - 3);
+            });
+        }
 
         // ─── Vertical month grid lines ───────────────────
         let cur = new Date(projStart);
@@ -624,48 +678,88 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
         }
     }, [width, projStart, totalDays, PX, zoom, lightMode, statusDate, points, statusDateMs]);
 
-    const [tooltip, setTooltip] = useState<{ x: number; y: number; date: string; planned: string; actual: string } | null>(null);
+    const [tooltip, setTooltip] = useState<{ visibleX: number; visibleY: number; date: string; planned: string; actual: string } | null>(null);
 
     const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
         const c = canvasRef.current; if (!c) return;
         const rect = c.getBoundingClientRect();
+        const outerContainer = containerRef.current?.parentElement;
+        const outerRect = outerContainer ? outerContainer.getBoundingClientRect() : rect;
+
         const mx = e.clientX - rect.left;
-        const my = e.clientY - rect.top;
-
-        // Find nearest point within 20px
-        let best: typeof points[0] | null = null;
-        let bestDist = 20;
-        const containerH = containerRef.current?.getBoundingClientRect().height || 250;
-        const totalH = Math.max(150, containerH);
-        const chartH = totalH - HDR_H - LEGEND_H - PADDING_T - PADDING_B;
-        const chartTop = LEGEND_H + PADDING_T;
-        const chartBot = chartTop + chartH;
-
-        points.forEach(p => {
-            const px = dayDiff(projStart, new Date(p.dateMs)) * PX;
-            const py = chartBot - (p.planned / 100) * chartH;
-            const dist = Math.sqrt((mx - px) ** 2 + (my - py) ** 2);
-            if (dist < bestDist) { bestDist = dist; best = p; }
-            // Also check actual point
-            if (p.actual !== null && p.actual !== undefined) {
-                const ay = chartBot - (p.actual / 100) * chartH;
-                const adist = Math.sqrt((mx - px) ** 2 + (my - ay) ** 2);
-                if (adist < bestDist) { bestDist = adist; best = p; }
-            }
-        });
-
-        if (best) {
-            const b = best as typeof points[0];
-            setTooltip({
-                x: e.clientX - rect.left + 12,
-                y: e.clientY - rect.top - 10,
-                date: new Date(b.dateMs).toLocaleDateString('es-CL'),
-                planned: `${b.planned.toFixed(1)}%`,
-                actual: b.actual !== null && b.actual !== undefined ? `${b.actual.toFixed(1)}%` : '—',
-            });
-        } else {
-            setTooltip(null);
+        const visibleX = e.clientX - outerRect.left;
+        const visibleY = e.clientY - outerRect.top;
+        // 1. Find segment enclosing current mx (mouse X)
+        let i0 = 0;
+        for (let i = 0; i < points.length - 1; i++) {
+            const px = dayDiff(projStart, new Date(points[i + 1].dateMs)) * PX;
+            if (px >= mx) { i0 = i; break; }
+            if (i === points.length - 2) i0 = i;
         }
+
+        const p1 = points[i0];
+        const p2 = points[i0 + 1];
+
+        // Ensure we are inside project bounds
+        if (mx < dayDiff(projStart, new Date(points[0].dateMs)) * PX || mx > dayDiff(projStart, new Date(points[points.length - 1].dateMs)) * PX) {
+            setTooltip(null);
+            return;
+        }
+
+        // 2. Interpolate standard Y values using same tension logic as drawSmoothCurve
+        const interpolateY = (key: 'planned' | 'actual', p0: any, p1: any, p2: any, p3: any) => {
+            if (p1[key] == null || p2[key] == null) return null;
+            const tension = 0.15;
+
+            // X coordinates 
+            const x1 = dayDiff(projStart, new Date(p1.dateMs)) * PX;
+            const x2 = dayDiff(projStart, new Date(p2.dateMs)) * PX;
+
+            // Y values (raw dataset scale)
+            const y0 = p0[key] ?? p1[key];
+            const y1 = p1[key]!;
+            const y2 = p2[key]!;
+            const y3 = p3[key] ?? p2[key];
+
+            let cp1y = y1 + (y2 - y0) * tension;
+            let cp2y = y2 - (y3 - y1) * tension;
+
+            // Clamp control points as drawSmoothCurve does
+            const segMinY = Math.min(y1, y2);
+            const segMaxY = Math.max(y1, y2);
+            cp1y = Math.max(segMinY, Math.min(segMaxY, cp1y));
+            cp2y = Math.max(segMinY, Math.min(segMaxY, cp2y));
+            const yMaxData = maxValue && maxValue > 0 ? maxValue : 100;
+            cp1y = Math.max(0, Math.min(yMaxData, cp1y));
+            cp2y = Math.max(0, Math.min(yMaxData, cp2y));
+
+            // Approximate t from x
+            if (x2 === x1) return y1;
+            // Simple linear approximation of t for X since Bezier X is monotonic here
+            const t = (mx - x1) / (x2 - x1);
+
+            // Standard cubic bezier
+            const omt = 1 - t;
+            const resY = (omt ** 3) * y1 + 3 * (omt ** 2) * t * cp1y + 3 * omt * (t ** 2) * cp2y + (t ** 3) * y2;
+            return resY;
+        };
+
+        const p0 = points[Math.max(0, i0 - 1)];
+        const p3 = points[Math.min(points.length - 1, i0 + 2)];
+
+        const interpPlanned = interpolateY('planned', p0, p1, p2, p3);
+        const interpActual = interpolateY('actual', p0, p1, p2, p3);
+
+        const hoveredDate = new Date(projStart.getTime() + (mx / PX) * 86400000);
+        const formatT = (v: number | null) => v == null ? '—' : (isHours ? v.toLocaleString('es-CL', { maximumFractionDigits: 0 }) + ' h' : v.toFixed(1) + '%');
+
+        setTooltip({
+            visibleX,
+            visibleY,
+            date: hoveredDate.toLocaleDateString('es-CL', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }),
+            planned: formatT(interpPlanned),
+            actual: formatT(interpActual),
+        });
     }, [projStart, PX, points]);
 
     useEffect(() => {
@@ -694,32 +788,56 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
     }, []);
 
     return (
-        <div ref={containerRef} id="scurve-body" style={{ flex: 1, minHeight: 0, overflowX: 'auto', overflowY: 'hidden', position: 'relative' }}>
+        <div style={{ flex: 1, minHeight: 0, position: 'relative', display: 'flex', flexDirection: 'column' }}>
+            <div ref={containerRef} id="scurve-body" style={{ flex: 1, minHeight: 0, overflowX: 'auto', overflowY: 'hidden', position: 'relative' }}>
+                <canvas
+                    ref={canvasRef}
+                    style={{ display: 'block', width: width + 'px', minWidth: width + 'px' }}
+                    onMouseMove={handleMouseMove}
+                    onMouseLeave={() => setTooltip(null)}
+                />
+            </div>
+            {/* Sticky Y-Axis Overlay */}
             <canvas
-                ref={canvasRef}
-                style={{ display: 'block', width: width + 'px', minWidth: width + 'px' }}
-                onMouseMove={handleMouseMove}
-                onMouseLeave={() => setTooltip(null)}
+                ref={yAxisCanvasRef}
+                style={{ position: 'absolute', left: 0, top: 0, width: '55px', height: '100%', pointerEvents: 'none', zIndex: 5 }}
             />
+            {/* Crosshair Guide Line */}
             {tooltip && (
                 <div style={{
                     position: 'absolute',
-                    left: tooltip.x,
-                    top: tooltip.y,
+                    left: tooltip.visibleX,
+                    top: 10,
+                    bottom: 10,
+                    width: 1,
+                    backgroundColor: lightMode ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.3)',
+                    borderRight: `1px dashed ${lightMode ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.2)'}`,
+                    pointerEvents: 'none',
+                    zIndex: 9,
+                }} />
+            )}
+            {/* Tooltip Card */}
+            {tooltip && (
+                <div style={{
+                    position: 'absolute',
+                    left: tooltip.visibleX + 15,
+                    top: tooltip.visibleY - 15,
                     background: lightMode ? '#fff' : '#1e293b',
                     border: `1px solid ${lightMode ? '#cbd5e1' : '#475569'}`,
                     borderRadius: 6,
-                    padding: '6px 10px',
+                    padding: '8px 12px',
                     fontSize: 11,
                     color: lightMode ? '#334155' : '#e2e8f0',
                     pointerEvents: 'none',
                     zIndex: 10,
-                    boxShadow: '0 2px 8px rgba(0,0,0,.25)',
+                    boxShadow: '0 4px 12px rgba(0,0,0,.3)',
                     whiteSpace: 'nowrap',
                 }}>
-                    <div style={{ fontWeight: 'bold', marginBottom: 3 }}>{tooltip.date}</div>
-                    <div style={{ color: '#3b82f6' }}>Programado: {tooltip.planned}</div>
-                    <div style={{ color: '#06b6d4' }}>Real: {tooltip.actual}</div>
+                    <div style={{ fontWeight: 'bold', marginBottom: 5, fontSize: 12, borderBottom: `1px solid ${lightMode ? '#e2e8f0' : '#334155'}`, paddingBottom: 3 }}>
+                        {tooltip.date}
+                    </div>
+                    <div style={{ color: '#3b82f6', marginBottom: 2 }}>Programado: <strong>{tooltip.planned}</strong></div>
+                    <div style={{ color: '#06b6d4' }}>Real: <strong>{tooltip.actual}</strong></div>
                 </div>
             )}
         </div>

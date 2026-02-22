@@ -92,7 +92,10 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
                     TF: a.TF != null ? a.TF : null, crit: !!a.crit,
                     bldur: a.blDur != null ? a.blDur : null, bles: a.blES ? a.blES.toISOString() : null,
                     blef: a.blEF ? a.blEF.toISOString() : null,
-                    txt1: a.txt1 || '', txt2: a.txt2 || '', txt3: a.txt3 || '', txt4: a.txt4 || '', txt5: a.txt5 || ''
+                    txt1: a.txt1 || '', txt2: a.txt2 || '', txt3: a.txt3 || '', txt4: a.txt4 || '',
+                    txt5: (a.baselines && a.baselines.some((b: any) => b))
+                        ? '__BL__' + JSON.stringify(a.baselines.map((bl: any) => bl ? { d: bl.dur, s: bl.ES ? bl.ES.toISOString() : null, e: bl.EF ? bl.EF.toISOString() : null, c: bl.cal, t: bl.savedAt, n: bl.name || '', desc: bl.description || '', p: bl.pct || 0, w: bl.work || 0, wt: bl.weight, sd: bl.statusDate || '' } : null))
+                        : (a.txt5 || '')
                 };
             });
             const { data: actData, error: actErr } = await supabase.from('gantt_activities').insert(actRows).select();
@@ -194,7 +197,19 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
         na.manual = !!a.manual;
         na.blDur = a.bldur != null ? parseFloat(a.bldur) : null;
         na.blES = a.bles ? new Date(a.bles) : null; na.blEF = a.blef ? new Date(a.blef) : null;
-        na.txt1 = a.txt1 || ''; na.txt2 = a.txt2 || ''; na.txt3 = a.txt3 || ''; na.txt4 = a.txt4 || ''; na.txt5 = a.txt5 || '';
+        na.txt1 = a.txt1 || ''; na.txt2 = a.txt2 || ''; na.txt3 = a.txt3 || ''; na.txt4 = a.txt4 || '';
+        // Restore multiple baselines from txt5 if encoded
+        const rawTxt5 = a.txt5 || '';
+        if (rawTxt5.startsWith('__BL__')) {
+            try {
+                const blArr = JSON.parse(rawTxt5.slice(6));
+                na.baselines = (blArr as any[]).map((bl: any) => bl ? { dur: bl.d, ES: bl.s ? new Date(bl.s) : null, EF: bl.e ? new Date(bl.e) : null, cal: bl.c, savedAt: bl.t || '', name: bl.n || '', description: bl.desc || '', pct: bl.p || 0, work: bl.w || 0, weight: bl.wt != null ? bl.wt : null, statusDate: bl.sd || '' } : null);
+            } catch { na.baselines = []; }
+            na.txt5 = '';
+        } else {
+            na.txt5 = rawTxt5;
+            na.baselines = [];
+        }
         na.preds = depMap[a.local_id] || [];
         const actRes = arMap[a.id] || [];
         actRes.forEach(ar => { const pr = getPoolResource(ar.rid); if (pr) ar.name = pr.name; });

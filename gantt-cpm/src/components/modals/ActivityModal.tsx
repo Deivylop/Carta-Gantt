@@ -118,12 +118,56 @@ export default function ActivityModal() {
                     <div className="form-group"><label className="form-label">Holgura Total (TF)</label><input className="form-input" readOnly style={{ opacity: 0.6 }} value={a.crit ? '0 — RUTA CRÍTICA' : (a.TF != null ? a.TF + ' días' : '')} /></div>
                 </div>
                 <hr style={{ borderColor: '#1f2937', margin: '10px 0' }} />
-                <div style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', marginBottom: 6, textTransform: 'uppercase' }}>Línea Base</div>
-                <div className="form-row">
-                    <div className="form-group"><label className="form-label">Dur. Línea Base</label><input className="form-input" readOnly style={{ opacity: 0.6 }} value={a.blDur != null ? a.blDur + ' días' : ''} /></div>
-                    <div className="form-group"><label className="form-label">Inicio Línea Base</label><input className="form-input" readOnly style={{ opacity: 0.6 }} value={a.blES ? fmtDate(a.blES) + ' (' + isoDate(a.blES) + ')' : ''} /></div>
-                    <div className="form-group"><label className="form-label">Fin Línea Base</label><input className="form-input" readOnly style={{ opacity: 0.6 }} value={a.blEF ? fmtDate(addDays(a.blEF, -1)) + ' (' + isoDate(addDays(a.blEF, -1)) + ')' : ''} /></div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', marginBottom: 6, textTransform: 'uppercase' }}>
+                    Líneas Base (Activa: LB {state.activeBaselineIdx})
                 </div>
+                <div className="form-row">
+                    <div className="form-group"><label className="form-label">Dur. LB activa</label><input className="form-input" readOnly style={{ opacity: 0.6 }} value={a.blDur != null ? a.blDur + ' días' : '—'} /></div>
+                    <div className="form-group"><label className="form-label">Inicio LB activa</label><input className="form-input" readOnly style={{ opacity: 0.6 }} value={a.blES ? fmtDate(a.blES) + ' (' + isoDate(a.blES) + ')' : '—'} /></div>
+                    <div className="form-group"><label className="form-label">Fin LB activa</label><input className="form-input" readOnly style={{ opacity: 0.6 }} value={a.blEF ? fmtDate(addDays(a.blEF, -1)) + ' (' + isoDate(addDays(a.blEF, -1)) + ')' : '—'} /></div>
+                </div>
+                {/* All baselines table */}
+                {a.baselines && a.baselines.some((b: any) => b) && (
+                    <div style={{ marginTop: 6, maxHeight: 150, overflowY: 'auto', border: '1px solid #1f2937', borderRadius: 4 }}>
+                        <table style={{ width: '100%', fontSize: 10, borderCollapse: 'collapse' }}>
+                            <thead>
+                                <tr style={{ background: 'rgba(30,41,59,.5)' }}>
+                                    <th style={{ padding: '3px 6px', textAlign: 'left', fontWeight: 600, color: '#94a3b8' }}>#</th>
+                                    <th style={{ padding: '3px 6px', textAlign: 'left', fontWeight: 600, color: '#94a3b8' }}>Nombre</th>
+                                    <th style={{ padding: '3px 6px', textAlign: 'left', fontWeight: 600, color: '#94a3b8' }}>Duración</th>
+                                    <th style={{ padding: '3px 6px', textAlign: 'left', fontWeight: 600, color: '#94a3b8' }}>Inicio</th>
+                                    <th style={{ padding: '3px 6px', textAlign: 'left', fontWeight: 600, color: '#94a3b8' }}>Fin</th>
+                                    <th style={{ padding: '3px 6px', textAlign: 'left', fontWeight: 600, color: '#94a3b8' }}>Guardada</th>
+                                    <th style={{ padding: '3px 6px', textAlign: 'left', fontWeight: 600, color: '#94a3b8' }}>Descripción</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {a.baselines.map((bl: any, idx: number) => {
+                                    if (!bl) return null;
+                                    const isActive = idx === state.activeBaselineIdx;
+                                    return (
+                                        <tr key={idx} style={{
+                                            background: isActive ? 'rgba(37,99,235,.15)' : 'transparent',
+                                            borderBottom: '1px solid #1f2937',
+                                        }}>
+                                            <td style={{ padding: '3px 6px', fontWeight: isActive ? 700 : 400, color: isActive ? '#60a5fa' : '#cbd5e1' }}>
+                                                LB {idx}{isActive ? ' ◄' : ''}
+                                            </td>
+                                            <td style={{ padding: '3px 6px', color: '#e2e8f0', fontWeight: 500 }}>{bl.name || `Línea Base ${idx}`}</td>
+                                            <td style={{ padding: '3px 6px', color: '#cbd5e1' }}>{bl.dur} días</td>
+                                            <td style={{ padding: '3px 6px', color: '#cbd5e1' }}>{bl.ES ? fmtDate(bl.ES) : '—'}</td>
+                                            <td style={{ padding: '3px 6px', color: '#cbd5e1' }}>{bl.EF ? fmtDate(addDays(bl.EF, -1)) : '—'}</td>
+                                            <td style={{ padding: '3px 6px', color: '#6b7280', fontSize: 9 }}>{bl.savedAt ? new Date(bl.savedAt).toLocaleDateString('es-CL') : ''}</td>
+                                            <td style={{ padding: '3px 6px', color: '#94a3b8', fontSize: 9, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={bl.description || ''}>
+                                                {bl.description || '—'}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
                 <div className="form-group"><label className="form-label">Notas / Supuestos</label><textarea className="form-input" rows={2} value={form.notes} onChange={e => F('notes', e.target.value)} /></div>
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', marginTop: 14 }}>
                     <button className="btn btn-danger" style={{ fontSize: 10 }} onClick={del}>🗑️ Eliminar</button>
