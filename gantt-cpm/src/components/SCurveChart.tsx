@@ -280,7 +280,7 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
     );
 }
 // ─── Smooth curve helper (monotone cubic bezier) ─────────────────
-function drawSmoothCurve(ctx: CanvasRenderingContext2D, pts: { x: number; y: number }[]) {
+function drawSmoothCurve(ctx: CanvasRenderingContext2D, pts: { x: number; y: number }[], minY?: number, maxY?: number) {
     if (pts.length < 2) { if (pts.length === 1) { ctx.beginPath(); ctx.arc(pts[0].x, pts[0].y, 2, 0, Math.PI * 2); ctx.fill(); } return; }
     ctx.beginPath();
     ctx.moveTo(pts[0].x, pts[0].y);
@@ -293,10 +293,15 @@ function drawSmoothCurve(ctx: CanvasRenderingContext2D, pts: { x: number; y: num
             const p1 = pts[i];
             const p2 = pts[i + 1];
             const p3 = pts[Math.min(pts.length - 1, i + 2)];
-            const cp1x = p1.x + (p2.x - p0.x) * tension;
-            const cp1y = p1.y + (p2.y - p0.y) * tension;
-            const cp2x = p2.x - (p3.x - p1.x) * tension;
-            const cp2y = p2.y - (p3.y - p1.y) * tension;
+            let cp1x = p1.x + (p2.x - p0.x) * tension;
+            let cp1y = p1.y + (p2.y - p0.y) * tension;
+            let cp2x = p2.x - (p3.x - p1.x) * tension;
+            let cp2y = p2.y - (p3.y - p1.y) * tension;
+            // Clamp control points to 0%..100% range (canvas Y is inverted: minY=top=100%, maxY=bottom=0%)
+            if (minY !== undefined && maxY !== undefined) {
+                cp1y = Math.max(minY, Math.min(maxY, cp1y));
+                cp2y = Math.max(minY, Math.min(maxY, cp2y));
+            }
             ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
         }
     }
@@ -430,7 +435,7 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
         if (points.length > 0) {
             ctx.strokeStyle = plannedColor;
             ctx.lineWidth = 2.5;
-            drawSmoothCurve(ctx, points.map(p => ({ x: msToX(p.dateMs), y: pctToY(p.planned) })));
+            drawSmoothCurve(ctx, points.map(p => ({ x: msToX(p.dateMs), y: pctToY(p.planned) })), chartTop, chartBot);
             ctx.lineWidth = 1;
 
             // Dots
@@ -447,7 +452,7 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
         if (actualPoints.length > 0) {
             ctx.strokeStyle = actualColor;
             ctx.lineWidth = 2.5;
-            drawSmoothCurve(ctx, actualPoints.map(p => ({ x: msToX(p.dateMs), y: pctToY(p.actual!) })));
+            drawSmoothCurve(ctx, actualPoints.map(p => ({ x: msToX(p.dateMs), y: pctToY(p.actual!) })), chartTop, chartBot);
             ctx.lineWidth = 1;
 
             // Dots
