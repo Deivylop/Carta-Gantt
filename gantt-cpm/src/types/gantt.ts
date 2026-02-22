@@ -182,9 +182,24 @@ export interface ThemeColors {
     gradBot: string;
 }
 
+// ─── Progress History Snapshot (per-activity data) ──────────────
+export interface ProgressActivitySnapshot {
+    pct: number;
+    dur: number;
+    remDur: number | null;
+    work: number;
+    weight: number | null;
+    res: string;
+    resources: ActivityResource[];
+    manual: boolean;
+    constraint: ConstraintType;
+    constraintDate: string;
+}
+
 // ─── Progress History (S-Curve) ─────────────────────────────────
 export interface ProgressHistoryEntry {
     date: string;       // ISO date string
     actualPct: number;  // 0-100%
-    details?: Record<string, number>; // activity_id -> actualPct
+    details?: Record<string, number>; // activity_id -> actualPct (legacy)
+    snapshots?: Record<string, ProgressActivitySnapshot>; // activity_id -> full snapshot
 }

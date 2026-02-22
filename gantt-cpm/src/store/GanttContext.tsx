@@ -145,7 +145,8 @@ export type Action =
     | { type: 'LOAD_STATE'; state: Partial<GanttState> }
     | { type: 'SAVE_PERIOD_PROGRESS' }
     | { type: 'SET_PROGRESS_HISTORY'; history: ProgressHistoryEntry[] }
-    | { type: 'DELETE_PROGRESS_ENTRY'; date: string };
+    | { type: 'DELETE_PROGRESS_ENTRY'; date: string }
+    | { type: 'LOAD_PROGRESS_SNAPSHOT'; date: string };
 
 // ─── Grouping / Filtering ─────────────────────────────────────────
 function applyGroupFilter(rows: VisibleRow[], activities: Activity[], activeGroup: string, columns: ColumnDef[]): VisibleRow[] {
@@ -713,18 +714,65 @@ function reducer(state: GanttState, action: Action): GanttState {
             const projAct = state.activities.find(a => a._isProjRow);
             const actualPct = projAct ? (projAct.pct || 0) : 0;
             const details: Record<string, number> = {};
+            const snapshots: Record<string, any> = {};
             state.activities.forEach(a => {
-                if (a.pct !== undefined && a.pct !== null) {
-                    details[a.id] = a.pct;
-                }
+                if (a._isProjRow) return;
+                details[a.id] = a.pct ?? 0;
+                snapshots[a.id] = {
+                    pct: a.pct ?? 0,
+                    dur: a.dur,
+                    remDur: a.remDur,
+                    work: a.work,
+                    weight: a.weight,
+                    res: a.res,
+                    resources: JSON.parse(JSON.stringify(a.resources || [])),
+                    manual: a.manual,
+                    constraint: a.constraint,
+                    constraintDate: a.constraintDate,
+                };
             });
-            const newEntry: ProgressHistoryEntry = { date: todayISO, actualPct, details };
+            const newEntry: ProgressHistoryEntry = { date: todayISO, actualPct, details, snapshots };
             const history = [...state.progressHistory];
             const existingIdx = history.findIndex(h => h.date === todayISO);
             if (existingIdx >= 0) history[existingIdx] = newEntry;
             else history.push(newEntry);
             history.sort((a, b) => a.date.localeCompare(b.date));
             return { ...state, progressHistory: history, progressModalOpen: false };
+        }
+
+        case 'LOAD_PROGRESS_SNAPSHOT': {
+            const entry = state.progressHistory.find(h => h.date === action.date);
+            if (!entry) return state;
+            const d = parseDate(action.date);
+            const newStatusDate = d || state.statusDate;
+            // Restore activity data from snapshot
+            const acts = state.activities.map(a => {
+                if (a._isProjRow) return a;
+                // Try full snapshot first, then legacy details
+                const snap = entry.snapshots?.[a.id];
+                if (snap) {
+                    return {
+                        ...a,
+                        pct: snap.pct ?? a.pct,
+                        dur: snap.dur ?? a.dur,
+                        remDur: snap.remDur !== undefined ? snap.remDur : a.remDur,
+                        work: snap.work ?? a.work,
+                        weight: snap.weight !== undefined ? snap.weight : a.weight,
+                        res: snap.res ?? a.res,
+                        resources: snap.resources ? JSON.parse(JSON.stringify(snap.resources)) : a.resources,
+                        manual: snap.manual ?? a.manual,
+                        constraint: snap.constraint ?? a.constraint,
+                        constraintDate: snap.constraintDate ?? a.constraintDate,
+                    };
+                }
+                // Legacy: only pct from details
+                const legacyPct = entry.details?.[a.id];
+                if (legacyPct !== undefined) {
+                    return { ...a, pct: legacyPct };
+                }
+                return a;
+            });
+            return recalc({ ...state, activities: acts, statusDate: newStatusDate, progressModalOpen: false });
         }
 
         case 'DELETE_PROGRESS_ENTRY': {

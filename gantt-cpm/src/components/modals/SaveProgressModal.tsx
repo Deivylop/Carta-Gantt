@@ -21,11 +21,9 @@ export default function SaveProgressModal() {
         dispatch({ type: 'SAVE_PERIOD_PROGRESS' });
     };
 
-    const loadDate = (dString: string) => {
-        const d = parseDate(dString);
-        if (d) {
-            dispatch({ type: 'SET_PROJECT_CONFIG', config: { statusDate: d } });
-        }
+    const loadSnapshot = (dString: string) => {
+        dispatch({ type: 'PUSH_UNDO' });
+        dispatch({ type: 'LOAD_PROGRESS_SNAPSHOT', date: dString });
     };
 
     const delEntry = (dString: string) => {
@@ -91,7 +89,7 @@ export default function SaveProgressModal() {
                                             </div>
                                             <div style={{ display: 'flex', gap: 6 }}>
                                                 {!isCurrent && (
-                                                    <button onClick={() => loadDate(h.date)} style={{ fontSize: 11, padding: '4px 8px', borderRadius: 4, background: state.lightMode ? '#e2e8f0' : '#475569', color: 'inherit', border: 'none', cursor: 'pointer' }}>
+                                                    <button onClick={() => loadSnapshot(h.date)} style={{ fontSize: 11, padding: '4px 8px', borderRadius: 4, background: state.lightMode ? '#e2e8f0' : '#475569', color: 'inherit', border: 'none', cursor: 'pointer' }}>
                                                         Seleccionar
                                                     </button>
                                                 )}
