@@ -22,11 +22,18 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
 
         // 1. Upsert Project
         if (currentId) {
-            const { error } = await supabase.from('gantt_projects').update({
+            const { data, error } = await supabase.from('gantt_projects').update({
                 projname: projName, projstart: _projStart, defcal: defCal, statusdate: _statusDate
-            }).eq('id', currentId);
+            }).eq('id', currentId).select();
             if (error) throw error;
-        } else {
+            // If no rows were returned, the project was deleted from the database
+            if (!data || data.length === 0) {
+                console.warn('Project ID exists in local storage but not in database. Creating a new project...');
+                currentId = null;
+            }
+        }
+
+        if (!currentId) {
             const { data, error } = await supabase.from('gantt_projects').insert({
                 projname: projName, projstart: _projStart, defcal: defCal, statusdate: _statusDate
             }).select().single();
@@ -60,7 +67,17 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
         }
 
         // 4. Insert Activities
-        const acts = state.activities.filter(a => !a._isProjRow);
+        const acts = [...state.activities.filter(a => !a._isProjRow)];
+        // Inject progress history as a hidden activity to avoid schema changes
+        if (state.progressHistory && state.progressHistory.length > 0) {
+            acts.push({
+                ...newActivity('__HISTORY__', defCal),
+                name: '__PROGRESS_HISTORY__',
+                type: 'milestone',
+                notes: JSON.stringify(state.progressHistory),
+                lv: -1,
+            } as any);
+        }
         const localIdMap: Record<string, string> = {};
         if (acts.length) {
             const actRows = acts.map((a, i) => {
@@ -163,6 +180,8 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
 
     const getPoolResource = (rid: number) => resourcePool.find(r => r.rid === rid);
 
+    let progressHistory: any[] = [];
+
     // Build activities
     const activities = (actData as any[]).map(a => {
         const na = { ...newActivity() };
@@ -182,6 +201,13 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
         na.resources = actRes;
         if (actRes.length) deriveResString(na, resourcePool);
         return na;
+    }).filter(na => {
+        // Extract hidden progress history if found
+        if (na.id === '__HISTORY__') {
+            try { progressHistory = JSON.parse(na.notes); } catch (e) { }
+            return false;
+        }
+        return true;
     });
 
     return {
@@ -191,5 +217,6 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
         statusDate,
         resourcePool,
         activities,
+        progressHistory
     };
 }

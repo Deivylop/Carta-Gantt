@@ -88,6 +88,7 @@ export interface Activity {
     _actualEnd?: Date | null;
     _retES?: Date | null;
     _retEF?: Date | null;
+    _plannedPct?: number;
     outlineNum?: string;
 }
 
@@ -158,4 +159,11 @@ export interface ThemeColors {
     statusLine: string;
     gradTop: string;
     gradBot: string;
+}
+
+// ─── Progress History (S-Curve) ─────────────────────────────────
+export interface ProgressHistoryEntry {
+    date: string;       // ISO date string
+    actualPct: number;  // 0-100%
+    details?: Record<string, number>; // activity_id -> actualPct
 }

@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════
 // Project Configuration Modal – matches HTML #modal-overlay exactly
 // ═══════════════════════════════════════════════════════════════════
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useGantt } from '../../store/GanttContext';
 import { isoDate, parseDate } from '../../utils/cpm';
 

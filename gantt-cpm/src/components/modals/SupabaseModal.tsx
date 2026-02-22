@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════
 // Supabase Load/Save Modal – matches HTML #sb-overlay exactly
 // ═══════════════════════════════════════════════════════════════════
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useGantt } from '../../store/GanttContext';
 import { supabase } from '../../lib/supabase';
 

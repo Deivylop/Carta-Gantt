@@ -7,7 +7,46 @@ import { useGantt } from '../store/GanttContext';
 import { fmtDate, addDays, isoDate, newActivity, parseDate } from '../utils/cpm';
 import { predsToStr, getWeightPct, strToPreds, autoId, syncResFromString } from '../utils/helpers';
 
-const ROW_H = 26;
+const EditableNumberCell = ({ rawValue, displayValue, onUpdate, onFocus, step }: { rawValue: string, displayValue: string, onUpdate: (val: string) => void, onFocus: () => void, step?: number }) => {
+    const [isEditing, setIsEditing] = useState(false);
+    const [val, setVal] = useState(rawValue);
+
+    useEffect(() => {
+        setVal(rawValue);
+    }, [rawValue]);
+
+    if (isEditing) {
+        return (
+            <div style={{ width: '100%', height: '100%', display: 'flex' }} onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
+                <input
+                    type="number"
+                    step={step}
+                    style={{ background: 'transparent', outline: 'none', border: '1px solid #3b82f6', color: 'inherit', padding: 0, margin: 0, width: '100%', height: '100%', fontSize: 'inherit', fontFamily: 'inherit', boxSizing: 'border-box', textAlign: 'inherit' }}
+                    autoFocus
+                    value={val}
+                    onChange={e => setVal(e.target.value)}
+                    onBlur={() => { setIsEditing(false); onUpdate(val); }}
+                    onKeyDown={e => {
+                        if (e.key === 'Enter') e.currentTarget.blur();
+                        if (e.key === 'Escape') setIsEditing(false);
+                    }}
+                    onFocus={onFocus}
+                />
+            </div>
+        );
+    }
+
+    return (
+        <span
+            style={{ cursor: 'text', display: 'flex', alignItems: 'center', justifyContent: 'inherit', width: '100%', height: '100%' }}
+            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setIsEditing(true); onFocus(); }}
+            onDoubleClick={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+        >
+            {displayValue}
+        </span>
+    );
+};
 
 export default function GanttTable() {
     const { state, dispatch } = useGantt();
@@ -72,6 +111,7 @@ export default function GanttTable() {
         if (c.key === 'endDate') return a.EF ? fmtDate(addDays(a.EF, -1)) : '';
         if (c.key === 'predStr') return predsToStr(a.preds);
         if (c.key === 'pct') return (a.pct || 0) + '%';
+        if (c.key === 'plannedPct') return (a._plannedPct != null ? a._plannedPct : (a.pct || 0)) + '%';
         if (c.key === 'res') return a.res || '';
         if (c.key === 'work') return a.type === 'milestone' ? '0 hrs' : ((a.work || 0) + ' hrs');
         if (c.key === 'weight') return getWeightPct(a, activities);
@@ -90,7 +130,7 @@ export default function GanttTable() {
         if (c.key === 'constraintDate') return a.constraintDate || '';
         if (c.key === 'notes') return (a.notes || '').substring(0, 40);
         return a[c.key] != null ? String(a[c.key]) : '';
-    }, [activities, defCal, state.collapsed]);
+    }, [activities, defCal, state.collapsed, state.statusDate]);
 
     const getRawValue = useCallback((a: any, key: string): string => {
         if (key === 'dur') return String(a.dur || 0);
@@ -108,7 +148,7 @@ export default function GanttTable() {
         dispatch({ type: 'COMMIT_EDIT', index: idx, key, value: val.trim() });
     }, [dispatch]);
 
-    const handleKeyDown = useCallback((e: React.KeyboardEvent, idx: number) => {
+    const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
             e.preventDefault();
             (e.target as HTMLElement).blur();
@@ -186,13 +226,19 @@ export default function GanttTable() {
                                 onDoubleClick={() => { dispatch({ type: 'SET_SELECTION', index: vr._idx }); dispatch({ type: 'OPEN_ACT_MODAL' }); }}
                                 onMouseEnter={e => showTooltip(e, a)}
                                 onMouseLeave={() => setTip(null)}>
-                                {visCols.map((c, vci) => {
+                                {visCols.map((c) => {
                                     const ci = columns.indexOf(c);
                                     const val = getCellValue(a, c, vi);
                                     const style: React.CSSProperties = { width: colWidths[ci] };
 
                                     // Name cell indent
                                     if (c.key === 'name') style.paddingLeft = 2 + Math.max(0, a.lv) * 14;
+
+                                    // Center alignment for Dur, RemDur, Pct
+                                    if (['dur', 'remDur', 'pct'].includes(c.key)) {
+                                        style.textAlign = 'center';
+                                        style.justifyContent = 'center';
+                                    }
 
                                     if (isSummary || isProj) style.fontWeight = 700;
 
@@ -244,6 +290,21 @@ export default function GanttTable() {
                                         if (summaryReadOnly) {
                                             return <div key={c.key} className={`tcell ${c.cls}`} style={{ ...style, opacity: 0.7 }}>{val}</div>;
                                         }
+
+                                        if (['dur', 'remDur', 'pct', 'work', 'weight'].includes(c.key)) {
+                                            return (
+                                                <div key={c.key} className={`tcell ${c.cls}`} style={style}>
+                                                    <EditableNumberCell
+                                                        rawValue={getRawValue(a, c.key)}
+                                                        displayValue={val}
+                                                        onUpdate={(newVal) => handleBlur(vr._idx, c.key, newVal)}
+                                                        onFocus={() => dispatch({ type: 'SET_SELECTION', index: vr._idx })}
+                                                        step={c.key === 'pct' ? 5 : undefined}
+                                                    />
+                                                </div>
+                                            );
+                                        }
+
                                         return (
                                             <div key={c.key} className={`tcell ${c.cls}`}
                                                 style={style}
@@ -252,7 +313,7 @@ export default function GanttTable() {
                                                 spellCheck={false}
                                                 onFocus={() => dispatch({ type: 'SET_SELECTION', index: vr._idx })}
                                                 onBlur={e => handleBlur(vr._idx, c.key, e.currentTarget.textContent || '')}
-                                                onKeyDown={e => handleKeyDown(e, vr._idx)}
+                                                onKeyDown={handleKeyDown}
                                                 dangerouslySetInnerHTML={{ __html: c.key === 'name' ? val : getRawValue(a, c.key) || val }}
                                             />
                                         );

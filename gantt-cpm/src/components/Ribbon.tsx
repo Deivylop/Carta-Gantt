@@ -5,8 +5,12 @@ import React, { useState, useRef } from 'react';
 import { useGantt } from '../store/GanttContext';
 import { newActivity, isoDate, parseDate } from '../utils/cpm';
 import { autoId, exportJSON, exportCSV, importJSONData, importCSVData } from '../utils/helpers';
-import { Plus, FileText, Diamond, Trash2, ArrowRight, ArrowLeft, ArrowUp, ArrowDown, Scissors, ClipboardPaste, Info, Undo2, Settings, Calculator, Save, Clock, BarChart3, Sun, Moon, ChevronDown, ChevronUp, Upload, Download, Database, Cloud } from 'lucide-react';
-import type { ZoomLevel } from '../types/gantt';
+import {
+    Save, Plus, Trash2, ArrowRight, ClipboardPaste, Scissors, Settings, Calculator, BarChart3, Sun, Moon, Clock,
+    TrendingUp, LineChart, FileText, Diamond, ArrowLeft, ArrowUp, ArrowDown, Info, Undo2, Cloud, Database, Upload, Download
+} from 'lucide-react';
+import type { ZoomLevel }
+    from '../types/gantt';
 
 export default function Ribbon() {
     const { state, dispatch } = useGantt();
@@ -14,7 +18,7 @@ export default function Ribbon() {
     const jsonRef = useRef<HTMLInputElement>(null);
     const csvRef = useRef<HTMLInputElement>(null);
 
-    const act = () => state.selIdx >= 0 ? state.activities[state.selIdx] : null;
+    // activity lookup not needed currently
 
     const addAct = () => {
         dispatch({ type: 'PUSH_UNDO' });
@@ -134,6 +138,9 @@ export default function Ribbon() {
                     <RG label="LÍNEA BASE">
                         <RB icon={<Save size={16} />} label="Guardar LB" onClick={() => { dispatch({ type: 'PUSH_UNDO' }); dispatch({ type: 'SAVE_BASELINE' }); alert('Línea Base guardada'); }} />
                     </RG>
+                    <RG label="PROGRESO">
+                        <RB icon={<TrendingUp size={16} />} label="Progreso Semanal" onClick={() => dispatch({ type: 'OPEN_PROGRESS_MODAL' })} />
+                    </RG>
                     <RG label="EDT">
                         <RB label="EDT 0" active={state.showProjRow} onClick={() => dispatch({ type: 'SET_SHOW_PROJ_ROW', show: !state.showProjRow })} />
                     </RG>
@@ -143,6 +150,7 @@ export default function Ribbon() {
                     <RG label="VISTAS">
                         <RB icon={<BarChart3 size={16} />} label="Diagrama de Gantt" active={state.currentView === 'gantt'} onClick={() => dispatch({ type: 'SET_VIEW', view: 'gantt' })} />
                         <RB label="Hoja de Recursos" active={state.currentView === 'resources'} onClick={() => dispatch({ type: 'SET_VIEW', view: 'resources' })} />
+                        <RB icon={<LineChart size={16} />} label="Curva S" active={state.currentView === 'scurve'} onClick={() => dispatch({ type: 'SET_VIEW', view: 'scurve' })} />
                     </RG>
                     <RG label="ZOOM">
                         {(['day', 'week', 'month'] as ZoomLevel[]).map(z => (

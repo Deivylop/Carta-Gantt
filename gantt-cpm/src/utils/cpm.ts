@@ -194,9 +194,9 @@ export function calcCPM(
         // Step 2: Recalculate forward pass respecting relationships
         activities.forEach(a => { a._retES = null; a._retEF = null; });
 
-        function getRetES(a: Activity): Date | null {
-            if (a._retES !== null) return a._retES;
-            const pct = a.pct || 0;
+        const getRetES = (a: Activity): Date | null => {
+            if (a._retES !== undefined && a._retES !== null) return a._retES;
+            const pct = a.pct || 0; // Define pct here
             if (a.type === 'summary' || pct >= 100) {
                 a._retES = a.ES; a._retEF = a.EF;
                 return a._retES;
@@ -285,36 +285,75 @@ export function calcCPM(
         }
     }
 
+    const sDateObj = statusDate ? new Date(statusDate) : new Date();
+    sDateObj.setHours(0, 0, 0, 0);
+
+    activities.forEach(a => {
+        if (a.type === 'summary') return;
+        const start = a.blES || a.ES;
+        const end = a.blEF || a.EF;
+        if (!start || !end) {
+            a._plannedPct = 0;
+            return;
+        }
+        const stObj = new Date(start); stObj.setHours(0, 0, 0, 0);
+        const endObj = new Date(end); endObj.setHours(0, 0, 0, 0);
+
+        if (sDateObj >= endObj) {
+            a._plannedPct = 100;
+        } else if (sDateObj <= stObj) {
+            a._plannedPct = 0;
+        } else {
+            const totalMs = endObj.getTime() - stObj.getTime();
+            const elapsedMs = sDateObj.getTime() - stObj.getTime();
+            a._plannedPct = totalMs > 0 ? (elapsedMs / totalMs) * 100 : 100;
+        }
+    });
+
     // ═══ Summary Tasks: work + weighted pct (bottom-up) ═══
     for (let i = activities.length - 1; i >= 0; i--) {
         const a = activities[i];
         if (a.type !== 'summary') continue;
-        let sumWork = 0, sumWeightedPct = 0, sumWeight = 0;
+        let sumWork = 0, sumWeightedPct = 0, sumWeightedPlannedPct = 0, sumWeight = 0, sumDurOr1 = 0, sumWeightedPctBackup = 0, sumWeightedPlannedPctBackup = 0;
+
+        const processChild = (ch: Activity) => {
+            const cw = ch.work || 0;
+            const w = (ch.weight != null && ch.weight > 0) ? ch.weight : cw;
+            sumWork += cw;
+            sumWeight += w;
+            sumWeightedPct += w * (ch.pct || 0);
+            sumWeightedPlannedPct += w * (ch._plannedPct || 0);
+
+            const wBackup = ch.dur || 1;
+            sumDurOr1 += wBackup;
+            sumWeightedPctBackup += wBackup * (ch.pct || 0);
+            sumWeightedPlannedPctBackup += wBackup * (ch._plannedPct || 0);
+        };
 
         if (a._isProjRow) {
             for (let j = 1; j < activities.length; j++) {
                 if (activities[j].lv !== 0) continue;
-                const ch = activities[j];
-                const cw = ch.work || 0;
-                sumWork += cw;
-                const w = (ch.weight != null && ch.weight > 0) ? ch.weight : cw;
-                sumWeight += w;
-                sumWeightedPct += w * (ch.pct || 0);
+                processChild(activities[j]);
             }
         } else {
             for (let j = i + 1; j < activities.length; j++) {
                 if (activities[j].lv <= a.lv) break;
                 if (activities[j].lv !== a.lv + 1) continue;
-                const ch = activities[j];
-                const cw = ch.work || 0;
-                sumWork += cw;
-                const w = (ch.weight != null && ch.weight > 0) ? ch.weight : cw;
-                sumWeight += w;
-                sumWeightedPct += w * (ch.pct || 0);
+                processChild(activities[j]);
             }
         }
         a.work = Math.round(sumWork * 100) / 100;
-        a.pct = sumWeight > 0 ? Math.round(sumWeightedPct / sumWeight * 10) / 10 : 0;
+
+        if (sumWeight > 0) {
+            a.pct = Math.round(sumWeightedPct / sumWeight * 10) / 10;
+            a._plannedPct = Math.round(sumWeightedPlannedPct / sumWeight * 10) / 10;
+        } else if (sumDurOr1 > 0) {
+            a.pct = Math.round(sumWeightedPctBackup / sumDurOr1 * 10) / 10;
+            a._plannedPct = Math.round(sumWeightedPlannedPctBackup / sumDurOr1 * 10) / 10;
+        } else {
+            a.pct = 0;
+            a._plannedPct = 0;
+        }
     }
 
     // ═══ BACKWARD PASS ═══

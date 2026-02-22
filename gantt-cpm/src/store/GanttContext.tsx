@@ -3,7 +3,7 @@
 // All state management matching HTML globals + actions
 // ═══════════════════════════════════════════════════════════════════
 import React, { createContext, useContext, useReducer, type ReactNode } from 'react';
-import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, VisibleRow } from '../types/gantt';
+import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, VisibleRow, ProgressHistoryEntry } from '../types/gantt';
 import { calcCPM, newActivity, isoDate, parseDate } from '../utils/cpm';
 import { autoId, computeOutlineNumbers, syncResFromString, deriveResString, distributeWork, strToPreds } from '../utils/helpers';
 
@@ -21,6 +21,7 @@ export const DEFAULT_COLS: ColumnDef[] = [
     { key: 'endDate', label: 'Fin', w: 90, edit: false, cls: 'tcell-date', visible: true },
     { key: 'predStr', label: 'Predecesoras', w: 100, edit: true, cls: 'tcell-pred', visible: true },
     { key: 'pct', label: '% Avance', w: 60, edit: true, cls: 'tcell-pct', visible: true },
+    { key: 'plannedPct', label: '% Prog.', w: 65, edit: false, cls: 'tcell-pct', visible: true },
     { key: 'res', label: 'Recursos', w: 110, edit: true, cls: 'tcell-res', visible: true },
     { key: 'work', label: 'Trabajo', w: 70, edit: true, cls: 'tcell-dur', visible: true },
     { key: 'weight', label: 'Peso %', w: 65, edit: true, cls: 'tcell-pct', visible: true },
@@ -59,7 +60,7 @@ export interface GanttState {
     activeGroup: string;
     columns: ColumnDef[];
     colWidths: number[];
-    currentView: 'gantt' | 'resources';
+    currentView: 'gantt' | 'resources' | 'scurve';
     undoStack: string[];
     clipboard: Activity | null;
     // Modal state
@@ -68,6 +69,8 @@ export interface GanttState {
     linkModalOpen: boolean;
     linkModalData: { fromId: string; toId: string; type: string; lag: number; isEdit: boolean; sucIdx: number; predIdx: number } | null;
     sbModalOpen: boolean;
+    progressModalOpen: boolean;
+    progressHistory: ProgressHistoryEntry[];
 }
 
 // ─── Actions ────────────────────────────────────────────────────
@@ -80,7 +83,7 @@ export type Action =
     | { type: 'SET_SELECTION'; index: number }
     | { type: 'SET_ZOOM'; zoom: ZoomLevel }
     | { type: 'TOGGLE_THEME' }
-    | { type: 'SET_VIEW'; view: 'gantt' | 'resources' }
+    | { type: 'SET_VIEW'; view: 'gantt' | 'resources' | 'scurve' }
     | { type: 'TOGGLE_COLLAPSE'; id: string }
     | { type: 'COLLAPSE_ALL' }
     | { type: 'EXPAND_ALL' }
@@ -107,7 +110,10 @@ export type Action =
     | { type: 'CLOSE_LINK_MODAL' }
     | { type: 'OPEN_SB_MODAL' }
     | { type: 'CLOSE_SB_MODAL' }
+    | { type: 'OPEN_PROGRESS_MODAL' }
+    | { type: 'CLOSE_PROGRESS_MODAL' }
     | { type: 'ADD_PRED'; actIdx: number; pred: { id: string; type: string; lag: number } }
+    | { type: 'UPDATE_PRED'; actIdx: number; predIdx: number; updates: Partial<{ type: any; lag: number }> }
     | { type: 'REMOVE_PRED'; actIdx: number; predIdx: number }
     | { type: 'ADD_SUC'; fromIdx: number; sucIdx: number; linkType: string; lag: number }
     | { type: 'REMOVE_SUC'; sucId: string; predIdx: number }
@@ -115,7 +121,10 @@ export type Action =
     | { type: 'REMOVE_RESOURCE_FROM_ACT'; actIdx: number; resIdx: number }
     | { type: 'EDIT_ACT_RESOURCE'; actIdx: number; resIdx: number; field: string; value: any }
     | { type: 'ADD_TO_POOL'; resource: PoolResource }
-    | { type: 'LOAD_STATE'; state: Partial<GanttState> };
+    | { type: 'LOAD_STATE'; state: Partial<GanttState> }
+    | { type: 'SAVE_PERIOD_PROGRESS' }
+    | { type: 'SET_PROGRESS_HISTORY'; history: ProgressHistoryEntry[] }
+    | { type: 'DELETE_PROGRESS_ENTRY'; date: string };
 
 // ─── Grouping / Filtering ───────────────────────────────────────
 function applyGroupFilter(rows: VisibleRow[], activities: Activity[], activeGroup: string, columns: ColumnDef[]): VisibleRow[] {
@@ -452,8 +461,11 @@ function reducer(state: GanttState, action: Action): GanttState {
         case 'CLOSE_PROJ_MODAL': return { ...state, projModalOpen: false };
         case 'OPEN_LINK_MODAL': return { ...state, linkModalOpen: true, linkModalData: action.data };
         case 'CLOSE_LINK_MODAL': return { ...state, linkModalOpen: false, linkModalData: null };
-        case 'OPEN_SB_MODAL': return { ...state, sbModalOpen: true };
+        case 'OPEN_SB_MODAL': return { ...state, sbModalOpen: true, actModalOpen: false, projModalOpen: false, linkModalOpen: false, progressModalOpen: false };
         case 'CLOSE_SB_MODAL': return { ...state, sbModalOpen: false };
+
+        case 'OPEN_PROGRESS_MODAL': return { ...state, progressModalOpen: true, actModalOpen: false, projModalOpen: false, linkModalOpen: false, sbModalOpen: false };
+        case 'CLOSE_PROGRESS_MODAL': return { ...state, progressModalOpen: false };
 
         case 'ADD_PRED': {
             const acts = [...state.activities];
@@ -461,6 +473,16 @@ function reducer(state: GanttState, action: Action): GanttState {
             if (!a.preds) a.preds = [];
             a.preds = a.preds.filter(p => p.id !== action.pred.id);
             a.preds.push(action.pred as any);
+            acts[action.actIdx] = a;
+            return recalc({ ...state, activities: acts });
+        }
+
+        case 'UPDATE_PRED': {
+            const acts = [...state.activities];
+            const a = { ...acts[action.actIdx] };
+            if (!a.preds || !a.preds[action.predIdx]) return state;
+            a.preds = [...a.preds];
+            a.preds[action.predIdx] = { ...a.preds[action.predIdx], ...action.updates };
             acts[action.actIdx] = a;
             return recalc({ ...state, activities: acts });
         }
@@ -538,6 +560,33 @@ function reducer(state: GanttState, action: Action): GanttState {
         case 'LOAD_STATE':
             return recalc({ ...state, ...action.state });
 
+        case 'SET_PROGRESS_HISTORY':
+            return { ...state, progressHistory: action.history };
+
+        case 'SAVE_PERIOD_PROGRESS': {
+            const todayISO = isoDate(state.statusDate || new Date());
+            const projAct = state.activities.find(a => a._isProjRow);
+            const actualPct = projAct ? (projAct.pct || 0) : 0;
+            const details: Record<string, number> = {};
+            state.activities.forEach(a => {
+                if (a.pct !== undefined && a.pct !== null) {
+                    details[a.id] = a.pct;
+                }
+            });
+            const newEntry: ProgressHistoryEntry = { date: todayISO, actualPct, details };
+            const history = [...state.progressHistory];
+            const existingIdx = history.findIndex(h => h.date === todayISO);
+            if (existingIdx >= 0) history[existingIdx] = newEntry;
+            else history.push(newEntry);
+            history.sort((a, b) => a.date.localeCompare(b.date));
+            return { ...state, progressHistory: history, progressModalOpen: false };
+        }
+
+        case 'DELETE_PROGRESS_ENTRY': {
+            const history = state.progressHistory.filter(h => h.date !== action.date);
+            return { ...state, progressHistory: history };
+        }
+
         default:
             return state;
     }
@@ -571,6 +620,8 @@ const initialState: GanttState = {
     linkModalOpen: false,
     linkModalData: null,
     sbModalOpen: false,
+    progressModalOpen: false,
+    progressHistory: [],
 };
 
 // ─── Context ────────────────────────────────────────────────────

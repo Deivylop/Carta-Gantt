@@ -1,10 +1,9 @@
 // ═══════════════════════════════════════════════════════════════════
 // Resource Sheet – Full CRUD editable table for resource pool
 // ═══════════════════════════════════════════════════════════════════
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useGantt } from '../store/GanttContext';
 import { newPoolResource } from '../utils/helpers';
-import type { PoolResource } from '../types/gantt';
 
 const RS_COLS = [
     { key: 'rid', label: '#', w: 40, edit: false },

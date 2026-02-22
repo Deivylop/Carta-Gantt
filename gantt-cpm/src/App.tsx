@@ -13,6 +13,8 @@ import ActivityModal from './components/modals/ActivityModal';
 import ProjectModal from './components/modals/ProjectModal';
 import LinkModal from './components/modals/LinkModal';
 import SupabaseModal from './components/modals/SupabaseModal';
+import SaveProgressModal from './components/modals/SaveProgressModal';
+import SCurveChart from './components/SCurveChart';
 import { newActivity } from './utils/cpm';
 import { autoId } from './utils/helpers';
 import { saveToSupabase, loadFromSupabase } from './utils/supabaseSync';
@@ -58,6 +60,7 @@ function AppInner() {
           if (data.projName) dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: data.projName, projStart: data.projStart, defCal: data.defCal, statusDate: data.statusDate || undefined } });
           if (data.resourcePool) dispatch({ type: 'SET_RESOURCES', resources: data.resourcePool });
           if (data.activities && data.activities.length) dispatch({ type: 'SET_ACTIVITIES', activities: data.activities });
+          if (data.progressHistory) dispatch({ type: 'SET_PROGRESS_HISTORY', history: data.progressHistory });
           return;
         } catch (err) {
           console.warn('Could not auto-load from Supabase, starting fresh', err);
@@ -76,7 +79,7 @@ function AppInner() {
       const pid = localStorage.getItem('sb_current_project_id');
       try {
         const newId = await saveToSupabase(state, pid);
-        if (!pid && newId) localStorage.setItem('sb_current_project_id', newId);
+        if (newId && newId !== pid) localStorage.setItem('sb_current_project_id', newId);
         console.log('Auto-saved to Supabase');
       } catch (err) {
         console.error('Auto-save error:', err);
@@ -95,6 +98,7 @@ function AppInner() {
         dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: data.projName, projStart: data.projStart, defCal: data.defCal, statusDate: data.statusDate || undefined } });
         dispatch({ type: 'SET_RESOURCES', resources: data.resourcePool || [] });
         dispatch({ type: 'SET_ACTIVITIES', activities: data.activities || [] });
+        dispatch({ type: 'SET_PROGRESS_HISTORY', history: data.progressHistory || [] });
         localStorage.setItem('sb_current_project_id', pid);
         alert('Proyecto cargado exitosamente');
       } catch (err: any) {
@@ -106,7 +110,7 @@ function AppInner() {
       const pid = localStorage.getItem('sb_current_project_id');
       try {
         const newId = await saveToSupabase(state, pid);
-        if (!pid && newId) localStorage.setItem('sb_current_project_id', newId);
+        if (newId && newId !== pid) localStorage.setItem('sb_current_project_id', newId);
         alert('Proyecto guardado exitosamente');
       } catch (err: any) {
         alert('Error al guardar: ' + err.message);
@@ -204,6 +208,10 @@ function AppInner() {
         <div style={{ flex: 1, overflow: 'hidden' }}>
           <ResourceSheet />
         </div>
+      ) : state.currentView === 'scurve' ? (
+        <div style={{ flex: 1, overflow: 'hidden' }}>
+          <SCurveChart />
+        </div>
       ) : (
         <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
           {/* Gantt Area (Table | Resize | Timeline) */}
@@ -239,6 +247,7 @@ function AppInner() {
       <ProjectModal />
       <LinkModal />
       <SupabaseModal />
+      <SaveProgressModal />
     </div>
   );
 }

@@ -1,15 +1,14 @@
 // ═══════════════════════════════════════════════════════════════════
 // TaskForm – Bottom panel with pred/suc/resource inline editing
 // ═══════════════════════════════════════════════════════════════════
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useGantt } from '../store/GanttContext';
-import { fmtDate, addDays, isoDate, parseDate } from '../utils/cpm';
-import { predsToStr, newPoolResource } from '../utils/helpers';
+import { fmtDate, addDays } from '../utils/cpm';
 import type { Activity } from '../types/gantt';
 
 export default function TaskForm() {
     const { state, dispatch } = useGantt();
-    const { activities, selIdx, defCal, projStart, statusDate, resourcePool } = state;
+    const { activities, selIdx, resourcePool } = state;
     const [tab, setTab] = useState<'pred' | 'res'>('pred');
     const a = selIdx >= 0 ? activities[selIdx] : null;
 
@@ -54,7 +53,7 @@ export default function TaskForm() {
         return { ...p, name: predAct?.name || '?', pi };
     });
     const succs: { sucId: string; sucName: string; type: string; lag: number; predIdx: number }[] = [];
-    activities.forEach((x, xi) => {
+    activities.forEach((x) => {
         if (!x.preds) return;
         x.preds.forEach((p, pi) => {
             if (p.id === a.id) succs.push({ sucId: x.id, sucName: x.name, type: p.type, lag: p.lag, predIdx: pi });
@@ -141,8 +140,23 @@ export default function TaskForm() {
                                 <div key={pi} className="fp-row">
                                     <div className="fp-cell fp-cell-id">{p.id}</div>
                                     <div className="fp-cell fp-cell-name">{p.name}</div>
-                                    <div className="fp-cell fp-cell-type">{p.type}</div>
-                                    <div className="fp-cell fp-cell-lag">{p.lag}</div>
+                                    <div className="fp-cell fp-cell-type">
+                                        <select value={p.type} onChange={e => {
+                                            dispatch({ type: 'PUSH_UNDO' });
+                                            dispatch({ type: 'UPDATE_PRED', actIdx: selIdx, predIdx: pi, updates: { type: e.target.value as any } });
+                                        }} style={{ background: 'transparent', color: 'inherit', border: 'none', outline: 'none', width: '100%', fontSize: 11 }}>
+                                            <option style={{ color: '#000' }} value="FS">FC</option>
+                                            <option style={{ color: '#000' }} value="SS">CC</option>
+                                            <option style={{ color: '#000' }} value="FF">FF</option>
+                                            <option style={{ color: '#000' }} value="SF">CF</option>
+                                        </select>
+                                    </div>
+                                    <div className="fp-cell fp-cell-lag">
+                                        <input type="number" value={p.lag} onChange={e => {
+                                            dispatch({ type: 'PUSH_UNDO' });
+                                            dispatch({ type: 'UPDATE_PRED', actIdx: selIdx, predIdx: pi, updates: { lag: parseInt(e.target.value) || 0 } });
+                                        }} style={{ background: 'transparent', color: 'inherit', border: 'none', outline: 'none', width: '100%', fontSize: 11 }} />
+                                    </div>
                                     <div className="fp-cell fp-cell-btn" style={{ color: '#ef4444', cursor: 'pointer' }} onClick={() => removePred(pi)}>✕</div>
                                 </div>
                             ))}
@@ -181,8 +195,29 @@ export default function TaskForm() {
                                 <div key={si} className="fp-row">
                                     <div className="fp-cell fp-cell-id">{s.sucId}</div>
                                     <div className="fp-cell fp-cell-name">{s.sucName}</div>
-                                    <div className="fp-cell fp-cell-type">{s.type}</div>
-                                    <div className="fp-cell fp-cell-lag">{s.lag}</div>
+                                    <div className="fp-cell fp-cell-type">
+                                        <select value={s.type} onChange={e => {
+                                            const sucIdx = activities.findIndex(x => x.id === s.sucId);
+                                            if (sucIdx >= 0) {
+                                                dispatch({ type: 'PUSH_UNDO' });
+                                                dispatch({ type: 'UPDATE_PRED', actIdx: sucIdx, predIdx: s.predIdx, updates: { type: e.target.value as any } });
+                                            }
+                                        }} style={{ background: 'transparent', color: 'inherit', border: 'none', outline: 'none', width: '100%', fontSize: 11 }}>
+                                            <option style={{ color: '#000' }} value="FS">FC</option>
+                                            <option style={{ color: '#000' }} value="SS">CC</option>
+                                            <option style={{ color: '#000' }} value="FF">FF</option>
+                                            <option style={{ color: '#000' }} value="SF">CF</option>
+                                        </select>
+                                    </div>
+                                    <div className="fp-cell fp-cell-lag">
+                                        <input type="number" value={s.lag} onChange={e => {
+                                            const sucIdx = activities.findIndex(x => x.id === s.sucId);
+                                            if (sucIdx >= 0) {
+                                                dispatch({ type: 'PUSH_UNDO' });
+                                                dispatch({ type: 'UPDATE_PRED', actIdx: sucIdx, predIdx: s.predIdx, updates: { lag: parseInt(e.target.value) || 0 } });
+                                            }
+                                        }} style={{ background: 'transparent', color: 'inherit', border: 'none', outline: 'none', width: '100%', fontSize: 11 }} />
+                                    </div>
                                     <div className="fp-cell fp-cell-btn" style={{ color: '#ef4444', cursor: 'pointer' }} onClick={() => removeSuc(s.sucId, s.predIdx)}>✕</div>
                                 </div>
                             ))}
@@ -213,6 +248,7 @@ export default function TaskForm() {
                     <div>
                         <div className="fp-section-hdr" style={{ color: '#34d399' }}>🔧 RECURSOS ASIGNADOS</div>
                         <div className="fp-col-hdr">
+                            <div className="fp-cell fp-cell-id">ID Req.</div>
                             <div className="fp-cell fp-cell-name">Nombre</div>
                             <div className="fp-cell fp-cell-units">Unidades</div>
                             <div className="fp-cell fp-cell-work">Trabajo</div>
@@ -220,6 +256,7 @@ export default function TaskForm() {
                         </div>
                         {(a.resources || []).map((r, ri) => (
                             <div key={ri} className="fp-row">
+                                <div className="fp-cell fp-cell-id">{r.rid}</div>
                                 <div className="fp-cell fp-cell-name">{r.name}</div>
                                 <div className="fp-cell fp-cell-units">{r.units || '100%'}</div>
                                 <div className="fp-cell fp-cell-work">{(r.work || 0) + ' hrs'}</div>
@@ -240,7 +277,7 @@ export default function TaskForm() {
                                     {acItems().length === 0 && <div className="ac-empty">Sin coincidencias</div>}
                                     {(acItems() as any[]).slice(0, 20).map((r: any) => (
                                         <div key={r.rid || r.name} className="ac-item" onMouseDown={e => { e.preventDefault(); addResourceToAct(r.rid, r.name); }}>
-                                            <span className="ac-nm">{r.name}</span>
+                                            <span className="ac-id">{r.rid}</span><span className="ac-nm">{r.name}</span>
                                         </div>
                                     ))}
                                 </div>

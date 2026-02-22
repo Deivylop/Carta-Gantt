@@ -1,9 +1,9 @@
 // ═══════════════════════════════════════════════════════════════════
 // Activity Detail Modal – matches HTML #act-modal-overlay exactly
 // ═══════════════════════════════════════════════════════════════════
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useGantt } from '../../store/GanttContext';
-import { isoDate, fmtDate, addDays, parseDate } from '../../utils/cpm';
+import { isoDate, fmtDate, addDays } from '../../utils/cpm';
 
 export default function ActivityModal() {
     const { state, dispatch } = useGantt();

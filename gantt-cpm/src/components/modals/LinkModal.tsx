@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════
 // Link Type Modal – create/edit dependency links (FS/SS/FF/SF + lag)
 // ═══════════════════════════════════════════════════════════════════
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useGantt } from '../../store/GanttContext';
 
 export default function LinkModal() {
