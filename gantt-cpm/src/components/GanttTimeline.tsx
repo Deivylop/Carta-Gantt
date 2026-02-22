@@ -671,14 +671,7 @@ export default function GanttTimeline() {
                 />
             </div>
             {/* Body canvas */}
-            <div ref={bodyRef} id="gantt-timeline-scroll" style={{ flex: 1, overflow: 'auto', outline: 'none', position: 'relative' }} tabIndex={0}
-                onScroll={(e) => {
-                    const scScroll = document.getElementById('scurve-scroll-container');
-                    if (scScroll && scScroll.scrollLeft !== e.currentTarget.scrollLeft) {
-                        scScroll.scrollLeft = e.currentTarget.scrollLeft;
-                    }
-                }}
-            >
+            <div ref={bodyRef} id="gr-body" style={{ flex: 1, overflow: 'auto', outline: 'none', position: 'relative' }} tabIndex={0}>
                 <canvas ref={barRef} style={{ display: 'block' }}
                     onMouseDown={handleMouseDown}
                     onMouseMove={handleMouseMove}

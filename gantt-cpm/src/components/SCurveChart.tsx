@@ -239,7 +239,7 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
     const actualColor = '#10b981'; // Green
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: exactWidth ? exactWidth : '100%', background: state.lightMode ? '#fff' : '#0f172a' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', background: state.lightMode ? '#fff' : '#0f172a' }}>
             {!hideHeader && (
                 <div className="fv-hdr" style={{ padding: '8px 16px', display: 'flex', gap: 10, alignItems: 'center', borderBottom: `1px solid ${gridColor}` }}>
                     <span style={{ fontSize: 13, fontWeight: 600, color: textColor }}>Analizar:</span>
