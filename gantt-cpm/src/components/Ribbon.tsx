@@ -7,7 +7,7 @@ import { newActivity, isoDate, parseDate } from '../utils/cpm';
 import { autoId, exportJSON, exportCSV, importJSONData, importCSVData } from '../utils/helpers';
 import {
     Plus, Trash2, ArrowRight, ClipboardPaste, Scissors, Settings, Calculator, BarChart3, Sun, Moon, Clock,
-    TrendingUp, LineChart, FileText, Diamond, ArrowLeft, ArrowUp, ArrowDown, Info, Undo2, Cloud, Database, Upload, Download, LayoutTemplate, Users
+    TrendingUp, LineChart, FileText, Diamond, ArrowLeft, ArrowUp, ArrowDown, Info, Undo2, Cloud, Database, Upload, Download, LayoutTemplate, Users, CalendarDays
 } from 'lucide-react';
 import type { ZoomLevel }
     from '../types/gantt';
@@ -156,6 +156,9 @@ export default function Ribbon() {
                     </RG>
                     <RG label="EDT">
                         <RB label="EDT 0" active={state.showProjRow} onClick={() => dispatch({ type: 'SET_SHOW_PROJ_ROW', show: !state.showProjRow })} />
+                    </RG>
+                    <RG label="CALENDARIOS">
+                        <RB icon={<CalendarDays size={16} />} label="Calendarios" onClick={() => dispatch({ type: 'OPEN_CAL_MODAL' })} />
                     </RG>
                 </>}
 

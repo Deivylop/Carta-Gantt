@@ -15,6 +15,7 @@ import LinkModal from './components/modals/LinkModal';
 import SupabaseModal from './components/modals/SupabaseModal';
 import SaveProgressModal from './components/modals/SaveProgressModal';
 import BaselineModal from './components/modals/BaselineModal';
+import CalendarModal from './components/modals/CalendarModal';
 import SCurveChart from './components/SCurveChart';
 import TaskUsageGrid from './components/TaskUsageGrid';
 import ResourceUsageTable from './components/ResourceUsageTable';
@@ -196,6 +197,7 @@ function AppInner() {
       dispatch({ type: 'CLOSE_PROJ_MODAL' });
       dispatch({ type: 'CLOSE_LINK_MODAL' });
       dispatch({ type: 'CLOSE_SB_MODAL' });
+      dispatch({ type: 'CLOSE_CAL_MODAL' });
     }
   }, [state.selIdx, state.activities, state.defCal, dispatch]);
 
@@ -309,6 +311,7 @@ function AppInner() {
       <SupabaseModal />
       <SaveProgressModal />
       <BaselineModal />
+      <CalendarModal />
     </div>
   );
 }

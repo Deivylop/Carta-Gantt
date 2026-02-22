@@ -2,15 +2,62 @@
 // CPM Engine – Pure TypeScript (no React dependency)
 // Ported 1:1 from the calcCPM() function in Carta Gantt CPM.html
 // ═══════════════════════════════════════════════════════════════════
-import type { Activity, CalendarType, ProgressHistoryEntry } from '../types/gantt';
+import type { Activity, CalendarType, ProgressHistoryEntry, CustomCalendar } from '../types/gantt';
 
 /** Calendar conversion factors: work days → calendar days */
 const CAL_F: Record<number, number> = { 5: 7 / 5, 6: 7 / 6, 7: 1 };
 
+/** Registry for custom calendars – set before calcCPM via setCalendarRegistry */
+let _calRegistry: CustomCalendar[] = [];
+export function setCalendarRegistry(cals: CustomCalendar[]) { _calRegistry = cals; }
+function findCustomCal(cal: CalendarType): CustomCalendar | undefined {
+    if (typeof cal === 'number') return undefined;
+    return _calRegistry.find(c => c.id === cal);
+}
+
+/** Check if a given date is a work day for a calendar */
+function isWorkDayForCal(d: Date, cal: CalendarType): boolean {
+    const cc = findCustomCal(cal);
+    if (cc) {
+        const iso = d.toISOString().slice(0, 10);
+        // Check exceptions first (non-work days override)
+        if (cc.exceptions.includes(iso)) return false;
+        return cc.workDays[d.getDay()];
+    }
+    // Built-in calendars
+    const wd = d.getDay();
+    if (cal === 5) return wd >= 1 && wd <= 5;
+    if (cal === 6) return wd !== 0;
+    return true; // 7-day
+}
+
+/** Get the CAL_F factor for any calendar */
+function calFactor(cal: CalendarType): number {
+    const cc = findCustomCal(cal);
+    if (cc) {
+        const workCount = cc.workDays.filter(Boolean).length || 1;
+        return 7 / workCount;
+    }
+    return CAL_F[cal as number] || CAL_F[6];
+}
+
 // ─── Date Utilities ─────────────────────────────────────────────
 
 export function addWorkDays(d: Date, wd: number, cal: CalendarType): Date {
-    const f = CAL_F[cal] || CAL_F[6];
+    const cc = findCustomCal(cal);
+    if (cc) {
+        // Day-by-day iteration for custom calendars
+        if (wd === 0) return new Date(d);
+        const r = new Date(d);
+        let remaining = Math.abs(Math.round(wd));
+        const dir = wd > 0 ? 1 : -1;
+        while (remaining > 0) {
+            r.setDate(r.getDate() + dir);
+            if (isWorkDayForCal(r, cal)) remaining--;
+        }
+        return r;
+    }
+    const f = calFactor(cal);
     const c = Math.round(wd * f);
     const r = new Date(d);
     r.setDate(r.getDate() + c);
@@ -28,12 +75,14 @@ export function dayDiff(a: Date, b: Date): number {
 }
 
 export function calWorkDays(a: Date, b: Date, cal: CalendarType): number {
+    const cc = findCustomCal(cal);
+    if (cc) return getExactWorkDays(a, b, cal);
     const cd = dayDiff(a, b);
-    const f = CAL_F[cal] || CAL_F[6];
+    const f = calFactor(cal);
     return Math.max(0, Math.round(cd / f));
 }
 
-export function getExactWorkDays(start: Date, end: Date, cal: number): number {
+export function getExactWorkDays(start: Date, end: Date, cal: CalendarType): number {
     let count = 0;
     let cur = new Date(start);
     cur.setHours(0, 0, 0, 0);
@@ -41,15 +90,13 @@ export function getExactWorkDays(start: Date, end: Date, cal: number): number {
     endD.setHours(0, 0, 0, 0);
 
     while (cur < endD) {
-        const wd = cur.getDay();
-        const isWork = cal === 5 ? (wd >= 1 && wd <= 5) : cal === 6 ? (wd !== 0) : true;
-        if (isWork) count++;
+        if (isWorkDayForCal(cur, cal)) count++;
         cur.setDate(cur.getDate() + 1);
     }
     return count;
 }
 
-export function getExactElapsedRatio(start: Date, end: Date, target: Date, cal: number): number {
+export function getExactElapsedRatio(start: Date, end: Date, target: Date, cal: CalendarType): number {
     const stObj = new Date(start); stObj.setHours(0, 0, 0, 0);
     const endObj = new Date(end); endObj.setHours(0, 0, 0, 0);
     const tgtObj = new Date(target); tgtObj.setHours(0, 0, 0, 0);
@@ -136,8 +183,11 @@ export function calcCPM(
     defCal: CalendarType,
     statusDate: Date | null,
     projName: string,
-    activeBaselineIdx: number = 0
+    activeBaselineIdx: number = 0,
+    customCalendars: CustomCalendar[] = []
 ): CPMResult {
+    // Set the global calendar registry so helper functions can find custom calendars
+    setCalendarRegistry(customCalendars);
     if (!activities.length) {
         return { activities: [], totalDays: 90, projectDays: 90 };
     }
@@ -184,9 +234,9 @@ export function calcCPM(
                 if (p.type === 'FS') t = addWorkDays(pEF, lag, a.cal || defCal);
                 else if (p.type === 'SS') t = addWorkDays(pES, lag, a.cal || defCal);
                 else if (p.type === 'FF') {
-                    t = addDays(addWorkDays(pEF, lag, a.cal || defCal), -Math.round((a.type === 'milestone' ? 0 : (a.dur || 0)) * (CAL_F[a.cal || defCal] || 1)));
+                    t = addDays(addWorkDays(pEF, lag, a.cal || defCal), -Math.round((a.type === 'milestone' ? 0 : (a.dur || 0)) * calFactor(a.cal || defCal)));
                 } else if (p.type === 'SF') {
-                    t = addDays(addWorkDays(pES, lag, a.cal || defCal), -Math.round((a.type === 'milestone' ? 0 : (a.dur || 0)) * (CAL_F[a.cal || defCal] || 1)));
+                    t = addDays(addWorkDays(pES, lag, a.cal || defCal), -Math.round((a.type === 'milestone' ? 0 : (a.dur || 0)) * calFactor(a.cal || defCal)));
                 } else {
                     t = addWorkDays(pEF, lag, a.cal || defCal);
                 }
@@ -253,9 +303,9 @@ export function calcCPM(
                     if (p.type === 'FS') t = addWorkDays(pEF!, lag, a.cal || defCal);
                     else if (p.type === 'SS') t = addWorkDays(pES!, lag, a.cal || defCal);
                     else if (p.type === 'FF') {
-                        t = addDays(addWorkDays(pEF!, lag, a.cal || defCal), -Math.round((a.type === 'milestone' ? 0 : (a._remDur || a.dur || 0)) * (CAL_F[a.cal || defCal] || 1)));
+                        t = addDays(addWorkDays(pEF!, lag, a.cal || defCal), -Math.round((a.type === 'milestone' ? 0 : (a._remDur || a.dur || 0)) * calFactor(a.cal || defCal)));
                     } else if (p.type === 'SF') {
-                        t = addDays(addWorkDays(pES!, lag, a.cal || defCal), -Math.round((a.type === 'milestone' ? 0 : (a._remDur || a.dur || 0)) * (CAL_F[a.cal || defCal] || 1)));
+                        t = addDays(addWorkDays(pES!, lag, a.cal || defCal), -Math.round((a.type === 'milestone' ? 0 : (a._remDur || a.dur || 0)) * calFactor(a.cal || defCal)));
                     } else {
                         t = addWorkDays(pEF!, lag, a.cal || defCal);
                     }
@@ -316,7 +366,7 @@ export function calcCPM(
         if (maxEF) a.EF = maxEF;
         if (minES && maxEF) {
             const calDays = dayDiff(minES, maxEF);
-            const factor = CAL_F[a.cal || defCal] || 1;
+            const factor = calFactor(a.cal || defCal);
             a.dur = Math.max(1, Math.round(calDays / factor));
         }
     }
@@ -441,13 +491,13 @@ export function calcCPM(
     const sorted = [...activities].sort((a, b) => (b.EF || projEnd).getTime() - (a.EF || projEnd).getTime());
 
     sorted.forEach(a => {
-        a.LS = addDays(a.LF!, -Math.round((a.type === 'milestone' ? 0 : (a.dur || 0)) * (CAL_F[a.cal || defCal] || 1)));
+        a.LS = addDays(a.LF!, -Math.round((a.type === 'milestone' ? 0 : (a.dur || 0)) * calFactor(a.cal || defCal)));
         if (a.preds) {
             a.preds.forEach(p => {
                 const pred = byId[p.id]; if (!pred) return;
                 let newLF: Date; const lag = p.lag || 0;
                 if (p.type === 'FS') newLF = addWorkDays(a.LS!, -lag, pred.cal || defCal);
-                else if (p.type === 'SS') newLF = addDays(addWorkDays(a.LS!, -lag, pred.cal || defCal), Math.round((pred.type === 'milestone' ? 0 : (pred.dur || 0)) * (CAL_F[pred.cal || defCal] || 1)));
+                else if (p.type === 'SS') newLF = addDays(addWorkDays(a.LS!, -lag, pred.cal || defCal), Math.round((pred.type === 'milestone' ? 0 : (pred.dur || 0)) * calFactor(pred.cal || defCal)));
                 else if (p.type === 'FF') newLF = addWorkDays(a.LF!, -lag, pred.cal || defCal);
                 else newLF = addWorkDays(a.LS!, -lag, pred.cal || defCal);
                 if (!pred.LF || newLF < pred.LF) pred.LF = new Date(newLF);
@@ -457,7 +507,7 @@ export function calcCPM(
 
     activities.forEach(a => {
         if (!a.LF) a.LF = new Date(projEnd);
-        a.LS = addDays(a.LF, -Math.round((a.type === 'milestone' ? 0 : (a.dur || 0)) * (CAL_F[a.cal || defCal] || 1)));
+        a.LS = addDays(a.LF, -Math.round((a.type === 'milestone' ? 0 : (a.dur || 0)) * calFactor(a.cal || defCal)));
         const tf = dayDiff(a.ES || projStart, a.LS || projStart);
         a.TF = Math.max(0, tf);
         a.crit = a.TF <= 1;
@@ -475,7 +525,7 @@ export function getUsageDailyValues(
     a: Activity,
     mode: 'Trabajo' | 'Trabajo real' | 'Trabajo acumulado' | 'Trabajo previsto' | 'Trabajo restante' | 'Trabajo real acumulado' | 'Trabajo previsto acumulado' | 'Trabajo restante acumulado',
     calcTotalAccumulated = false,
-    defCal: number = 6,
+    defCal: CalendarType = 6,
     resId?: string,
     activeBaselineIdx: number = 0,
     statusDate?: Date | null,
@@ -487,14 +537,12 @@ export function getUsageDailyValues(
     if (work === 0) return map;
 
     // ─── Helper: build array of work-day dates between two dates ───
-    const buildWorkDays = (s: Date, e: Date, calN: number): Date[] => {
+    const buildWorkDays = (s: Date, e: Date, calN: CalendarType): Date[] => {
         const arr: Date[] = [];
         const c = new Date(s); c.setHours(0, 0, 0, 0);
         const ed = new Date(e); ed.setHours(0, 0, 0, 0);
         while (c < ed) {
-            const wd = c.getDay();
-            const isWork = calN === 5 ? (wd >= 1 && wd <= 5) : calN === 6 ? (wd !== 0) : true;
-            if (isWork) arr.push(new Date(c));
+            if (isWorkDayForCal(c, calN)) arr.push(new Date(c));
             c.setDate(c.getDate() + 1);
         }
         if (arr.length === 0) arr.push(new Date(s));

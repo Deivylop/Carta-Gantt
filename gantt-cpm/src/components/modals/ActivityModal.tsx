@@ -41,7 +41,7 @@ export default function ActivityModal() {
             lv: parseInt(form.lv), name: form.name.trim(), type: form.type,
             dur: form.type === 'milestone' ? 0 : Math.max(0, parseInt(form.dur) || 0),
             remDur: Math.max(0, parseInt(form.remDur) || 0),
-            cal: parseInt(form.cal) || state.defCal,
+            cal: isNaN(parseInt(form.cal)) ? form.cal : (parseInt(form.cal) || state.defCal),
             pct: Math.min(100, Math.max(0, parseInt(form.pct) || 0)),
             res: form.res.trim(), work: Math.max(0, parseFloat(form.work) || 0),
             weight: parseFloat(form.weight) > 0 ? parseFloat(form.weight) : null,
@@ -87,6 +87,9 @@ export default function ActivityModal() {
                     <div className="form-group"><label className="form-label">Calendario</label>
                         <select className="form-input" value={form.cal} onChange={e => F('cal', e.target.value)}>
                             <option value={5}>5d (Lun-Vie)</option><option value={6}>6d (Lun-Sáb)</option><option value={7}>7d (continuo)</option>
+                            {state.customCalendars.map(cc => (
+                                <option key={cc.id} value={cc.id}>{cc.name}</option>
+                            ))}
                         </select>
                     </div>
                 </div>

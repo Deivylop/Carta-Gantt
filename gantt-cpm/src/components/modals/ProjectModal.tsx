@@ -29,7 +29,7 @@ export default function ProjectModal() {
         if (d) config.projStart = d;
         const sd = parseDate(form.status);
         if (sd) config.statusDate = sd;
-        config.defCal = parseInt(form.cal) || 6;
+        config.defCal = isNaN(parseInt(form.cal)) ? form.cal : (parseInt(form.cal) || 6);
         dispatch({ type: 'SET_PROJECT_CONFIG', config });
         dispatch({ type: 'CLOSE_PROJ_MODAL' });
     };
@@ -60,6 +60,9 @@ export default function ProjectModal() {
                         <option value="5">5 días - Lunes a Viernes</option>
                         <option value="6">6 días - Lunes a Sábado</option>
                         <option value="7">7 días - Continuo</option>
+                        {state.customCalendars.map(cc => (
+                            <option key={cc.id} value={cc.id}>{cc.name}</option>
+                        ))}
                     </select>
                 </div>
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>

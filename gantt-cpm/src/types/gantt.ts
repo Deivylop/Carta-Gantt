@@ -12,8 +12,22 @@ export type ActivityType = 'task' | 'milestone' | 'summary';
 /** Constraint types */
 export type ConstraintType = '' | 'SNET' | 'SNLT' | 'MSO' | 'MFO' | 'FNET' | 'FNLT';
 
-/** Calendar days per week */
-export type CalendarType = 5 | 6 | 7;
+/** Calendar days per week (legacy) or custom calendar ID string */
+export type CalendarType = 5 | 6 | 7 | string;
+
+// ─── Custom Calendar Definition ─────────────────────────────────
+export interface CustomCalendar {
+    id: string;               // unique ID (e.g. 'cal_1', 'montec')
+    name: string;             // display name (e.g. 'Estándar', 'Montec')
+    /** Which days of week are work days. Index 0=Sun, 1=Mon … 6=Sat */
+    workDays: [boolean, boolean, boolean, boolean, boolean, boolean, boolean];
+    /** Hours of work per day (default 8) */
+    hoursPerDay: number;
+    /** Specific non-work dates (ISO strings 'YYYY-MM-DD') */
+    exceptions: string[];
+    /** Whether this is the default project calendar */
+    isDefault?: boolean;
+}
 
 /** Resource pool types */
 export type ResourceType = 'Trabajo' | 'Material' | 'Costo';

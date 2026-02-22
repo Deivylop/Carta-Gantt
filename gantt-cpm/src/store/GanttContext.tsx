@@ -3,7 +3,7 @@
 // All state management matching HTML globals + actions
 // ═══════════════════════════════════════════════════════════════════
 import React, { createContext, useContext, useReducer, type ReactNode } from 'react';
-import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, VisibleRow, ProgressHistoryEntry, BaselineEntry } from '../types/gantt';
+import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, VisibleRow, ProgressHistoryEntry, BaselineEntry, CustomCalendar } from '../types/gantt';
 import { calcCPM, newActivity, isoDate, parseDate, addDays } from '../utils/cpm';
 import { autoId, computeOutlineNumbers, syncResFromString, deriveResString, distributeWork, strToPreds } from '../utils/helpers';
 
@@ -82,6 +82,8 @@ export interface GanttState {
     progressHistory: ProgressHistoryEntry[];
     activeBaselineIdx: number; // 0-10, which baseline is displayed
     blModalOpen: boolean;      // baseline manager modal
+    customCalendars: CustomCalendar[];
+    calModalOpen: boolean;     // calendar manager modal
 }
 
 // ─── Actions ────────────────────────────────────────────────────
@@ -146,7 +148,11 @@ export type Action =
     | { type: 'SAVE_PERIOD_PROGRESS' }
     | { type: 'SET_PROGRESS_HISTORY'; history: ProgressHistoryEntry[] }
     | { type: 'DELETE_PROGRESS_ENTRY'; date: string }
-    | { type: 'LOAD_PROGRESS_SNAPSHOT'; date: string };
+    | { type: 'LOAD_PROGRESS_SNAPSHOT'; date: string }
+    | { type: 'OPEN_CAL_MODAL' }
+    | { type: 'CLOSE_CAL_MODAL' }
+    | { type: 'SAVE_CALENDAR'; calendar: CustomCalendar }
+    | { type: 'DELETE_CALENDAR'; id: string };
 
 // ─── Grouping / Filtering ─────────────────────────────────────────
 function applyGroupFilter(rows: VisibleRow[], activities: Activity[], activeGroup: string, columns: ColumnDef[]): VisibleRow[] {
@@ -235,7 +241,7 @@ function ensureProjRow(activities: Activity[], showProjRow: boolean, projName: s
 
 function recalc(state: GanttState): GanttState {
     let acts = ensureProjRow([...state.activities], state.showProjRow, state.projName, state.defCal);
-    const result = calcCPM(acts, state.projStart, state.defCal, state.statusDate, state.projName, state.activeBaselineIdx);
+    const result = calcCPM(acts, state.projStart, state.defCal, state.statusDate, state.projName, state.activeBaselineIdx, state.customCalendars);
     computeOutlineNumbers(result.activities);
     const visRows = buildVisRows(result.activities, state.collapsed, state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes);
     // Auto-fit: pxPerDay based on PROJECT span (not totalDays) so project fills viewport
@@ -328,6 +334,9 @@ function reducer(state: GanttState, action: Action): GanttState {
                 const calVal = parseInt(val);
                 if (calVal === 5 || calVal === 6 || calVal === 7) {
                     a.cal = calVal as CalendarType;
+                } else {
+                    // Custom calendar ID (string)
+                    a.cal = val as CalendarType;
                 }
             }
             else if (key === 'notes') a.notes = val;
@@ -613,6 +622,27 @@ function reducer(state: GanttState, action: Action): GanttState {
         case 'OPEN_BL_MODAL': return { ...state, blModalOpen: true };
         case 'CLOSE_BL_MODAL': return { ...state, blModalOpen: false };
 
+        case 'OPEN_CAL_MODAL': return { ...state, calModalOpen: true };
+        case 'CLOSE_CAL_MODAL': return { ...state, calModalOpen: false };
+        case 'SAVE_CALENDAR': {
+            const cals = [...state.customCalendars];
+            const idx = cals.findIndex(c => c.id === action.calendar.id);
+            if (idx >= 0) cals[idx] = action.calendar;
+            else cals.push(action.calendar);
+            // Persist to localStorage
+            try { localStorage.setItem('gantt-cpm-custom-calendars', JSON.stringify(cals)); } catch { }
+            return recalc({ ...state, customCalendars: cals });
+        }
+        case 'DELETE_CALENDAR': {
+            const cals = state.customCalendars.filter(c => c.id !== action.id);
+            // Revert any activities using deleted calendar back to defCal
+            const acts = state.activities.map(a =>
+                a.cal === action.id ? { ...a, cal: state.defCal } : a
+            );
+            try { localStorage.setItem('gantt-cpm-custom-calendars', JSON.stringify(cals)); } catch { }
+            return recalc({ ...state, customCalendars: cals, activities: acts });
+        }
+
         case 'ADD_PRED': {
             const acts = [...state.activities];
             const a = { ...acts[action.actIdx] };
@@ -788,6 +818,13 @@ function reducer(state: GanttState, action: Action): GanttState {
 // ─── Initial State ──────────────────────────────────────────────
 const now = new Date(); now.setHours(0, 0, 0, 0);
 
+// Load custom calendars from localStorage
+let _savedCalendars: CustomCalendar[] = [];
+try {
+    const raw = localStorage.getItem('gantt-cpm-custom-calendars');
+    if (raw) _savedCalendars = JSON.parse(raw);
+} catch { }
+
 const initialState: GanttState = {
     projName: 'Mi Proyecto',
     projStart: now,
@@ -823,6 +860,8 @@ const initialState: GanttState = {
     progressHistory: [],
     activeBaselineIdx: 0,
     blModalOpen: false,
+    customCalendars: _savedCalendars,
+    calModalOpen: false,
 };
 
 // ─── Context ────────────────────────────────────────────────────

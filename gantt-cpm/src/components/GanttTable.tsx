@@ -157,7 +157,14 @@ export default function GanttTable() {
             return rem + ' hrs';
         }
         if (c.key === 'weight') return getWeightPct(a, activities);
-        if (c.key === 'cal') return (a.cal || defCal) + 'd';
+        if (c.key === 'cal') {
+            const cal = a.cal || defCal;
+            if (typeof cal === 'string') {
+                const cc = state.customCalendars.find((x: any) => x.id === cal);
+                return cc ? cc.name : String(cal);
+            }
+            return cal + 'd';
+        }
         if (c.key === 'TF') {
             if (a.type === 'summary' || a._isProjRow) return '';
             if (a.TF != null) return a.TF + 'd';
@@ -357,6 +364,9 @@ export default function GanttTable() {
                                                     <option value={5} style={{ background: lightMode ? '#fff' : '#1f2937' }}>5d</option>
                                                     <option value={6} style={{ background: lightMode ? '#fff' : '#1f2937' }}>6d</option>
                                                     <option value={7} style={{ background: lightMode ? '#fff' : '#1f2937' }}>7d</option>
+                                                    {state.customCalendars.map(cc => (
+                                                        <option key={cc.id} value={cc.id} style={{ background: lightMode ? '#fff' : '#1f2937' }}>{cc.name}</option>
+                                                    ))}
                                                 </select>
                                             </div>
                                         );
