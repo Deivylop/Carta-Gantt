@@ -387,8 +387,8 @@ export function calcCPM(
     activities.forEach(a => {
         if (a.EF && a.EF > projEnd) projEnd = new Date(a.EF);
     });
-    // Add buffer: 30 days before projStart and 90 days after projEnd for visual context
-    const totalDays = Math.max(120, dayDiff(projStart, projEnd) + 30 + 90);
+    // Buffer: ~1 week before projStart + ~1 month after projEnd for visual context
+    const totalDays = Math.max(60, dayDiff(projStart, projEnd) + 7 + 30);
 
     activities.forEach(a => { a.LF = new Date(projEnd); });
     const sorted = [...activities].sort((a, b) => (b.EF || projEnd).getTime() - (a.EF || projEnd).getTime());
