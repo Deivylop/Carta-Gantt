@@ -4,7 +4,7 @@
 // ═══════════════════════════════════════════════════════════════════
 import React, { createContext, useContext, useReducer, type ReactNode } from 'react';
 import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, VisibleRow, ProgressHistoryEntry } from '../types/gantt';
-import { calcCPM, newActivity, isoDate, parseDate } from '../utils/cpm';
+import { calcCPM, newActivity, isoDate, parseDate, addDays } from '../utils/cpm';
 import { autoId, computeOutlineNumbers, syncResFromString, deriveResString, distributeWork, strToPreds } from '../utils/helpers';
 
 // ─── Column Definitions ─────────────────────────────────────────
@@ -55,6 +55,7 @@ export interface GanttState {
     zoom: ZoomLevel;
     pxPerDay: number;
     totalDays: number;
+    timelineStart: Date;  // rendering origin (projStart - buffer)
     lightMode: boolean;
     showProjRow: boolean;
     // View state
@@ -209,7 +210,9 @@ function recalc(state: GanttState): GanttState {
     const timelineW = Math.max(400, (typeof window !== 'undefined' ? window.innerWidth : 1200) - state.tableW - 10);
     const fitPx = timelineW / result.projectDays;
     const pxPerDay = Math.max(0.5, Math.min(fitPx, 150));
-    return { ...state, activities: result.activities, totalDays: result.totalDays, visRows, pxPerDay };
+    // Timeline rendering starts 30 days before project start
+    const timelineStart = addDays(state.projStart, -30);
+    return { ...state, activities: result.activities, totalDays: result.totalDays, visRows, pxPerDay, timelineStart };
 }
 
 
@@ -638,6 +641,7 @@ const initialState: GanttState = {
     zoom: 'week',
     pxPerDay: 8,
     totalDays: 400,
+    timelineStart: now,
     lightMode: false,
     showProjRow: true,
     currentView: 'gantt',

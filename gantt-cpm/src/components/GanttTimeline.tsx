@@ -53,7 +53,7 @@ interface DragPreview {
 
 export default function GanttTimeline() {
     const { state, dispatch } = useGantt();
-    const { visRows, zoom, totalDays, projStart, statusDate, selIdx, lightMode, activities, defCal, pxPerDay } = state;
+    const { visRows, zoom, totalDays, timelineStart: projStart, statusDate, selIdx, lightMode, activities, defCal, pxPerDay } = state;
     const PX = pxPerDay;
     const hdrRef = useRef<HTMLCanvasElement>(null);
     const barRef = useRef<HTMLCanvasElement>(null);

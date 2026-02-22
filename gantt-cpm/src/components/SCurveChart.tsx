@@ -232,7 +232,7 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
             ) : exactWidth ? (
                 <SCurveCanvas
                     width={exactWidth}
-                    projStart={state.projStart}
+                    projStart={state.timelineStart}
                     totalDays={state.totalDays}
                     pxPerDay={exactWidth / state.totalDays}
                     zoom={state.zoom}
@@ -525,6 +525,50 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
         }
     }, [width, projStart, totalDays, PX, zoom, lightMode, statusDate, points, statusDateMs]);
 
+    const [tooltip, setTooltip] = useState<{ x: number; y: number; date: string; planned: string; actual: string } | null>(null);
+
+    const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+        const c = canvasRef.current; if (!c) return;
+        const rect = c.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+
+        // Find nearest point within 20px
+        let best: typeof points[0] | null = null;
+        let bestDist = 20;
+        const containerH = containerRef.current?.getBoundingClientRect().height || 250;
+        const totalH = Math.max(150, containerH);
+        const chartH = totalH - HDR_H - LEGEND_H - PADDING_T - PADDING_B;
+        const chartTop = LEGEND_H + PADDING_T;
+        const chartBot = chartTop + chartH;
+
+        points.forEach(p => {
+            const px = dayDiff(projStart, new Date(p.dateMs)) * PX;
+            const py = chartBot - (p.planned / 100) * chartH;
+            const dist = Math.sqrt((mx - px) ** 2 + (my - py) ** 2);
+            if (dist < bestDist) { bestDist = dist; best = p; }
+            // Also check actual point
+            if (p.actual !== null && p.actual !== undefined) {
+                const ay = chartBot - (p.actual / 100) * chartH;
+                const adist = Math.sqrt((mx - px) ** 2 + (my - ay) ** 2);
+                if (adist < bestDist) { bestDist = adist; best = p; }
+            }
+        });
+
+        if (best) {
+            const b = best as typeof points[0];
+            setTooltip({
+                x: e.clientX - rect.left + 12,
+                y: e.clientY - rect.top - 10,
+                date: new Date(b.dateMs).toLocaleDateString('es-CL'),
+                planned: `${b.planned.toFixed(1)}%`,
+                actual: b.actual !== null && b.actual !== undefined ? `${b.actual.toFixed(1)}%` : '—',
+            });
+        } else {
+            setTooltip(null);
+        }
+    }, [projStart, PX, points]);
+
     useEffect(() => {
         const el = containerRef.current;
         if (!el) return;
@@ -537,8 +581,34 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
     }, [draw]);
 
     return (
-        <div ref={containerRef} style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-            <canvas ref={canvasRef} style={{ display: 'block' }} />
+        <div ref={containerRef} style={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
+            <canvas
+                ref={canvasRef}
+                style={{ display: 'block' }}
+                onMouseMove={handleMouseMove}
+                onMouseLeave={() => setTooltip(null)}
+            />
+            {tooltip && (
+                <div style={{
+                    position: 'absolute',
+                    left: tooltip.x,
+                    top: tooltip.y,
+                    background: lightMode ? '#fff' : '#1e293b',
+                    border: `1px solid ${lightMode ? '#cbd5e1' : '#475569'}`,
+                    borderRadius: 6,
+                    padding: '6px 10px',
+                    fontSize: 11,
+                    color: lightMode ? '#334155' : '#e2e8f0',
+                    pointerEvents: 'none',
+                    zIndex: 10,
+                    boxShadow: '0 2px 8px rgba(0,0,0,.25)',
+                    whiteSpace: 'nowrap',
+                }}>
+                    <div style={{ fontWeight: 'bold', marginBottom: 3 }}>{tooltip.date}</div>
+                    <div style={{ color: '#3b82f6' }}>Programado: {tooltip.planned}</div>
+                    <div style={{ color: '#06b6d4' }}>Real: {tooltip.actual}</div>
+                </div>
+            )}
         </div>
     );
 }
