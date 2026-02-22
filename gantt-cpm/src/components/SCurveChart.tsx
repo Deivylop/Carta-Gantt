@@ -279,6 +279,29 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
         </div>
     );
 }
+// ─── Smooth curve helper (monotone cubic bezier) ─────────────────
+function drawSmoothCurve(ctx: CanvasRenderingContext2D, pts: { x: number; y: number }[]) {
+    if (pts.length < 2) { if (pts.length === 1) { ctx.beginPath(); ctx.arc(pts[0].x, pts[0].y, 2, 0, Math.PI * 2); ctx.fill(); } return; }
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    if (pts.length === 2) {
+        ctx.lineTo(pts[1].x, pts[1].y);
+    } else {
+        const tension = 0.3;
+        for (let i = 0; i < pts.length - 1; i++) {
+            const p0 = pts[Math.max(0, i - 1)];
+            const p1 = pts[i];
+            const p2 = pts[i + 1];
+            const p3 = pts[Math.min(pts.length - 1, i + 2)];
+            const cp1x = p1.x + (p2.x - p0.x) * tension;
+            const cp1y = p1.y + (p2.y - p0.y) * tension;
+            const cp2x = p2.x - (p3.x - p1.x) * tension;
+            const cp2y = p2.y - (p3.y - p1.y) * tension;
+            ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
+        }
+    }
+    ctx.stroke();
+}
 
 // ─── Pure canvas S-Curve for pixel-perfect Gantt alignment ──────────
 interface SCurveCanvasProps {
@@ -403,17 +426,11 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
         // ─── Pct → y pixel ───────────────────────────────
         const pctToY = (pct: number) => chartBot - (pct / 100) * chartH;
 
-        // ─── Draw planned curve ──────────────────────────
+        // ─── Draw planned curve (smooth bezier) ──────────────
         if (points.length > 0) {
             ctx.strokeStyle = plannedColor;
             ctx.lineWidth = 2.5;
-            ctx.beginPath();
-            points.forEach((p, i) => {
-                const x = msToX(p.dateMs);
-                const y = pctToY(p.planned);
-                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-            });
-            ctx.stroke();
+            drawSmoothCurve(ctx, points.map(p => ({ x: msToX(p.dateMs), y: pctToY(p.planned) })));
             ctx.lineWidth = 1;
 
             // Dots
@@ -425,18 +442,12 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
             });
         }
 
-        // ─── Draw actual curve ───────────────────────────
+        // ─── Draw actual curve (smooth bezier) ───────────────
         const actualPoints = points.filter(p => p.actual !== null && p.actual !== undefined);
         if (actualPoints.length > 0) {
             ctx.strokeStyle = actualColor;
             ctx.lineWidth = 2.5;
-            ctx.beginPath();
-            actualPoints.forEach((p, i) => {
-                const x = msToX(p.dateMs);
-                const y = pctToY(p.actual!);
-                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-            });
-            ctx.stroke();
+            drawSmoothCurve(ctx, actualPoints.map(p => ({ x: msToX(p.dateMs), y: pctToY(p.actual!) })));
             ctx.lineWidth = 1;
 
             // Dots

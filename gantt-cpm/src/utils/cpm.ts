@@ -126,6 +126,7 @@ export function newActivity(id?: string, defCal: CalendarType = 6): Activity {
 export interface CPMResult {
     activities: Activity[];
     totalDays: number;
+    projectDays: number;
 }
 
 export function calcCPM(
@@ -136,7 +137,7 @@ export function calcCPM(
     projName: string
 ): CPMResult {
     if (!activities.length) {
-        return { activities: [], totalDays: 90 };
+        return { activities: [], totalDays: 90, projectDays: 90 };
     }
 
     // Build lookup by ID
@@ -387,8 +388,10 @@ export function calcCPM(
     activities.forEach(a => {
         if (a.EF && a.EF > projEnd) projEnd = new Date(a.EF);
     });
-    // Minimal buffer: just a few days after the last activity so the project fills the viewport
-    const totalDays = Math.max(30, dayDiff(projStart, projEnd) + 3);
+    // projectDays = actual project span (for auto-fit zoom)
+    // totalDays = project + buffer months (for scrollable timeline)
+    const projectDays = Math.max(30, dayDiff(projStart, projEnd) + 3);
+    const totalDays = Math.max(projectDays, dayDiff(projStart, projEnd) + 30 + 60);
 
     activities.forEach(a => { a.LF = new Date(projEnd); });
     const sorted = [...activities].sort((a, b) => (b.EF || projEnd).getTime() - (a.EF || projEnd).getTime());
@@ -419,7 +422,7 @@ export function calcCPM(
         }
     });
 
-    return { activities, totalDays };
+    return { activities, totalDays, projectDays };
 }
 
 // ─── Usage Distribution Helper ──────────────────────────────────

@@ -204,9 +204,10 @@ function recalc(state: GanttState): GanttState {
     const result = calcCPM(acts, state.projStart, state.defCal, state.statusDate, state.projName);
     computeOutlineNumbers(result.activities);
     const visRows = buildVisRows(result.activities, state.collapsed, state.activeGroup, state.columns);
-    // Auto-fit: compute pxPerDay so the full timeline fits in the viewport
+    // Auto-fit: pxPerDay based on PROJECT span (not totalDays) so project fills viewport
+    // but totalDays extends beyond for scrollable buffer
     const timelineW = Math.max(400, (typeof window !== 'undefined' ? window.innerWidth : 1200) - state.tableW - 10);
-    const fitPx = timelineW / result.totalDays;
+    const fitPx = timelineW / result.projectDays;
     const pxPerDay = Math.max(0.5, Math.min(fitPx, 150));
     return { ...state, activities: result.activities, totalDays: result.totalDays, visRows, pxPerDay };
 }
