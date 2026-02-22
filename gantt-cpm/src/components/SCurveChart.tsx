@@ -14,7 +14,7 @@ interface SCurveChartProps {
     endDateMs?: number;
 }
 
-export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectIds, exactWidth, startDateMs, endDateMs }: SCurveChartProps = {}) {
+export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectIds, exactWidth }: SCurveChartProps = {}) {
     const { state } = useGantt();
     const [selectedId, setSelectedId] = useState<string>('__PROJECT__');
 
@@ -229,69 +229,19 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
                     No hay suficientes datos de fechas base o duraciones para calcular la Curva S.
                 </div>
-            ) : exactWidth ? (() => {
-                const AXIS_H = 36;
-                return (
-                    <div ref={(el) => {
-                        if (el && el.dataset.measured !== 'true') {
-                            el.dataset.measured = 'true';
-                            const ro = new ResizeObserver(() => {
-                                const h = el.getBoundingClientRect().height;
-                                const chart = el.querySelector('.recharts-wrapper') as HTMLElement;
-                                if (chart) {
-                                    const ch = Math.max(100, Math.floor(h - AXIS_H));
-                                    chart.style.height = ch + 'px';
-                                }
-                            });
-                            ro.observe(el);
-                        }
-                    }} style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', position: 'relative' }}>
-                        {/* Overlay Y-Axis labels */}
-                        <div style={{ position: 'absolute', left: 4, top: 30, bottom: AXIS_H + 10, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', pointerEvents: 'none', zIndex: 2 }}>
-                            {[100, 75, 50, 25, 0].map(v => (
-                                <span key={v} style={{ fontSize: 10, color: textColor, textShadow: state.lightMode ? '0 0 3px #fff, 0 0 3px #fff' : '0 0 3px #0f172a, 0 0 3px #0f172a' }}>{v}%</span>
-                            ))}
-                        </div>
-                        <LineChart
-                            width={exactWidth}
-                            height={200}
-                            data={data.points}
-                            margin={{ top: 5, right: 0, left: 0, bottom: 0 }}
-                        >
-                            <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
-                            <XAxis
-                                type="number"
-                                scale="time"
-                                domain={startDateMs && endDateMs ? [startDateMs, endDateMs] : ['dataMin', 'dataMax']}
-                                dataKey="dateMs"
-                                tick={false}
-                                axisLine={false}
-                                height={1}
-                            />
-                            <YAxis hide domain={[0, 100]} />
-                            <YAxis hide yAxisId="right" orientation="right" domain={[0, 100]} />
-                            <Tooltip
-                                contentStyle={{ backgroundColor: state.lightMode ? '#fff' : '#1e293b', borderColor: gridColor, color: textColor }}
-                                formatter={(value: any, name: any) => [`${value}%`, name]}
-                                labelFormatter={(label: any) => new Date(label).toLocaleDateString()}
-                            />
-                            <Legend verticalAlign="top" height={30} />
-                            <ReferenceLine x={data.statusDateMs} stroke="red" strokeDasharray="3 3" label={{ position: 'insideTopLeft', value: 'Fecha de Corte', fill: 'red', fontSize: 12 }} />
-                            <Line type="monotone" dataKey="planned" name="Avance Programado" stroke={plannedColor} strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 6 }} />
-                            <Line type="monotone" dataKey="actual" name="Avance Real" stroke={actualColor} strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} connectNulls={true} />
-                        </LineChart>
-                        <SCurveTimelineAxis
-                            width={exactWidth}
-                            projStart={state.projStart}
-                            totalDays={state.totalDays}
-                            pxPerDay={exactWidth / state.totalDays}
-                            zoom={state.zoom}
-                            lightMode={state.lightMode}
-                            statusDate={state.statusDate}
-                        />
-                    </div>
-                );
-            })() : (
+            ) : exactWidth ? (
+                <SCurveCanvas
+                    width={exactWidth}
+                    projStart={state.projStart}
+                    totalDays={state.totalDays}
+                    pxPerDay={exactWidth / state.totalDays}
+                    zoom={state.zoom}
+                    lightMode={state.lightMode}
+                    statusDate={state.statusDate}
+                    points={data.points}
+                    statusDateMs={data.statusDateMs}
+                />
+            ) : (
                 <div style={{ flex: 1, minHeight: 0 }}>
                     <ResponsiveContainer width="100%" height="100%">
                         <LineChart
@@ -330,8 +280,8 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
     );
 }
 
-// ─── Gantt-style timeline axis for the embedded S-Curve ──────────
-interface SCurveTimelineAxisProps {
+// ─── Pure canvas S-Curve for pixel-perfect Gantt alignment ──────────
+interface SCurveCanvasProps {
     width: number;
     projStart: Date;
     totalDays: number;
@@ -339,20 +289,167 @@ interface SCurveTimelineAxisProps {
     zoom: string;
     lightMode: boolean;
     statusDate: Date | null;
+    points: { dateMs: number; planned: number; actual: number | null; name: string }[];
+    statusDateMs: number;
 }
 
-function SCurveTimelineAxis({ width, projStart, totalDays, pxPerDay, zoom, lightMode, statusDate }: SCurveTimelineAxisProps) {
+function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, statusDate, points, statusDateMs }: SCurveCanvasProps) {
+    const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const HDR_H = 36;
     const PX = pxPerDay;
+    const HDR_H = 36; // timeline axis height
+    const LEGEND_H = 24;
+    const PADDING_T = 10; // padding top for chart area
+    const PADDING_B = 5;  // padding bottom for chart area
 
-    const draw = useCallback(() => {
+    const draw = useCallback((containerH: number) => {
         const c = canvasRef.current; if (!c) return;
-        c.width = width; c.height = HDR_H;
-        c.style.width = width + 'px'; c.style.height = HDR_H + 'px';
+        const totalH = Math.max(150, containerH);
+        const chartH = totalH - HDR_H - LEGEND_H - PADDING_T - PADDING_B;
+        c.width = width; c.height = totalH;
+        c.style.width = width + 'px'; c.style.height = totalH + 'px';
         const ctx = c.getContext('2d')!;
-        ctx.clearRect(0, 0, width, HDR_H);
+        ctx.clearRect(0, 0, width, totalH);
 
+        // ─── Colors ──────────────────────────────────────
+        const bgColor = lightMode ? '#ffffff' : '#0f172a';
+        const gridColor = lightMode ? '#e2e8f0' : '#1e293b';
+        const textColor = lightMode ? '#334155' : '#94a3b8';
+        const plannedColor = '#3b82f6';
+        const actualColor = '#06b6d4';
+
+        // ─── Background ──────────────────────────────────
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, width, totalH - HDR_H);
+
+        // ─── Legend ──────────────────────────────────────
+        ctx.font = '11px Segoe UI';
+        const lgY = 14;
+        // Planned
+        ctx.fillStyle = plannedColor;
+        ctx.fillRect(width / 2 - 140, lgY - 6, 14, 3);
+        ctx.beginPath(); ctx.arc(width / 2 - 133, lgY - 5, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = textColor;
+        ctx.fillText('Avance Programado', width / 2 - 122, lgY);
+        // Actual
+        ctx.fillStyle = actualColor;
+        ctx.fillRect(width / 2 + 30, lgY - 6, 14, 3);
+        ctx.beginPath(); ctx.arc(width / 2 + 37, lgY - 5, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = textColor;
+        ctx.fillText('Avance Real', width / 2 + 50, lgY);
+
+        const chartTop = LEGEND_H + PADDING_T;
+        const chartBot = chartTop + chartH;
+
+        // ─── Y Axis labels + horizontal grid ─────────────
+        const yTicks = [0, 25, 50, 75, 100];
+        ctx.font = '10px Segoe UI';
+        yTicks.forEach(pct => {
+            const y = chartBot - (pct / 100) * chartH;
+            // Grid line
+            ctx.strokeStyle = gridColor;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+            ctx.setLineDash([]);
+            // Label
+            ctx.fillStyle = textColor;
+            ctx.fillText(`${pct}%`, 4, y - 3);
+        });
+
+        // ─── Vertical month grid lines ───────────────────
+        let cur = new Date(projStart);
+        const end = addDays(projStart, totalDays);
+        while (cur < end) {
+            const nm = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+            const x = dayDiff(projStart, nm) * PX;
+            if (x > 0 && x < width) {
+                ctx.strokeStyle = gridColor;
+                ctx.setLineDash([]);
+                ctx.beginPath(); ctx.moveTo(x, chartTop); ctx.lineTo(x, chartBot); ctx.stroke();
+            }
+            cur = nm;
+        }
+
+        // ─── Helper: date ms → x pixel (same as Gantt!) ──
+        const msToX = (ms: number) => {
+            const date = new Date(ms);
+            return dayDiff(projStart, date) * PX;
+        };
+
+        // ─── Status Date line (red dashed) ───────────────
+        if (statusDateMs) {
+            const sdX = msToX(statusDateMs);
+            if (sdX >= 0 && sdX <= width) {
+                ctx.strokeStyle = '#ef4444';
+                ctx.setLineDash([4, 4]);
+                ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.moveTo(sdX, chartTop); ctx.lineTo(sdX, chartBot); ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.lineWidth = 1;
+                // Label
+                ctx.fillStyle = '#ef4444';
+                ctx.font = 'bold 10px Segoe UI';
+                ctx.fillText('Fecha de Corte', sdX + 4, chartTop + 12);
+            }
+        }
+
+        // ─── Today line (amber) ──────────────────────────
+        const todayX = dayDiff(projStart, new Date()) * PX;
+        if (todayX >= 0 && todayX <= width) {
+            ctx.fillStyle = '#f59e0b';
+            ctx.fillRect(todayX, chartTop, 2, chartH);
+        }
+
+        // ─── Pct → y pixel ───────────────────────────────
+        const pctToY = (pct: number) => chartBot - (pct / 100) * chartH;
+
+        // ─── Draw planned curve ──────────────────────────
+        if (points.length > 0) {
+            ctx.strokeStyle = plannedColor;
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            points.forEach((p, i) => {
+                const x = msToX(p.dateMs);
+                const y = pctToY(p.planned);
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+            ctx.lineWidth = 1;
+
+            // Dots
+            ctx.fillStyle = plannedColor;
+            points.forEach(p => {
+                const x = msToX(p.dateMs);
+                const y = pctToY(p.planned);
+                ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+            });
+        }
+
+        // ─── Draw actual curve ───────────────────────────
+        const actualPoints = points.filter(p => p.actual !== null && p.actual !== undefined);
+        if (actualPoints.length > 0) {
+            ctx.strokeStyle = actualColor;
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            actualPoints.forEach((p, i) => {
+                const x = msToX(p.dateMs);
+                const y = pctToY(p.actual!);
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+            ctx.lineWidth = 1;
+
+            // Dots
+            ctx.fillStyle = actualColor;
+            actualPoints.forEach(p => {
+                const x = msToX(p.dateMs);
+                const y = pctToY(p.actual!);
+                ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
+            });
+        }
+
+        // ─── Timeline Axis (footer) ────────────────────
+        const axisTop = totalH - HDR_H;
         const colors = lightMode ? {
             topBg: '#e2e8f0', topBorder: '#cbd5e1', topText: '#334155',
             botBg: '#f1f5f9', botBorder: '#e2e8f0', botText: '#334155', weekend: '#e0e7ff',
@@ -361,68 +458,76 @@ function SCurveTimelineAxis({ width, projStart, totalDays, pxPerDay, zoom, light
             botBg: '#0f172a', botBorder: '#1e293b', botText: '#64748b', weekend: '#1a1040',
         };
 
-        // Month headers (row 1: 0..17)
-        let cur = new Date(projStart);
-        const end = addDays(projStart, totalDays);
+        // Month headers
+        cur = new Date(projStart);
         while (cur < end) {
             const x = dayDiff(projStart, cur) * PX;
             const nm = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
             const w = Math.min(dayDiff(cur, nm) * PX, width - x);
-            ctx.fillStyle = colors.topBg; ctx.fillRect(x, 0, w, 17);
-            ctx.strokeStyle = colors.topBorder; ctx.strokeRect(x, 0, w, 17);
+            ctx.fillStyle = colors.topBg; ctx.fillRect(x, axisTop, w, 17);
+            ctx.strokeStyle = colors.topBorder; ctx.strokeRect(x, axisTop, w, 17);
             ctx.fillStyle = colors.topText; ctx.font = 'bold 10px Segoe UI';
             const lbl = cur.toLocaleDateString('es-CL', { month: 'short', year: '2-digit' });
-            if (w > 24) ctx.fillText(lbl, x + 4, 12);
+            if (w > 24) ctx.fillText(lbl, x + 4, axisTop + 12);
             cur = nm;
         }
 
-        // Sub-headers (row 2: 17..36)
+        // Sub-headers
         cur = new Date(projStart);
         while (cur < end) {
             const x = dayDiff(projStart, cur) * PX;
             if (zoom === 'month') {
                 const nm = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
                 const w = dayDiff(cur, nm) * PX;
-                ctx.fillStyle = colors.botBg; ctx.fillRect(x, 17, w, 19);
-                ctx.strokeStyle = colors.botBorder; ctx.beginPath(); ctx.moveTo(x, 17); ctx.lineTo(x, HDR_H); ctx.stroke();
+                ctx.fillStyle = colors.botBg; ctx.fillRect(x, axisTop + 17, w, 19);
+                ctx.strokeStyle = colors.botBorder; ctx.beginPath(); ctx.moveTo(x, axisTop + 17); ctx.lineTo(x, axisTop + HDR_H); ctx.stroke();
                 cur = nm;
             } else if (zoom === 'week') {
                 const w = 7 * PX;
-                ctx.fillStyle = colors.botBg; ctx.fillRect(x, 17, w, 19);
-                ctx.strokeStyle = colors.botBorder; ctx.beginPath(); ctx.moveTo(x, 17); ctx.lineTo(x, HDR_H); ctx.stroke();
+                ctx.fillStyle = colors.botBg; ctx.fillRect(x, axisTop + 17, w, 19);
+                ctx.strokeStyle = colors.botBorder; ctx.beginPath(); ctx.moveTo(x, axisTop + 17); ctx.lineTo(x, axisTop + HDR_H); ctx.stroke();
                 const dd = 'S ' + String(cur.getDate()).padStart(2, '0') + '/' + String(cur.getMonth() + 1).padStart(2, '0');
                 ctx.fillStyle = colors.botText; ctx.font = '9px Segoe UI';
-                if (PX * 7 > 40) ctx.fillText(dd, x + 2, 30);
+                if (PX * 7 > 40) ctx.fillText(dd, x + 2, axisTop + 30);
                 cur.setDate(cur.getDate() + 7);
             } else {
                 const isSun = cur.getDay() === 0, isSat = cur.getDay() === 6;
-                ctx.fillStyle = isSun || isSat ? colors.weekend : colors.botBg; ctx.fillRect(x, 17, PX, 19);
-                ctx.strokeStyle = colors.botBorder; ctx.beginPath(); ctx.moveTo(x, 17); ctx.lineTo(x, HDR_H); ctx.stroke();
+                ctx.fillStyle = isSun || isSat ? colors.weekend : colors.botBg; ctx.fillRect(x, axisTop + 17, PX, 19);
+                ctx.strokeStyle = colors.botBorder; ctx.beginPath(); ctx.moveTo(x, axisTop + 17); ctx.lineTo(x, axisTop + HDR_H); ctx.stroke();
                 const days = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
                 ctx.fillStyle = isSun || isSat ? (lightMode ? '#94a3b8' : '#374151') : colors.botText; ctx.font = '9px Segoe UI';
-                if (PX >= 18) ctx.fillText(days[cur.getDay()], x + 2, 30);
-                else if (PX >= 14) ctx.fillText(String(cur.getDate()), x + 2, 30);
+                if (PX >= 18) ctx.fillText(days[cur.getDay()], x + 2, axisTop + 30);
+                else if (PX >= 14) ctx.fillText(String(cur.getDate()), x + 2, axisTop + 30);
                 cur.setDate(cur.getDate() + 1);
             }
         }
 
-        // Today marker
-        const today = new Date();
-        const todayX = dayDiff(projStart, today) * PX;
+        // Today & status date markers on axis
         if (todayX >= 0 && todayX <= width) {
-            ctx.fillStyle = '#f59e0b'; ctx.fillRect(todayX, 0, 2, HDR_H);
+            ctx.fillStyle = '#f59e0b'; ctx.fillRect(todayX, axisTop, 2, HDR_H);
         }
-
-        // Status date marker
         if (statusDate) {
             const sdx = dayDiff(projStart, statusDate) * PX;
             if (sdx >= 0 && sdx <= width) {
-                ctx.fillStyle = '#06b6d4'; ctx.fillRect(sdx, 0, 2, HDR_H);
+                ctx.fillStyle = '#06b6d4'; ctx.fillRect(sdx, axisTop, 2, HDR_H);
             }
         }
-    }, [width, projStart, totalDays, PX, zoom, lightMode, statusDate]);
+    }, [width, projStart, totalDays, PX, zoom, lightMode, statusDate, points, statusDateMs]);
 
-    useEffect(() => { draw(); }, [draw]);
+    useEffect(() => {
+        const el = containerRef.current;
+        if (!el) return;
+        const ro = new ResizeObserver(() => {
+            draw(el.getBoundingClientRect().height);
+        });
+        ro.observe(el);
+        draw(el.getBoundingClientRect().height);
+        return () => ro.disconnect();
+    }, [draw]);
 
-    return <canvas ref={canvasRef} style={{ display: 'block', flexShrink: 0 }} />;
+    return (
+        <div ref={containerRef} style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+            <canvas ref={canvasRef} style={{ display: 'block' }} />
+        </div>
+    );
 }
