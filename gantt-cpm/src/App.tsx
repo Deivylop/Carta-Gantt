@@ -16,6 +16,9 @@ import SupabaseModal from './components/modals/SupabaseModal';
 import SaveProgressModal from './components/modals/SaveProgressModal';
 import SCurveChart from './components/SCurveChart';
 import TaskUsageGrid from './components/TaskUsageGrid';
+import ResourceUsageTable from './components/ResourceUsageTable';
+import ResourceUsageGrid from './components/ResourceUsageGrid';
+import ResourceForm from './components/ResourceForm';
 import { newActivity } from './utils/cpm';
 import { autoId } from './utils/helpers';
 import { saveToSupabase, loadFromSupabase } from './utils/supabaseSync';
@@ -238,6 +241,34 @@ function AppInner() {
           {/* Form Panel */}
           <div style={{ height: formH, flexShrink: 0, overflow: 'hidden' }}>
             <TaskForm />
+          </div>
+        </div>
+      ) : state.currentView === 'resUsage' ? (
+        <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+          {/* Resource Usage Area (Table | Resize | Grid) */}
+          <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+            {/* Table */}
+            <div style={{ width: state.tableW, flexShrink: 0, overflow: 'hidden' }}>
+              <ResourceUsageTable />
+            </div>
+
+            {/* Vertical Resize Handle */}
+            <div className={`v-resize ${resizing === 'v' ? 'rsz' : ''}`}
+              onMouseDown={() => setResizing('v')} />
+
+            {/* Usage Grid */}
+            <div style={{ flex: 1, overflow: 'hidden' }}>
+              <ResourceUsageGrid />
+            </div>
+          </div>
+
+          {/* Horizontal Resize Handle */}
+          <div className={`h-resize ${resizing === 'h' ? 'rsz' : ''}`}
+            onMouseDown={() => setResizing('h')} />
+
+          {/* Form Panel */}
+          <div style={{ height: formH, flexShrink: 0, overflow: 'hidden' }}>
+            <ResourceForm />
           </div>
         </div>
       ) : (

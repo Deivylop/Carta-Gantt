@@ -4,6 +4,7 @@ import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine
 } from 'recharts';
 import { isoDate, getExactElapsedRatio, dayDiff, addDays } from '../utils/cpm';
+import type { ZoomLevel } from '../types/gantt';
 
 interface SCurveChartProps {
     hideHeader?: boolean;
@@ -19,35 +20,48 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
     const [selectedId, setSelectedId] = useState<string>('__PROJECT__');
 
     const data = useMemo(() => {
+        const isResUsage = state.currentView === 'resUsage';
         const effectiveId = forcedActivityId || selectedId;
-        // 1. Get base tasks for the selected context
+        const isProjectLevel = !multiSelectIds && effectiveId === '__PROJECT__';
+
+        let targetResNames: string[] = [];
         let tasks: any[] = [];
-        if (multiSelectIds) {
-            tasks = state.activities.filter(a => multiSelectIds.includes(a.id) && a.type === 'task');
-        } else if (effectiveId === '__PROJECT__') {
-            tasks = state.activities.filter(a => a.type === 'task' && !a._isProjRow);
+
+        if (isResUsage) {
+            if (multiSelectIds && multiSelectIds.length > 0) {
+                targetResNames = multiSelectIds;
+            } else {
+                targetResNames = isProjectLevel ? state.resourcePool.map(r => r.name) : [effectiveId];
+            }
+            tasks = state.activities.filter(a => !a._isProjRow && a.type === 'task' && a.resources && a.resources.some(r => targetResNames.includes(r.name)));
         } else {
-            const idx = state.activities.findIndex(a => a.id === effectiveId);
-            if (idx >= 0) {
-                const node = state.activities[idx];
-                if (node.type === 'task') {
-                    tasks = [node];
-                } else if (node.type === 'summary') {
-                    for (let i = idx + 1; i < state.activities.length; i++) {
-                        const child = state.activities[i];
-                        if (child.lv <= node.lv) break;
-                        if (child.type === 'task') {
-                            tasks.push(child);
+            if (multiSelectIds) {
+                tasks = state.activities.filter(a => multiSelectIds.includes(a.id) && a.type === 'task');
+            } else if (effectiveId === '__PROJECT__') {
+                tasks = state.activities.filter(a => a.type === 'task' && !a._isProjRow);
+            } else {
+                const idx = state.activities.findIndex(a => a.id === effectiveId);
+                if (idx >= 0) {
+                    const node = state.activities[idx];
+                    if (node.type === 'task') {
+                        tasks = [node];
+                    } else if (node.type === 'summary') {
+                        for (let i = idx + 1; i < state.activities.length; i++) {
+                            const child = state.activities[i];
+                            if (child.lv <= node.lv) break;
+                            if (child.type === 'task') {
+                                tasks.push(child);
+                            }
                         }
                     }
                 }
             }
         }
 
-        if (tasks.length === 0) return { points: [], statusDateMs: 0 };
+        if (tasks.length === 0) return { points: [], statusDateMs: 0, maxValue: 0, isResUsage };
 
-        let minMs = 8640000000000000; // Max possible date ms
-        let maxMs = -8640000000000000; // Min possible date ms
+        let minMs = 8640000000000000;
+        let maxMs = -8640000000000000;
         let totalWeight = 0;
         let fallbackTotalWeight = 0;
 
@@ -59,9 +73,16 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
             const start = new Date(rawStart); start.setHours(0, 0, 0, 0);
             const end = new Date(rawEnd); end.setHours(0, 0, 0, 0);
 
-            const cw = t.work || 0;
-            const w = (t.weight != null && t.weight > 0) ? t.weight : cw;
-            const wBackup = t.dur || 1;
+            let w = 0, wBackup = 0;
+            if (isResUsage) {
+                const resWork = t.resources?.filter((r: any) => targetResNames.includes(r.name)).reduce((sum: number, r: any) => sum + (r.work || 0), 0) || 0;
+                w = resWork;
+                wBackup = resWork;
+            } else {
+                const cw = t.work || 0;
+                w = (t.weight != null && t.weight > 0) ? t.weight : (cw || t.dur || 1);
+                wBackup = t.dur || 1;
+            }
 
             if (start && start.getTime() < minMs) minMs = start.getTime();
             if (end && end.getTime() > maxMs) maxMs = end.getTime();
@@ -72,27 +93,24 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
             }
         });
 
-        if (totalWeight === 0 || minMs > maxMs) return { points: [], statusDateMs: 0 };
+        if (totalWeight === 0 || minMs > maxMs) return { points: [], statusDateMs: 0, maxValue: 0, isResUsage };
 
-        // Calculate weekly points from minDate to maxDate + 1 month
         const points: any[] = [];
         const minDate = new Date(minMs);
         const maxDate = new Date(maxMs);
 
         let current = new Date(minDate);
         current.setHours(0, 0, 0, 0);
-        // Align to the same weekday as the status date to prevent misaligned points
         const targetDay = new Date(state.statusDate || new Date()).getDay();
         while (current.getDay() !== targetDay) {
             current.setDate(current.getDate() - 1);
         }
 
         const end = new Date(maxDate);
-        end.setDate(end.getDate() + 14); // Add 2 weeks buffer
+        end.setDate(end.getDate() + 14);
 
         const chartStartDateStr = isoDate(current);
 
-        // Sort progress history and inject a 0% at the start of the chart
         const history = [
             { date: chartStartDateStr, actualPct: 0 },
             ...state.progressHistory
@@ -104,7 +122,6 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
             let earned = 0;
             let fallbackEarned = 0;
 
-            // The status date or chart coordinate evaluates to the end of the day.
             const evalDate = new Date(date);
             evalDate.setDate(evalDate.getDate() + 1);
 
@@ -113,15 +130,22 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                 const rawEnd = t.blEF || t.EF;
                 if (!rawStart || !rawEnd) return;
 
-                const cw = t.work || 0;
-                const w = (t.weight != null && t.weight > 0) ? t.weight : cw;
-                const wBackup = t.dur || 1;
+                let w = 0, wBackup = 0;
+                if (isResUsage) {
+                    const resWork = t.resources?.filter((r: any) => targetResNames.includes(r.name)).reduce((sum: number, r: any) => sum + (r.work || 0), 0) || 0;
+                    w = resWork; wBackup = resWork;
+                } else {
+                    const cw = t.work || 0;
+                    w = (t.weight != null && t.weight > 0) ? t.weight : (cw || t.dur || 1);
+                    wBackup = t.dur || 1;
+                }
 
                 const ratio = getExactElapsedRatio(rawStart, rawEnd, evalDate, t.blCal || t.cal || state.defCal);
 
                 earned += w * ratio;
                 fallbackEarned += wBackup * ratio;
             });
+            if (isResUsage) return earned;
             if (totalWeight > 0) return (earned / totalWeight) * 100;
             if (fallbackTotalWeight > 0) return (fallbackEarned / fallbackTotalWeight) * 100;
             return 0;
@@ -154,68 +178,79 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
             const iso = isoDate(d);
             let actualPct: number | null = null;
 
-            // Determine the effective selection mode
-            const isProjectLevel = !multiSelectIds && effectiveId === '__PROJECT__';
-
-            // Only plot actual progress for exact history dates or status date
             if (time <= sTime) {
                 const exactRecord = history.find(h => h.date === iso);
-                if (exactRecord) {
-                    if (isProjectLevel) {
-                        actualPct = exactRecord.actualPct;
-                    } else if (multiSelectIds && multiSelectIds.length > 0) {
-                        // Weighted average of selected activities' progress from history details
-                        let weightedSum = 0;
-                        let weightSum = 0;
+
+                if (isResUsage) {
+                    let historyEarnedHours = 0;
+                    if (exactRecord || time === sTime) {
                         tasks.forEach(t => {
-                            const cw = t.work || 0;
-                            const w = (t.weight != null && t.weight > 0) ? t.weight : (cw || t.dur || 1);
                             let actPct = 0;
-                            // Find this activity's actual % from history details
-                            const recIdx = history.indexOf(exactRecord);
-                            for (let i = recIdx; i >= 0; i--) {
-                                const rec = history[i];
-                                if (rec.details && rec.details[t.id] !== undefined) {
-                                    actPct = rec.details[t.id];
-                                    break;
+                            if (time === sTime) {
+                                actPct = t.pct || 0;
+                            } else if (exactRecord) {
+                                const recIdx = history.indexOf(exactRecord);
+                                for (let i = recIdx; i >= 0; i--) {
+                                    const rec = history[i];
+                                    if (rec.details && rec.details[t.id] !== undefined) {
+                                        actPct = rec.details[t.id]; break;
+                                    }
                                 }
                             }
-                            weightedSum += w * actPct;
-                            weightSum += w;
+                            const resWork = t.resources?.filter((r: any) => targetResNames.includes(r.name)).reduce((sum: number, r: any) => sum + (r.work || 0), 0) || 0;
+                            historyEarnedHours += resWork * (actPct / 100);
                         });
-                        actualPct = weightSum > 0 ? weightedSum / weightSum : 0;
-                    } else {
-                        // Single activity selected
-                        let found = false;
-                        const idx = history.indexOf(exactRecord);
-                        for (let i = idx; i >= 0; i--) {
-                            const rec = history[i];
-                            if (rec.details && rec.details[effectiveId] !== undefined) {
-                                actualPct = rec.details[effectiveId];
-                                found = true;
-                                break;
-                            }
-                        }
-                        if (!found) actualPct = 0;
+                        actualPct = historyEarnedHours;
                     }
-                } else if (time === sTime) {
-                    if (isProjectLevel) {
-                        const projAct = state.activities.find(a => a._isProjRow);
-                        actualPct = projAct ? (projAct.pct || 0) : 0;
-                    } else if (multiSelectIds && multiSelectIds.length > 0) {
-                        // Weighted average of selected activities' current pct
-                        let weightedSum = 0;
-                        let weightSum = 0;
-                        tasks.forEach(t => {
-                            const cw = t.work || 0;
-                            const w = (t.weight != null && t.weight > 0) ? t.weight : (cw || t.dur || 1);
-                            weightedSum += w * (t.pct || 0);
-                            weightSum += w;
-                        });
-                        actualPct = weightSum > 0 ? weightedSum / weightSum : 0;
-                    } else {
-                        const selAct = state.activities.find(a => a.id === effectiveId);
-                        actualPct = selAct ? (selAct.pct || 0) : 0;
+                } else {
+                    if (exactRecord) {
+                        if (isProjectLevel) {
+                            actualPct = exactRecord.actualPct;
+                        } else if (multiSelectIds && multiSelectIds.length > 0) {
+                            let weightedSum = 0;
+                            let weightSum = 0;
+                            tasks.forEach(t => {
+                                const cw = t.work || 0;
+                                const w = (t.weight != null && t.weight > 0) ? t.weight : (cw || t.dur || 1);
+                                let actPct = 0;
+                                const recIdx = history.indexOf(exactRecord);
+                                for (let i = recIdx; i >= 0; i--) {
+                                    const rec = history[i];
+                                    if (rec.details && rec.details[t.id] !== undefined) {
+                                        actPct = rec.details[t.id]; break;
+                                    }
+                                }
+                                weightedSum += w * actPct;
+                                weightSum += w;
+                            });
+                            actualPct = weightSum > 0 ? weightedSum / weightSum : 0;
+                        } else {
+                            let found = false;
+                            const idx = history.indexOf(exactRecord);
+                            for (let i = idx; i >= 0; i--) {
+                                const rec = history[i];
+                                if (rec.details && rec.details[effectiveId] !== undefined) {
+                                    actualPct = rec.details[effectiveId]; found = true; break;
+                                }
+                            }
+                            if (!found) actualPct = 0;
+                        }
+                    } else if (time === sTime) {
+                        if (isProjectLevel) {
+                            const projAct = state.activities.find(a => a._isProjRow);
+                            actualPct = projAct ? (projAct.pct || 0) : 0;
+                        } else if (multiSelectIds && multiSelectIds.length > 0) {
+                            let weightedSum = 0; let weightSum = 0;
+                            tasks.forEach(t => {
+                                const cw = t.work || 0;
+                                const w = (t.weight != null && t.weight > 0) ? t.weight : (cw || t.dur || 1);
+                                weightedSum += w * (t.pct || 0); weightSum += w;
+                            });
+                            actualPct = weightSum > 0 ? weightedSum / weightSum : 0;
+                        } else {
+                            const selAct = state.activities.find(a => a.id === effectiveId);
+                            actualPct = selAct ? (selAct.pct || 0) : 0;
+                        }
                     }
                 }
             }
@@ -229,9 +264,9 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
             });
         });
 
-        return { points, statusDateMs: sTime };
+        return { points, statusDateMs: sTime, maxValue: totalWeight, isResUsage };
 
-    }, [state.activities, state.progressHistory, state.statusDate, selectedId, multiSelectIds, forcedActivityId]);
+    }, [state.activities, state.progressHistory, state.statusDate, selectedId, multiSelectIds, forcedActivityId, state.currentView, state.resourcePool, state.defCal]);
 
     const textColor = state.lightMode ? '#1e293b' : '#f8fafc';
     const gridColor = state.lightMode ? '#e2e8f0' : '#334155';
@@ -251,12 +286,23 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                             background: state.lightMode ? '#fff' : '#1e293b', color: textColor, outline: 'none', maxWidth: '300px'
                         }}
                     >
-                        <option value="__PROJECT__">Todo el Proyecto</option>
-                        {state.activities.filter(a => !a._isProjRow).map(a => (
-                            <option key={a.id} value={a.id}>
-                                {'\u00A0'.repeat(a.lv * 4)}{a.id} - {a.name}
-                            </option>
-                        ))}
+                        {data.isResUsage ? (
+                            <>
+                                <option value="__PROJECT__">Todos los Recursos</option>
+                                {state.resourcePool.map(r => (
+                                    <option key={r.name} value={r.name}>{r.name}</option>
+                                ))}
+                            </>
+                        ) : (
+                            <>
+                                <option value="__PROJECT__">Todo el Proyecto</option>
+                                {state.activities.filter(a => !a._isProjRow).map(a => (
+                                    <option key={a.id} value={a.id}>
+                                        {'\u00A0'.repeat(a.lv * 4)}{a.id} - {a.name}
+                                    </option>
+                                ))}
+                            </>
+                        )}
                     </select>
                 </div>
             )}
@@ -271,11 +317,13 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                     projStart={state.timelineStart}
                     totalDays={state.totalDays}
                     pxPerDay={state.pxPerDay}
-                    zoom={state.currentView === 'usage' ? (state.usageZoom || 'week') : state.zoom}
+                    zoom={state.currentView === 'usage' || state.currentView === 'resUsage' ? (state.usageZoom || 'week') : state.zoom}
                     lightMode={state.lightMode}
                     statusDate={state.statusDate}
                     points={data.points}
                     statusDateMs={data.statusDateMs}
+                    maxValue={data.isResUsage ? data.maxValue : 100}
+                    isHours={data.isResUsage}
                 />
             ) : (
                 <div style={{ flex: 1, minHeight: 0 }}>
@@ -297,17 +345,17 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                                 textAnchor="end"
                                 height={60}
                             />
-                            <YAxis stroke={textColor} tick={{ fill: textColor, fontSize: 12 }} domain={[0, 100]} tickFormatter={(val: number) => `${val}%`} />
-                            <YAxis yAxisId="right" orientation="right" stroke={textColor} tick={{ fill: textColor, fontSize: 12 }} domain={[0, 100]} tickFormatter={(val: number) => `${val}%`} />
+                            <YAxis stroke={textColor} tick={{ fill: textColor, fontSize: 12 }} domain={[0, data.isResUsage ? data.maxValue : 100]} tickFormatter={(val: number) => data.isResUsage ? `${val.toLocaleString('es-CL', { maximumFractionDigits: 0 })}h` : `${val}%`} />
+                            <YAxis yAxisId="right" orientation="right" stroke={textColor} tick={{ fill: textColor, fontSize: 12 }} domain={[0, data.isResUsage ? data.maxValue : 100]} tickFormatter={(val: number) => data.isResUsage ? `${val.toLocaleString('es-CL', { maximumFractionDigits: 0 })}h` : `${val}%`} />
                             <Tooltip
                                 contentStyle={{ backgroundColor: state.lightMode ? '#fff' : '#1e293b', borderColor: gridColor, color: textColor }}
-                                formatter={(value: any, name: any) => [`${value}%`, name]}
+                                formatter={(value: any, name: any) => [data.isResUsage ? `${value.toLocaleString('es-CL')} hrs` : `${value}%`, name]}
                                 labelFormatter={(label: any) => new Date(label).toLocaleDateString()}
                             />
                             <Legend verticalAlign="top" height={36} />
                             <ReferenceLine x={data.statusDateMs} stroke="red" strokeDasharray="3 3" label={{ position: 'insideTopLeft', value: 'Fecha de Corte', fill: 'red', fontSize: 12 }} />
-                            <Line type="monotone" dataKey="planned" name="Avance Programado" stroke={plannedColor} strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 6 }} />
-                            <Line type="monotone" dataKey="actual" name="Avance Real" stroke={actualColor} strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} connectNulls={true} />
+                            <Line type="monotone" dataKey="planned" name={data.isResUsage ? "HH Programadas" : "Avance Programado"} stroke={plannedColor} strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 6 }} />
+                            <Line type="monotone" dataKey="actual" name={data.isResUsage ? "HH Reales" : "Avance Real"} stroke={actualColor} strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} connectNulls={true} />
                         </LineChart>
                     </ResponsiveContainer>
                 </div>
@@ -356,14 +404,16 @@ interface SCurveCanvasProps {
     projStart: Date;
     totalDays: number;
     pxPerDay: number;
-    zoom: string;
+    zoom: ZoomLevel;
     lightMode: boolean;
-    statusDate: Date | null;
-    points: { dateMs: number; planned: number; actual: number | null; name: string }[];
-    statusDateMs: number;
+    statusDate?: Date;
+    points: any[];
+    statusDateMs?: number;
+    maxValue?: number;
+    isHours?: boolean;
 }
 
-function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, statusDate, points, statusDateMs }: SCurveCanvasProps) {
+function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, statusDate, points, statusDateMs, maxValue, isHours }: SCurveCanvasProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const PX = pxPerDay;
@@ -412,10 +462,12 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
         const chartBot = chartTop + chartH;
 
         // ─── Y Axis labels + horizontal grid ─────────────
-        const yTicks = [0, 25, 50, 75, 100];
+        const yMax = maxValue && maxValue > 0 ? maxValue : 100;
+        const yTicks = [0, yMax * 0.25, yMax * 0.5, yMax * 0.75, yMax];
         ctx.font = '10px Segoe UI';
-        yTicks.forEach(pct => {
-            const y = chartBot - (pct / 100) * chartH;
+        const formatY = (v: number) => isHours ? v.toLocaleString('es-CL', { maximumFractionDigits: 0 }) + 'h' : Math.round(v) + '%';
+        yTicks.forEach(val => {
+            const y = chartBot - (val / yMax) * chartH;
             // Grid line
             ctx.strokeStyle = gridColor;
             ctx.setLineDash([3, 3]);
@@ -423,7 +475,7 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
             ctx.setLineDash([]);
             // Label
             ctx.fillStyle = textColor;
-            ctx.fillText(`${pct}%`, 4, y - 3);
+            ctx.fillText(formatY(val), 4, y - 3);
         });
 
         // ─── Vertical month grid lines ───────────────────
@@ -470,21 +522,21 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
             ctx.fillRect(todayX, chartTop, 2, chartH);
         }
 
-        // ─── Pct → y pixel ───────────────────────────────
-        const pctToY = (pct: number) => chartBot - (pct / 100) * chartH;
+        // ─── Value → y pixel ───────────────────────────────
+        const valToY = (val: number) => chartBot - (val / yMax) * chartH;
 
         // ─── Draw planned curve (smooth bezier) ──────────────
         if (points.length > 0) {
             ctx.strokeStyle = plannedColor;
             ctx.lineWidth = 2.5;
-            drawSmoothCurve(ctx, points.map(p => ({ x: msToX(p.dateMs), y: pctToY(p.planned) })), chartTop, chartBot);
+            drawSmoothCurve(ctx, points.map(p => ({ x: msToX(p.dateMs), y: valToY(p.planned) })), chartTop, chartBot);
             ctx.lineWidth = 1;
 
             // Dots
             ctx.fillStyle = plannedColor;
             points.forEach(p => {
                 const x = msToX(p.dateMs);
-                const y = pctToY(p.planned);
+                const y = valToY(p.planned);
                 ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
             });
         }
@@ -494,14 +546,14 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
         if (actualPoints.length > 0) {
             ctx.strokeStyle = actualColor;
             ctx.lineWidth = 2.5;
-            drawSmoothCurve(ctx, actualPoints.map(p => ({ x: msToX(p.dateMs), y: pctToY(p.actual!) })), chartTop, chartBot);
+            drawSmoothCurve(ctx, actualPoints.map(p => ({ x: msToX(p.dateMs), y: valToY(p.actual!) })), chartTop, chartBot);
             ctx.lineWidth = 1;
 
             // Dots
             ctx.fillStyle = actualColor;
             actualPoints.forEach(p => {
                 const x = msToX(p.dateMs);
-                const y = pctToY(p.actual!);
+                const y = valToY(p.actual!);
                 ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
             });
         }
@@ -634,6 +686,8 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
         const handler = () => {
             const grBody = document.getElementById('gr-body');
             if (grBody) grBody.scrollLeft = wrapper.scrollLeft;
+            const resGrBody = document.getElementById('res-gr-body');
+            if (resGrBody) resGrBody.scrollLeft = wrapper.scrollLeft;
         };
         wrapper.addEventListener('scroll', handler);
         return () => wrapper.removeEventListener('scroll', handler);

@@ -59,8 +59,9 @@ export interface GanttState {
     lightMode: boolean;
     showProjRow: boolean;
     // View state
-    currentView: 'gantt' | 'resources' | 'scurve' | 'usage';
+    currentView: 'gantt' | 'resources' | 'scurve' | 'usage' | 'resUsage';
     collapsed: Set<string>;
+    expResources: Set<string>;
     tableW: number;       // Global table width
     activeGroup: string;
     columns: ColumnDef[];
@@ -90,11 +91,12 @@ export type Action =
     | { type: 'SET_ZOOM'; zoom: ZoomLevel }
     | { type: 'SET_PX_PER_DAY'; px: number }
     | { type: 'TOGGLE_THEME' }
-    | { type: 'SET_VIEW'; view: 'gantt' | 'resources' | 'scurve' | 'usage' }
+    | { type: 'SET_VIEW'; view: 'gantt' | 'resources' | 'scurve' | 'usage' | 'resUsage' }
     | { type: 'SET_TABLE_W', width: number }
     | { type: 'SET_USAGE_MODE'; mode: GanttState['usageMode'] }
     | { type: 'SET_USAGE_ZOOM'; zoom: GanttState['usageZoom'] }
     | { type: 'TOGGLE_COLLAPSE'; id: string }
+    | { type: 'TOGGLE_RES_COLLAPSE'; id: string }
     | { type: 'COLLAPSE_ALL' }
     | { type: 'EXPAND_ALL' }
     | { type: 'COLLAPSE_TO_LEVEL'; level: number }
@@ -328,6 +330,11 @@ function reducer(state: GanttState, action: Action): GanttState {
             c.has(action.id) ? c.delete(action.id) : c.add(action.id);
             const visRows = buildVisRows(state.activities, c, state.activeGroup, state.columns);
             return { ...state, collapsed: c, visRows };
+        }
+        case 'TOGGLE_RES_COLLAPSE': {
+            const c = new Set(state.expResources);
+            c.has(action.id) ? c.delete(action.id) : c.add(action.id);
+            return { ...state, expResources: c };
         }
 
         case 'COLLAPSE_ALL': {
@@ -646,6 +653,7 @@ const initialState: GanttState = {
     showProjRow: true,
     currentView: 'gantt',
     collapsed: new Set(),
+    expResources: new Set(),
     selIdx: -1,
     tableW: 400,
     activeGroup: 'none',

@@ -7,7 +7,7 @@ import { newActivity, isoDate, parseDate } from '../utils/cpm';
 import { autoId, exportJSON, exportCSV, importJSONData, importCSVData } from '../utils/helpers';
 import {
     Save, Plus, Trash2, ArrowRight, ClipboardPaste, Scissors, Settings, Calculator, BarChart3, Sun, Moon, Clock,
-    TrendingUp, LineChart, FileText, Diamond, ArrowLeft, ArrowUp, ArrowDown, Info, Undo2, Cloud, Database, Upload, Download, LayoutTemplate
+    TrendingUp, LineChart, FileText, Diamond, ArrowLeft, ArrowUp, ArrowDown, Info, Undo2, Cloud, Database, Upload, Download, LayoutTemplate, Users
 } from 'lucide-react';
 import type { ZoomLevel }
     from '../types/gantt';
@@ -155,8 +155,9 @@ export default function Ribbon() {
                         <RB label="Hoja de Recursos" active={state.currentView === 'resources'} onClick={() => dispatch({ type: 'SET_VIEW', view: 'resources' })} />
                         <RB icon={<LineChart size={16} />} label="Curva S" active={state.currentView === 'scurve'} onClick={() => dispatch({ type: 'SET_VIEW', view: 'scurve' })} />
                         <RB icon={<LayoutTemplate size={16} />} label="Uso de Tareas" active={state.currentView === 'usage'} onClick={() => dispatch({ type: 'SET_VIEW', view: 'usage' })} />
+                        <RB icon={<Users size={16} />} label="Uso de Recursos" active={state.currentView === 'resUsage'} onClick={() => dispatch({ type: 'SET_VIEW', view: 'resUsage' })} />
                     </RG>
-                    {state.currentView === 'usage' && (
+                    {(state.currentView === 'usage' || state.currentView === 'resUsage') && (
                         <RG label="USO (MÉTRICA)">
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                                 <select className="form-input" style={{ fontSize: 10, padding: '2px 4px' }} value={state.usageMode}
@@ -171,13 +172,14 @@ export default function Ribbon() {
                     )}
                     <RG label="ZOOM">
                         {(['day', 'week', 'month'] as ZoomLevel[]).map(z => {
-                            const active = state.currentView === 'usage' ? state.usageZoom === z : state.zoom === z;
-                            const onClick = () => state.currentView === 'usage'
+                            const isUsageView = state.currentView === 'usage' || state.currentView === 'resUsage';
+                            const active = isUsageView ? state.usageZoom === z : state.zoom === z;
+                            const onClick = () => isUsageView
                                 ? dispatch({ type: 'SET_USAGE_ZOOM', zoom: z as any })
                                 : dispatch({ type: 'SET_ZOOM', zoom: z });
                             return <RB key={z} label={z === 'day' ? 'Día' : z === 'week' ? 'Semana' : 'Mes'} active={active} onClick={onClick} />;
                         })}
-                        {state.currentView !== 'usage' && <RB label="Hoy" onClick={() => window.dispatchEvent(new Event('gantt-go-today'))} />}
+                        {(state.currentView !== 'usage' && state.currentView !== 'resUsage') && <RB label="Hoy" onClick={() => window.dispatchEvent(new Event('gantt-go-today'))} />}
                     </RG>
                     <RG label="TEMA">
                         <RB icon={state.lightMode ? <Moon size={14} /> : <Sun size={14} />} label={state.lightMode ? '☾ Oscuro' : '☀ Claro'} onClick={() => dispatch({ type: 'TOGGLE_THEME' })} />
