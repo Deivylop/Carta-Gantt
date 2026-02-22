@@ -421,6 +421,9 @@ export default function GanttTimeline() {
             if (glBody) glBody.scrollTop = body.scrollTop;
             const hdrWrap = body.previousElementSibling as HTMLElement;
             if (hdrWrap) hdrWrap.scrollLeft = body.scrollLeft;
+            // Sync with S-Curve if present
+            const scurveBody = document.getElementById('scurve-body');
+            if (scurveBody) scurveBody.scrollLeft = body.scrollLeft;
         };
         body.addEventListener('scroll', handler);
         return () => body.removeEventListener('scroll', handler);

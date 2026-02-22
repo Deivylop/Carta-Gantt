@@ -627,11 +627,23 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
         return () => ro.disconnect();
     }, [draw]);
 
+    // Sync scroll with Gantt (gr-body)
+    useEffect(() => {
+        const wrapper = containerRef.current;
+        if (!wrapper) return;
+        const handler = () => {
+            const grBody = document.getElementById('gr-body');
+            if (grBody) grBody.scrollLeft = wrapper.scrollLeft;
+        };
+        wrapper.addEventListener('scroll', handler);
+        return () => wrapper.removeEventListener('scroll', handler);
+    }, []);
+
     return (
-        <div ref={containerRef} style={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
+        <div ref={containerRef} id="scurve-body" style={{ flex: 1, minHeight: 0, overflowX: 'auto', overflowY: 'hidden', position: 'relative' }}>
             <canvas
                 ref={canvasRef}
-                style={{ display: 'block' }}
+                style={{ display: 'block', width: width + 'px', minWidth: width + 'px' }}
                 onMouseMove={handleMouseMove}
                 onMouseLeave={() => setTooltip(null)}
             />

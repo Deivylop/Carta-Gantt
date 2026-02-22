@@ -205,6 +205,9 @@ export default function TaskUsageGrid() {
             const glBody = document.getElementById('gl-body');
             if (glBody) glBody.scrollTop = body.scrollTop;
             if (hdrRef.current) hdrRef.current.parentElement!.scrollLeft = body.scrollLeft;
+            // Sync with S-Curve if present
+            const scurveBody = document.getElementById('scurve-body');
+            if (scurveBody) scurveBody.scrollLeft = body.scrollLeft;
         };
         body.addEventListener('scroll', handler);
         return () => body.removeEventListener('scroll', handler);
