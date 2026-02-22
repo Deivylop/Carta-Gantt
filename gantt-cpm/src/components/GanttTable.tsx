@@ -100,14 +100,13 @@ export default function GanttTable() {
 
     const isUsageView = state.currentView === 'usage';
 
+    // Dynamic row height in usage view: activity/resource rows get taller to fit multiple metric lines
+    const usageModes = state.usageModes || [];
+    const LINE_H = 16;
+    const MIN_ROW_H = 26;
+    const usageRowH = Math.max(MIN_ROW_H, (usageModes.length || 1) * LINE_H + 4);
+
     const getCellValue = useCallback((a: any, c: any, vi: number): string => {
-        // Metric sub-row: show only the metric name in 'name' column
-        if (a._isMetricRow) {
-            if (c.key === 'name') return '   📊 ' + (a._metricMode || '');
-            if (c.key === '_num') return '';
-            if (c.key === '_mode') return '';
-            return '';
-        }
         if (a._isResourceAssignment) {
             if (c.key === 'name') return '👤 ' + (a.name || '');
             if (c.key === 'work') return (a.work || 0) + ' hrs';
@@ -270,32 +269,6 @@ export default function GanttTable() {
                             );
                         }
                         const actualAct = activities[vr._idx];
-                        const isMetricRow = !!(vr as any)._isMetricRow;
-
-                        // Metric sub-row: render a simple non-editable row
-                        if (isMetricRow) {
-                            return (
-                                <div key={vi} className="trow" style={{
-                                    width: totalW,
-                                    fontStyle: 'italic',
-                                    opacity: 0.75,
-                                    fontSize: 10,
-                                    background: lightMode ? '#f0fdf4' : '#052e16',
-                                }}>
-                                    {visCols.map((c) => {
-                                        const ci = columns.indexOf(c);
-                                        const val = getCellValue(vr as any, c, vi);
-                                        const style: React.CSSProperties = { width: colWidths[ci] };
-                                        if (c.key === 'name') {
-                                            style.paddingLeft = 2 + Math.max(0, (vr.lv || 0)) * 14 + 14;
-                                            style.color = lightMode ? '#166534' : '#86efac';
-                                        }
-                                        return <div key={c.key} className={`tcell ${c.cls}`} style={style}>{val}</div>;
-                                    })}
-                                </div>
-                            );
-                        }
-
                         const a = vr._isResourceAssignment ? vr : actualAct;
                         const isProj = a._isProjRow;
                         const isSummary = a.type === 'summary';
@@ -303,9 +276,14 @@ export default function GanttTable() {
                         const hasResources = isUsageView && !isResRow && actualAct?.resources && actualAct.resources.length > 0;
                         const rowCls = `trow ${isProj ? 'trow-proj' : `trow-lv${Math.min(a.lv, 2)}`} ${!isProj && isSummary ? 'trow-summary' : ''} ${selIdx === vr._idx ? 'sel' : ''} ${isResRow ? 'trow-resource-assign' : ''}`;
 
+                        // In usage view, non-summary rows expand to fit multiple metric lines
+                        const needsTallRow = isUsageView && !isProj && !isSummary && usageModes.length > 1;
+                        const rowHeight = needsTallRow ? usageRowH : undefined;
+
                         return (
                             <div key={vi} className={rowCls} style={{
                                 width: totalW,
+                                ...(rowHeight ? { height: rowHeight, minHeight: rowHeight } : {}),
                                 ...(isResRow ? {
                                     fontStyle: 'italic',
                                     opacity: 0.85,

@@ -256,7 +256,7 @@ body,
 .trow {
   display: flex;
   align-items: stretch;
-  height: 26px;
+  min-height: 26px;
   cursor: default;
   transition: background 0.05s;
   border-bottom: 1px solid rgba(26, 32, 53, .8);
@@ -293,7 +293,7 @@ body,
 }
 
 .tcell {
-  height: 26px;
+  min-height: 26px;
   line-height: 26px;
   padding: 0 4px;
   flex-shrink: 0;

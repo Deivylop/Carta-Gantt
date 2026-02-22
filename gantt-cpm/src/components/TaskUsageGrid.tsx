@@ -1,10 +1,12 @@
-import React, { useRef, useEffect, useCallback, useState } from 'react';
+import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { useGantt } from '../store/GanttContext';
 import { dayDiff, addDays, getUsageDailyValues } from '../utils/cpm';
 import type { ThemeColors } from '../types/gantt';
 
-const ROW_H = 26;
+const LINE_H = 16;      // height per metric line inside a row
+const MIN_ROW_H = 26;   // minimum row height (single line)
 const HDR_H = 36;
+const DETAIL_W = 100;   // "Detalles" column width
 
 function th(light: boolean): ThemeColors {
     return light ? {
@@ -24,20 +26,65 @@ function th(light: boolean): ThemeColors {
     };
 }
 
+// Short display labels
+const SHORT_LABELS: Record<string, string> = {
+    'Trabajo': 'Trab.',
+    'Trabajo acumulado': 'Trab. acum.',
+    'Trabajo previsto': 'Trab. prev.',
+    'Trabajo previsto acumulado': 'Trab. prev. ac.',
+    'Trabajo real': 'Trab. real',
+    'Trabajo real acumulado': 'Trab. real ac.',
+    'Trabajo restante': 'Trab. rest.',
+    'Trabajo restante acumulado': 'Trab. rest. ac.',
+};
+
+// Colors: [lightMode, darkMode]
+const METRIC_COLORS: Record<string, [string, string]> = {
+    'Trabajo':                   ['#1e293b', '#e2e8f0'],
+    'Trabajo acumulado':         ['#1e40af', '#93c5fd'],
+    'Trabajo previsto':          ['#166534', '#86efac'],
+    'Trabajo previsto acumulado': ['#15803d', '#4ade80'],
+    'Trabajo real':              ['#9a3412', '#fdba74'],
+    'Trabajo real acumulado':     ['#c2410c', '#fb923c'],
+    'Trabajo restante':          ['#7e22ce', '#d8b4fe'],
+    'Trabajo restante acumulado': ['#6b21a8', '#c084fc'],
+};
+
 export default function TaskUsageGrid() {
     const { state, dispatch } = useGantt();
-    const { visRows, usageZoom, usageModes, totalDays, timelineStart: projStart, selIdx, lightMode, activities, pxPerDay, statusDate, activeBaselineIdx, progressHistory } = state;
+    const { visRows, usageZoom, usageModes, totalDays, timelineStart: projStart,
+        selIdx, lightMode, activities, pxPerDay, statusDate, activeBaselineIdx, progressHistory } = state;
 
-    // Use Gantt's pxPerDay for synchronized column widths
     const PX = pxPerDay;
     const activeZoom = usageZoom || 'week';
+    const modes = usageModes.length > 0 ? usageModes : ['Trabajo'];
 
     const hdrRef = useRef<HTMLCanvasElement>(null);
     const bodyCanvasRef = useRef<HTMLCanvasElement>(null);
     const bodyDivRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const detailCanvasRef = useRef<HTMLCanvasElement>(null);
     const t = th(lightMode);
     const [containerSize, setContainerSize] = useState({ w: 800, h: 600 });
+
+    // Row height: multi-line for activities & resource rows, single for summaries/groupHeaders
+    const rowH = useCallback((r: any): number => {
+        if (r._isGroupHeader) return MIN_ROW_H;
+        const a = activities[r._idx];
+        if (!a || a._isProjRow || a.type === 'summary') return MIN_ROW_H;
+        return Math.max(MIN_ROW_H, modes.length * LINE_H + 4);
+    }, [activities, modes.length]);
+
+    // Cumulative Y offsets
+    const yOffsets = useMemo(() => {
+        const off: number[] = [];
+        let y = 0;
+        visRows.forEach(r => { off.push(y); y += rowH(r); });
+        off.push(y);
+        return off;
+    }, [visRows, rowH]);
+
+    const totalH = yOffsets[yOffsets.length - 1] || 0;
 
     // Measure container
     useEffect(() => {
@@ -52,9 +99,9 @@ export default function TaskUsageGrid() {
         return () => ro.disconnect();
     }, []);
 
-    // Get time intervals based on zoom - using pxPerDay for width so columns match Gantt
+    // Time intervals
     const getIntervals = useCallback(() => {
-        const intervals = [];
+        const intervals: { start: Date; end: Date; label: string; w: number; isWeekend: boolean }[] = [];
         let cur = new Date(projStart);
         const end = addDays(projStart, totalDays);
         if (activeZoom === 'day') {
@@ -70,7 +117,6 @@ export default function TaskUsageGrid() {
                 cur = next;
             }
         } else {
-            // month
             while (cur < end) {
                 const next = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
                 const daysInMonth = dayDiff(cur, next);
@@ -81,25 +127,38 @@ export default function TaskUsageGrid() {
         return intervals;
     }, [projStart, totalDays, activeZoom, PX]);
 
-    // Total width matches Gantt: totalDays * pxPerDay
-    const W = Math.max(totalDays * PX, containerSize.w);
-    const H = Math.max(visRows.length * ROW_H + 20 * ROW_H, containerSize.h);
+    const W = Math.max(totalDays * PX, containerSize.w - DETAIL_W);
+    const H = Math.max(totalH, containerSize.h);
 
+    // ─── DRAW ─────────────────────────────────────────────────
     const draw = useCallback(() => {
         if (!containerSize.w) return;
         const intervals = getIntervals();
 
-        // ─── Header ─────────────────────────────────────────
+        // ── Detail Header (fixed left) ──
+        const hdC = hdrDetailRef.current;
+        if (hdC) {
+            hdC.width = DETAIL_W; hdC.height = HDR_H;
+            const dh = hdC.getContext('2d')!;
+            dh.clearRect(0, 0, DETAIL_W, HDR_H);
+            dh.fillStyle = t.hdrTopBg; dh.fillRect(0, 0, DETAIL_W, 17);
+            dh.strokeStyle = t.hdrTopBorder; dh.strokeRect(0, 0, DETAIL_W, 17);
+            dh.fillStyle = t.hdrBotBg; dh.fillRect(0, 17, DETAIL_W, 19);
+            dh.strokeStyle = t.hdrBotBorder; dh.strokeRect(0, 17, DETAIL_W, 19);
+            dh.fillStyle = t.hdrTopText; dh.font = 'bold 10px Segoe UI';
+            dh.fillText('Detalles', 6, 30);
+        }
+
+        // ── Time Header (scrollable) ──
         const hdrC = hdrRef.current; if (!hdrC) return;
         hdrC.width = W; hdrC.height = HDR_H;
         hdrC.style.width = W + 'px'; hdrC.style.height = HDR_H + 'px';
         const hCtx = hdrC.getContext('2d')!;
         hCtx.clearRect(0, 0, W, HDR_H);
 
-        // Top Header (Months/Years) - using dayDiff * PX to match Gantt
+        // Top header row (months/years)
         let cur = new Date(projStart);
         const end = addDays(projStart, totalDays);
-
         if (activeZoom === 'day' || activeZoom === 'week') {
             while (cur < end) {
                 const x = dayDiff(projStart, cur) * PX;
@@ -113,7 +172,6 @@ export default function TaskUsageGrid() {
                 cur = nm;
             }
         } else {
-            // For month zoom, top header is Year
             while (cur < end) {
                 const x = dayDiff(projStart, cur) * PX;
                 const ny = new Date(cur.getFullYear() + 1, 0, 1);
@@ -126,7 +184,7 @@ export default function TaskUsageGrid() {
             }
         }
 
-        // Bottom Header (Intervals)
+        // Bottom header (intervals)
         intervals.forEach(inv => {
             const x = dayDiff(projStart, inv.start) * PX;
             hCtx.fillStyle = inv.isWeekend ? t.hdrWeekend : t.hdrBotBg;
@@ -138,7 +196,43 @@ export default function TaskUsageGrid() {
             hCtx.fillText(inv.label, x + 4, 30);
         });
 
-        // ─── Body ───────────────────────────────────────────
+        // ── Detail Labels Column ──
+        const dC = detailCanvasRef.current; if (!dC) return;
+        dC.width = DETAIL_W; dC.height = H;
+        dC.style.width = DETAIL_W + 'px'; dC.style.height = H + 'px';
+        const dCtx = dC.getContext('2d')!;
+        dCtx.clearRect(0, 0, DETAIL_W, H);
+
+        visRows.forEach((r, i) => {
+            const y = yOffsets[i];
+            const rh = yOffsets[i + 1] - y;
+            const a = activities[r._idx];
+            const showMetrics = a && !a._isProjRow && a.type !== 'summary' && !r._isGroupHeader;
+
+            // Background
+            dCtx.fillStyle = r._isResourceAssignment
+                ? (lightMode ? '#f0f9ff' : '#0c1929')
+                : (i % 2 === 0 ? t.rowEven : t.rowOdd);
+            if (selIdx === r._idx && !r._isResourceAssignment) dCtx.fillStyle = lightMode ? '#e0f2fe' : '#0c4a6e';
+            dCtx.fillRect(0, y, DETAIL_W, rh);
+            // Bottom border
+            dCtx.strokeStyle = t.gridLine;
+            dCtx.beginPath(); dCtx.moveTo(0, y + rh); dCtx.lineTo(DETAIL_W, y + rh); dCtx.stroke();
+            // Right border
+            dCtx.beginPath(); dCtx.moveTo(DETAIL_W - 0.5, y); dCtx.lineTo(DETAIL_W - 0.5, y + rh); dCtx.stroke();
+
+            if (showMetrics && modes.length > 0) {
+                dCtx.font = '9px Segoe UI';
+                modes.forEach((mode, mi) => {
+                    const [lc, dc] = METRIC_COLORS[mode] || ['#1e293b', '#e2e8f0'];
+                    dCtx.fillStyle = lightMode ? lc : dc;
+                    const lineY = y + 2 + mi * LINE_H + 11;
+                    dCtx.fillText(SHORT_LABELS[mode] || mode, 4, lineY);
+                });
+            }
+        });
+
+        // ── Time-grid Body ──
         const bC = bodyCanvasRef.current; if (!bC) return;
         bC.width = W; bC.height = H;
         bC.style.width = W + 'px'; bC.style.height = H + 'px';
@@ -147,88 +241,81 @@ export default function TaskUsageGrid() {
 
         if (visRows.length === 0) return;
 
-        // Draw rows
         visRows.forEach((r, i) => {
-            const y = i * ROW_H;
-            const isResAssign = r._isResourceAssignment;
-            const isMetricBg = !!(r as any)._isMetricRow;
-            ctx.fillStyle = isMetricBg
-                ? (lightMode ? '#f0fdf4' : '#052e16')
-                : isResAssign
-                    ? (lightMode ? '#f0f9ff' : '#0c1929')
-                    : (i % 2 === 0 ? t.rowEven : t.rowOdd);
-            if (selIdx === r._idx && !isResAssign && !isMetricBg) ctx.fillStyle = lightMode ? '#e0f2fe' : '#0c4a6e';
-            ctx.fillRect(0, y, W, ROW_H);
+            const y = yOffsets[i];
+            const rh = yOffsets[i + 1] - y;
+
+            // Row background
+            const isRes = r._isResourceAssignment;
+            ctx.fillStyle = isRes
+                ? (lightMode ? '#f0f9ff' : '#0c1929')
+                : (i % 2 === 0 ? t.rowEven : t.rowOdd);
+            if (selIdx === r._idx && !isRes) ctx.fillStyle = lightMode ? '#e0f2fe' : '#0c4a6e';
+            ctx.fillRect(0, y, W, rh);
             ctx.strokeStyle = t.gridLine;
-            ctx.beginPath(); ctx.moveTo(0, y + ROW_H); ctx.lineTo(W, y + ROW_H); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, y + rh); ctx.lineTo(W, y + rh); ctx.stroke();
 
             if (r._isGroupHeader) return;
-
-            const isMetric = !!(r as any)._isMetricRow;
-            const metricMode = (r as any)._metricMode as string | undefined;
-
             const a = activities[r._idx];
             if (!a || a._isProjRow) return;
 
-            // Determine which mode to use for daily values
-            let mode: string;
-            if (isMetric && metricMode) {
-                mode = metricMode;
-            } else if (r._isResourceAssignment) {
-                mode = usageModes[0] || 'Trabajo';
-            } else {
-                // For parent activity rows, don't render values (they show in sub-rows)
-                if (usageModes.length > 0 && a.type !== 'summary') return;
-                mode = usageModes[0] || 'Trabajo';
-            }
+            // Summaries: only first mode, single-line
+            const rowModes = (a.type === 'summary')
+                ? [modes[0]]
+                : modes;
 
-            // Get precalculated daily values for this activity (or specific resource assignment)
-            const dailyValues = getUsageDailyValues(a, mode as any, false, 6, r._isResourceAssignment ? r.res : undefined, activeBaselineIdx, statusDate, progressHistory);
+            rowModes.forEach((mode, mi) => {
+                const dailyValues = getUsageDailyValues(
+                    a, mode as any, false, 6,
+                    isRes ? r.res : undefined,
+                    activeBaselineIdx, statusDate, progressHistory
+                );
 
-            // Color per metric mode
-            const metricColors: Record<string, string[]> = {
-                'Trabajo':                   ['#1e293b', '#f8fafc'],
-                'Trabajo acumulado':         ['#1e40af', '#93c5fd'],
-                'Trabajo previsto':          ['#166534', '#86efac'],
-                'Trabajo previsto acumulado': ['#15803d', '#4ade80'],
-                'Trabajo real':              ['#9a3412', '#fdba74'],
-                'Trabajo real acumulado':     ['#c2410c', '#fb923c'],
-                'Trabajo restante':          ['#7e22ce', '#d8b4fe'],
-                'Trabajo restante acumulado': ['#6b21a8', '#c084fc'],
-            };
-            const [lightClr, darkClr] = metricColors[mode] || ['#1e293b', '#f8fafc'];
+                const [lc, dc] = METRIC_COLORS[mode] || ['#1e293b', '#e2e8f0'];
+                ctx.fillStyle = lightMode ? lc : dc;
+                ctx.font = (isRes ? 'italic ' : '') + '9px Segoe UI';
+                ctx.textAlign = 'right';
 
-            ctx.fillStyle = isMetric
-                ? (lightMode ? lightClr : darkClr)
-                : r._isResourceAssignment
-                    ? (lightMode ? '#2563eb' : '#60a5fa')
-                    : (lightMode ? '#1e293b' : '#f8fafc');
-            ctx.font = (isMetric || r._isResourceAssignment) ? 'italic 10px Segoe UI' : '10px Segoe UI';
-            ctx.textAlign = 'right';
+                const lineY = (a.type === 'summary')
+                    ? y + 17
+                    : y + 2 + mi * LINE_H + 11;
 
-            intervals.forEach(inv => {
-                const x = dayDiff(projStart, inv.start) * PX;
+                intervals.forEach(inv => {
+                    const x = dayDiff(projStart, inv.start) * PX;
 
-                // Sum the values falling in this interval
-                let sum = 0;
-                let cDate = new Date(inv.start);
-                while (cDate < inv.end) {
-                    sum += dailyValues.get(cDate.getTime()) || 0;
-                    cDate.setDate(cDate.getDate() + 1);
-                }
+                    let sum = 0;
+                    let cd = new Date(inv.start);
+                    while (cd < inv.end) {
+                        sum += dailyValues.get(cd.getTime()) || 0;
+                        cd.setDate(cd.getDate() + 1);
+                    }
 
-                if (sum > 0) {
-                    const txt = sum.toFixed(1).replace('.0', '');
-                    ctx.fillText(txt, x + inv.w - 4, y + 17);
-                }
+                    if (sum > 0) {
+                        const txt = sum >= 100
+                            ? Math.round(sum) + 'h'
+                            : sum.toFixed(1).replace('.0', '') + 'h';
+                        ctx.fillText(txt, x + inv.w - 3, lineY);
+                    }
 
-                // Draw vertical grid line
-                ctx.strokeStyle = t.gridLine;
-                ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + ROW_H); ctx.stroke();
+                    // Vertical grid
+                    ctx.strokeStyle = t.gridLine;
+                    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + rh); ctx.stroke();
+                });
             });
+
+            // Thin separator lines between metrics within a row
+            if (rowModes.length > 1) {
+                ctx.strokeStyle = lightMode ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)';
+                ctx.setLineDash([2, 2]);
+                for (let mi = 1; mi < rowModes.length; mi++) {
+                    const sepY = y + 2 + mi * LINE_H - 2;
+                    ctx.beginPath(); ctx.moveTo(0, sepY); ctx.lineTo(W, sepY); ctx.stroke();
+                }
+                ctx.setLineDash([]);
+            }
         });
 
-        // Current status date line
+        // Status date line
         if (statusDate) {
             const sdX = dayDiff(projStart, statusDate) * PX;
             ctx.beginPath();
@@ -237,24 +324,25 @@ export default function TaskUsageGrid() {
             ctx.moveTo(sdX, 0); ctx.lineTo(sdX, H);
             ctx.stroke();
             ctx.setLineDash([]);
+            ctx.lineWidth = 1;
         }
 
-    }, [W, H, visRows, activities, activeZoom, PX, usageModes, projStart, totalDays, t, selIdx, lightMode, getIntervals, statusDate, activeBaselineIdx, progressHistory]);
+    }, [W, H, visRows, activities, activeZoom, PX, modes, projStart, totalDays, t, selIdx,
+        lightMode, getIntervals, statusDate, activeBaselineIdx, progressHistory, yOffsets]);
 
-    useEffect(() => {
-        draw();
-    }, [draw]);
+    useEffect(() => { draw(); }, [draw]);
 
-    // Set scroll handler so GanttTable can sync with it
+    // Scroll sync
     useEffect(() => {
         const body = bodyDivRef.current;
         if (!body) return;
         const handler = () => {
-            // GanttTable has id 'gl-body'
             const glBody = document.getElementById('gl-body');
             if (glBody) glBody.scrollTop = body.scrollTop;
             if (hdrRef.current) hdrRef.current.parentElement!.scrollLeft = body.scrollLeft;
-            // Sync with S-Curve if present
+            // Keep detail column in sync vertically
+            const detDiv = document.getElementById('usage-detail-col');
+            if (detDiv) detDiv.scrollTop = body.scrollTop;
             const scurveBody = document.getElementById('scurve-body');
             if (scurveBody) scurveBody.scrollLeft = body.scrollLeft;
         };
@@ -262,72 +350,81 @@ export default function TaskUsageGrid() {
         return () => body.removeEventListener('scroll', handler);
     }, []);
 
-    // Also when GanttTable scrolls, we need to update *this* body (id="gr-body")
-    // GanttTable does `document.getElementById('gr-body').scrollTop = body.scrollTop`.
-
-    // Canvas click
-    const handleClick = useCallback((e: React.MouseEvent) => {
+    // Click → find row by Y
+    const findRow = useCallback((clientY: number) => {
         const body = bodyDivRef.current;
         const rect = body?.getBoundingClientRect();
-        if (!body || !rect) return;
-        const my = e.clientY - rect.top;
-        const i = Math.floor((my + body.scrollTop) / ROW_H);
-        if (i >= 0 && i < visRows.length && !visRows[i]._isGroupHeader) {
-            dispatch({ type: 'SET_SELECTION', index: visRows[i]._idx });
+        if (!body || !rect) return -1;
+        const my = clientY - rect.top + body.scrollTop;
+        for (let i = 0; i < visRows.length; i++) {
+            if (my >= yOffsets[i] && my < yOffsets[i + 1]) return i;
         }
-    }, [visRows, dispatch]);
+        return -1;
+    }, [visRows, yOffsets]);
+
+    const handleClick = useCallback((e: React.MouseEvent) => {
+        const i = findRow(e.clientY);
+        if (i >= 0 && !visRows[i]._isGroupHeader) dispatch({ type: 'SET_SELECTION', index: visRows[i]._idx });
+    }, [visRows, dispatch, findRow]);
 
     const handleDblClick = useCallback((e: React.MouseEvent) => {
-        const body = bodyDivRef.current;
-        const rect = body?.getBoundingClientRect();
-        if (!body || !rect) return;
-        const my = e.clientY - rect.top;
-        const i = Math.floor((my + body.scrollTop) / ROW_H);
-        if (i >= 0 && i < visRows.length && !visRows[i]._isGroupHeader) {
+        const i = findRow(e.clientY);
+        if (i >= 0 && !visRows[i]._isGroupHeader) {
             dispatch({ type: 'SET_SELECTION', index: visRows[i]._idx });
             dispatch({ type: 'OPEN_ACT_MODAL' });
         }
-    }, [visRows, dispatch]);
+    }, [visRows, dispatch, findRow]);
 
-    // ─── Header Continuous Zoom Handlers ───
-    const [headerDrag, setHeaderDrag] = useState<{ startX: number, startPX: number } | null>(null);
-
-    const handleHeaderMouseDown = useCallback((e: React.MouseEvent) => {
-        setHeaderDrag({ startX: e.clientX, startPX: PX });
-    }, [PX]);
-
+    // Header drag-zoom
+    const [headerDrag, setHeaderDrag] = useState<{ startX: number; startPX: number } | null>(null);
+    const handleHeaderMouseDown = useCallback((e: React.MouseEvent) => { setHeaderDrag({ startX: e.clientX, startPX: PX }); }, [PX]);
     const handleHeaderMouseMove = useCallback((e: React.MouseEvent) => {
         if (!headerDrag) return;
-        const dx = e.clientX - headerDrag.startX;
-        let newPX = headerDrag.startPX * (1 + dx / 400);
-        newPX = Math.max(0.5, Math.min(newPX, 150)); // Clamp scale
+        let newPX = headerDrag.startPX * (1 + (e.clientX - headerDrag.startX) / 400);
+        newPX = Math.max(0.5, Math.min(newPX, 150));
         dispatch({ type: 'SET_PX_PER_DAY', px: newPX });
     }, [headerDrag, dispatch]);
+    const handleHeaderMouseUpOrLeave = useCallback(() => { setHeaderDrag(null); }, []);
 
-    const handleHeaderMouseUpOrLeave = useCallback(() => {
-        setHeaderDrag(null);
-    }, []);
+    const hdrDetailRef = useRef<HTMLCanvasElement>(null);
 
     return (
         <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden', position: 'relative' }}>
-            {/* Header */}
-            <div style={{ height: HDR_H, flexShrink: 0, overflow: 'hidden', position: 'relative' }}>
-                <canvas
-                    ref={hdrRef}
-                    style={{ display: 'block', cursor: 'ew-resize' }}
-                    onMouseDown={handleHeaderMouseDown}
-                    onMouseMove={handleHeaderMouseMove}
-                    onMouseUp={handleHeaderMouseUpOrLeave}
-                    onMouseLeave={handleHeaderMouseUpOrLeave}
-                />
+            {/* Header row: fixed Detail header + scrollable time header */}
+            <div style={{ height: HDR_H, flexShrink: 0, display: 'flex', overflow: 'hidden' }}>
+                {/* Fixed "Detalles" header */}
+                <div style={{ width: DETAIL_W, flexShrink: 0, overflow: 'hidden' }}>
+                    <canvas ref={hdrDetailRef}
+                        style={{ display: 'block', width: DETAIL_W, height: HDR_H }}
+                    />
+                </div>
+                {/* Scrollable time header */}
+                <div id="usage-hdr-scroll" style={{ flex: 1, overflow: 'hidden' }}>
+                    <canvas ref={hdrRef}
+                        style={{ display: 'block', cursor: 'ew-resize' }}
+                        onMouseDown={handleHeaderMouseDown}
+                        onMouseMove={handleHeaderMouseMove}
+                        onMouseUp={handleHeaderMouseUpOrLeave}
+                        onMouseLeave={handleHeaderMouseUpOrLeave}
+                    />
+                </div>
             </div>
 
-            {/* Body */}
-            <div ref={bodyDivRef} id="gr-body"
-                style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', position: 'relative' }}
-                onClick={handleClick}
-                onDoubleClick={handleDblClick}>
-                <canvas ref={bodyCanvasRef} style={{ display: 'block' }} />
+            {/* Body row: fixed Detail labels + scrollable time grid */}
+            <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+                {/* Fixed "Detalles" label column */}
+                <div id="usage-detail-col"
+                    style={{ width: DETAIL_W, flexShrink: 0, overflowY: 'hidden', overflowX: 'hidden' }}>
+                    <canvas ref={detailCanvasRef} style={{ display: 'block' }} />
+                </div>
+
+                {/* Scrollable time grid */}
+                <div ref={bodyDivRef} id="gr-body"
+                    style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', position: 'relative' }}
+                    onClick={handleClick}
+                    onDoubleClick={handleDblClick}>
+                    <canvas ref={bodyCanvasRef} style={{ display: 'block' }} />
+                </div>
             </div>
         </div>
     );

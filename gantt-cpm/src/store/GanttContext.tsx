@@ -195,21 +195,6 @@ function buildVisRows(activities: Activity[], collapsed: Set<string>, activeGrou
         }
         rows.push({ ...a, _idx: i });
 
-        // Generate metric sub-rows for Task Usage view (one per selected usageMode)
-        if (currentView === 'usage' && a.type !== 'summary' && !a._isProjRow && usageModes.length > 0) {
-            usageModes.forEach(mode => {
-                rows.push({
-                    id: `metric_${a.id}_${mode}`,
-                    name: '',
-                    type: 'task',
-                    _isMetricRow: true,
-                    _metricMode: mode,
-                    lv: a.lv,
-                    _idx: i,
-                } as any);
-            });
-        }
-
         // Generate resource pseudo-rows for Task Usage view (only if activity is expanded)
         if (currentView === 'usage' && a.resources && a.resources.length > 0 && expResources.has(a.id)) {
             a.resources.forEach((r, rIdx) => {
