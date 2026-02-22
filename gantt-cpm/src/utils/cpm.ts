@@ -473,7 +473,7 @@ export function calcCPM(
 
 export function getUsageDailyValues(
     a: Activity,
-    mode: 'Trabajo' | 'Trabajo real' | 'Trabajo acumulado' | 'Trabajo previsto' | 'Trabajo restante' | 'Trabajo real acumulado' | 'Trabajo previsto acumulado',
+    mode: 'Trabajo' | 'Trabajo real' | 'Trabajo acumulado' | 'Trabajo previsto' | 'Trabajo restante' | 'Trabajo real acumulado' | 'Trabajo previsto acumulado' | 'Trabajo restante acumulado',
     calcTotalAccumulated = false,
     defCal: number = 6,
     resId?: string,
@@ -675,6 +675,18 @@ export function getUsageDailyValues(
     // ─── "Trabajo previsto acumulado": cumulative sum of Trabajo previsto ───
     if (mode === 'Trabajo previsto acumulado') {
         const dailyMap = getUsageDailyValues(a, 'Trabajo previsto', false, defCal, resId, activeBaselineIdx, statusDate, progressHistory);
+        const sorted = [...dailyMap.entries()].sort((a, b) => a[0] - b[0]);
+        let acc = 0;
+        for (const [t, v] of sorted) {
+            acc += v;
+            map.set(t, acc);
+        }
+        return map;
+    }
+
+    // ─── "Trabajo restante acumulado": cumulative sum of Trabajo restante ───
+    if (mode === 'Trabajo restante acumulado') {
+        const dailyMap = getUsageDailyValues(a, 'Trabajo restante', false, defCal, resId, activeBaselineIdx, statusDate, progressHistory);
         const sorted = [...dailyMap.entries()].sort((a, b) => a[0] - b[0]);
         let acc = 0;
         for (const [t, v] of sorted) {

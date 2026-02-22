@@ -26,7 +26,7 @@ function th(light: boolean): ThemeColors {
 
 export default function TaskUsageGrid() {
     const { state, dispatch } = useGantt();
-    const { visRows, usageZoom, usageMode, totalDays, timelineStart: projStart, selIdx, lightMode, activities, pxPerDay, statusDate, activeBaselineIdx, progressHistory } = state;
+    const { visRows, usageZoom, usageModes, totalDays, timelineStart: projStart, selIdx, lightMode, activities, pxPerDay, statusDate, activeBaselineIdx, progressHistory } = state;
 
     // Use Gantt's pxPerDay for synchronized column widths
     const PX = pxPerDay;
@@ -151,26 +151,59 @@ export default function TaskUsageGrid() {
         visRows.forEach((r, i) => {
             const y = i * ROW_H;
             const isResAssign = r._isResourceAssignment;
-            ctx.fillStyle = isResAssign
-                ? (lightMode ? '#f0f9ff' : '#0c1929')
-                : (i % 2 === 0 ? t.rowEven : t.rowOdd);
-            if (selIdx === r._idx && !isResAssign) ctx.fillStyle = lightMode ? '#e0f2fe' : '#0c4a6e';
+            const isMetricBg = !!(r as any)._isMetricRow;
+            ctx.fillStyle = isMetricBg
+                ? (lightMode ? '#f0fdf4' : '#052e16')
+                : isResAssign
+                    ? (lightMode ? '#f0f9ff' : '#0c1929')
+                    : (i % 2 === 0 ? t.rowEven : t.rowOdd);
+            if (selIdx === r._idx && !isResAssign && !isMetricBg) ctx.fillStyle = lightMode ? '#e0f2fe' : '#0c4a6e';
             ctx.fillRect(0, y, W, ROW_H);
             ctx.strokeStyle = t.gridLine;
             ctx.beginPath(); ctx.moveTo(0, y + ROW_H); ctx.lineTo(W, y + ROW_H); ctx.stroke();
 
             if (r._isGroupHeader) return;
 
+            const isMetric = !!(r as any)._isMetricRow;
+            const metricMode = (r as any)._metricMode as string | undefined;
+
             const a = activities[r._idx];
             if (!a || a._isProjRow) return;
 
-            // Get precalculated daily values for this activity (or specific resource assignment)
-            const dailyValues = getUsageDailyValues(a, usageMode as any, false, 6, r._isResourceAssignment ? r.res : undefined, activeBaselineIdx, statusDate, progressHistory);
+            // Determine which mode to use for daily values
+            let mode: string;
+            if (isMetric && metricMode) {
+                mode = metricMode;
+            } else if (r._isResourceAssignment) {
+                mode = usageModes[0] || 'Trabajo';
+            } else {
+                // For parent activity rows, don't render values (they show in sub-rows)
+                if (usageModes.length > 0 && a.type !== 'summary') return;
+                mode = usageModes[0] || 'Trabajo';
+            }
 
-            ctx.fillStyle = r._isResourceAssignment
-                ? (lightMode ? '#2563eb' : '#60a5fa')
-                : (lightMode ? '#1e293b' : '#f8fafc');
-            ctx.font = r._isResourceAssignment ? 'italic 10px Segoe UI' : '10px Segoe UI';
+            // Get precalculated daily values for this activity (or specific resource assignment)
+            const dailyValues = getUsageDailyValues(a, mode as any, false, 6, r._isResourceAssignment ? r.res : undefined, activeBaselineIdx, statusDate, progressHistory);
+
+            // Color per metric mode
+            const metricColors: Record<string, string[]> = {
+                'Trabajo':                   ['#1e293b', '#f8fafc'],
+                'Trabajo acumulado':         ['#1e40af', '#93c5fd'],
+                'Trabajo previsto':          ['#166534', '#86efac'],
+                'Trabajo previsto acumulado': ['#15803d', '#4ade80'],
+                'Trabajo real':              ['#9a3412', '#fdba74'],
+                'Trabajo real acumulado':     ['#c2410c', '#fb923c'],
+                'Trabajo restante':          ['#7e22ce', '#d8b4fe'],
+                'Trabajo restante acumulado': ['#6b21a8', '#c084fc'],
+            };
+            const [lightClr, darkClr] = metricColors[mode] || ['#1e293b', '#f8fafc'];
+
+            ctx.fillStyle = isMetric
+                ? (lightMode ? lightClr : darkClr)
+                : r._isResourceAssignment
+                    ? (lightMode ? '#2563eb' : '#60a5fa')
+                    : (lightMode ? '#1e293b' : '#f8fafc');
+            ctx.font = (isMetric || r._isResourceAssignment) ? 'italic 10px Segoe UI' : '10px Segoe UI';
             ctx.textAlign = 'right';
 
             intervals.forEach(inv => {
@@ -206,7 +239,7 @@ export default function TaskUsageGrid() {
             ctx.setLineDash([]);
         }
 
-    }, [W, H, visRows, activities, activeZoom, PX, usageMode, projStart, totalDays, t, selIdx, lightMode, getIntervals, statusDate, activeBaselineIdx, progressHistory]);
+    }, [W, H, visRows, activities, activeZoom, PX, usageModes, projStart, totalDays, t, selIdx, lightMode, getIntervals, statusDate, activeBaselineIdx, progressHistory]);
 
     useEffect(() => {
         draw();

@@ -26,7 +26,8 @@ function th(light: boolean): ThemeColors {
 
 export default function ResourceUsageGrid() {
     const { state, dispatch } = useGantt();
-    const { resourcePool, activities, expResources, usageZoom, totalDays, timelineStart: projStart, lightMode, pxPerDay, usageMode, defCal } = state;
+    const { resourcePool, activities, expResources, usageZoom, totalDays, timelineStart: projStart, lightMode, pxPerDay, usageModes, defCal } = state;
+    const usageMode = usageModes[0] || 'Trabajo';
 
     const PX = pxPerDay;
     const activeZoom = usageZoom || 'week';

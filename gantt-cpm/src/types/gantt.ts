@@ -142,6 +142,8 @@ export interface VisibleRow extends Activity {
     _groupCount?: number;
     _isResourceAssignment?: boolean;
     _parentTaskId?: string;
+    _isMetricRow?: boolean;   // sub-row showing a usage metric
+    _metricMode?: string;     // which metric this sub-row represents
 }
 
 // ─── Column Definition ──────────────────────────────────────────

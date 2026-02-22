@@ -168,18 +168,25 @@ export default function Ribbon() {
                         <RB icon={<Users size={16} />} label="Uso de Recursos" active={state.currentView === 'resUsage'} onClick={() => dispatch({ type: 'SET_VIEW', view: 'resUsage' })} />
                     </RG>
                     {(state.currentView === 'usage' || state.currentView === 'resUsage') && (
-                        <RG label="USO (MÉTRICA)">
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <select className="form-input" style={{ fontSize: 10, padding: '2px 4px' }} value={state.usageMode}
-                                    onChange={e => dispatch({ type: 'SET_USAGE_MODE', mode: e.target.value as any })}>
-                                    <option value="Trabajo">Trabajo</option>
-                                    <option value="Trabajo real">Trabajo Real</option>
-                                    <option value="Trabajo acumulado">Trabajo Acumulado</option>
-                                    <option value="Trabajo previsto">Trabajo Previsto</option>
-                                    <option value="Trabajo restante">Trabajo Restante</option>
-                                    <option value="Trabajo real acumulado">Trabajo Real Acumulado</option>
-                                    <option value="Trabajo previsto acumulado">Trab. Previsto Acumulado</option>
-                                </select>
+                        <RG label="USO (MÉTRICAS)">
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 1, maxHeight: 58, overflowY: 'auto', fontSize: 9, lineHeight: 1.2, paddingRight: 2 }}>
+                                {([
+                                    ['Trabajo', 'Trabajo'],
+                                    ['Trabajo acumulado', 'Trabajo Acumulado'],
+                                    ['Trabajo previsto', 'Trabajo Previsto'],
+                                    ['Trabajo previsto acumulado', 'Trab. Previsto Acum.'],
+                                    ['Trabajo real', 'Trabajo Real'],
+                                    ['Trabajo real acumulado', 'Trab. Real Acum.'],
+                                    ['Trabajo restante', 'Trabajo Restante'],
+                                    ['Trabajo restante acumulado', 'Trab. Restante Acum.'],
+                                ] as [string, string][]).map(([val, lbl]) => (
+                                    <label key={val} style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                        <input type="checkbox" style={{ margin: 0, width: 11, height: 11 }}
+                                            checked={state.usageModes.includes(val)}
+                                            onChange={() => dispatch({ type: 'TOGGLE_USAGE_MODE', mode: val })} />
+                                        {lbl}
+                                    </label>
+                                ))}
                             </div>
                         </RG>
                     )}
