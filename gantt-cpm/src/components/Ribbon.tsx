@@ -176,6 +176,9 @@ export default function Ribbon() {
                                     <option value="Trabajo real">Trabajo Real</option>
                                     <option value="Trabajo acumulado">Trabajo Acumulado</option>
                                     <option value="Trabajo previsto">Trabajo Previsto</option>
+                                    <option value="Trabajo restante">Trabajo Restante</option>
+                                    <option value="Trabajo real acumulado">Trabajo Real Acumulado</option>
+                                    <option value="Trabajo previsto acumulado">Trab. Previsto Acumulado</option>
                                 </select>
                             </div>
                         </RG>

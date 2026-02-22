@@ -473,7 +473,7 @@ export function calcCPM(
 
 export function getUsageDailyValues(
     a: Activity,
-    mode: 'Trabajo' | 'Trabajo real' | 'Trabajo acumulado' | 'Trabajo previsto',
+    mode: 'Trabajo' | 'Trabajo real' | 'Trabajo acumulado' | 'Trabajo previsto' | 'Trabajo restante' | 'Trabajo real acumulado' | 'Trabajo previsto acumulado',
     calcTotalAccumulated = false,
     defCal: number = 6,
     resId?: string,
@@ -627,6 +627,60 @@ export function getUsageDailyValues(
         }
 
         // After the last progress record → nothing (0). No future projection.
+        return map;
+    }
+
+    // ─── "Trabajo restante": remaining work distributed from statusDate to EF ───
+    if (mode === 'Trabajo restante') {
+        const pct = Math.min(100, Math.max(0, a.pct || 0));
+        const remainingWork = work * (1 - pct / 100);
+        if (remainingWork <= 0) return map;
+        const cal = a.cal || defCal;
+
+        const sDate = statusDate ? new Date(statusDate) : new Date();
+        sDate.setHours(0, 0, 0, 0);
+        const sDateEnd = new Date(sDate);
+        sDateEnd.setDate(sDateEnd.getDate() + 1);
+
+        const actEF = a.EF;
+        const actES = a.ES;
+        if (!actEF || !actES) return map;
+        const startD = new Date(actES); startD.setHours(0, 0, 0, 0);
+        const endD = new Date(actEF); endD.setHours(0, 0, 0, 0);
+        const remStart = sDateEnd > startD ? sDateEnd : startD;
+        if (endD <= remStart) return map;
+
+        const remDates = buildWorkDays(remStart, endD, cal);
+        if (remDates.length === 0) return map;
+        const daily = remainingWork / remDates.length;
+        for (const d of remDates) {
+            if (daily > 0) map.set(d.getTime(), daily);
+        }
+        return map;
+    }
+
+    // ─── "Trabajo real acumulado": cumulative sum of Trabajo real ───
+    if (mode === 'Trabajo real acumulado') {
+        const dailyMap = getUsageDailyValues(a, 'Trabajo real', false, defCal, resId, activeBaselineIdx, statusDate, progressHistory);
+        // Sort by date and accumulate
+        const sorted = [...dailyMap.entries()].sort((a, b) => a[0] - b[0]);
+        let acc = 0;
+        for (const [t, v] of sorted) {
+            acc += v;
+            map.set(t, acc);
+        }
+        return map;
+    }
+
+    // ─── "Trabajo previsto acumulado": cumulative sum of Trabajo previsto ───
+    if (mode === 'Trabajo previsto acumulado') {
+        const dailyMap = getUsageDailyValues(a, 'Trabajo previsto', false, defCal, resId, activeBaselineIdx, statusDate, progressHistory);
+        const sorted = [...dailyMap.entries()].sort((a, b) => a[0] - b[0]);
+        let acc = 0;
+        for (const [t, v] of sorted) {
+            acc += v;
+            map.set(t, acc);
+        }
         return map;
     }
 

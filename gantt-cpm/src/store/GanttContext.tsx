@@ -68,7 +68,7 @@ export interface GanttState {
     activeGroup: string;
     columns: ColumnDef[];
     colWidths: number[];
-    usageMode: 'Trabajo' | 'Trabajo real' | 'Trabajo acumulado' | 'Trabajo previsto';
+    usageMode: 'Trabajo' | 'Trabajo real' | 'Trabajo acumulado' | 'Trabajo previsto' | 'Trabajo restante' | 'Trabajo real acumulado' | 'Trabajo previsto acumulado';
     usageZoom: 'day' | 'week' | 'month';
     undoStack: string[];
     clipboard: Activity | null;
