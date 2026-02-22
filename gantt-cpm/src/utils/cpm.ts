@@ -2,7 +2,7 @@
 // CPM Engine – Pure TypeScript (no React dependency)
 // Ported 1:1 from the calcCPM() function in Carta Gantt CPM.html
 // ═══════════════════════════════════════════════════════════════════
-import type { Activity, CalendarType } from '../types/gantt';
+import type { Activity, CalendarType, ProgressHistoryEntry } from '../types/gantt';
 
 /** Calendar conversion factors: work days → calendar days */
 const CAL_F: Record<number, number> = { 5: 7 / 5, 6: 7 / 6, 7: 1 };
@@ -478,7 +478,8 @@ export function getUsageDailyValues(
     defCal: number = 6,
     resId?: string,
     activeBaselineIdx: number = 0,
-    statusDate?: Date | null
+    statusDate?: Date | null,
+    progressHistory?: ProgressHistoryEntry[]
 ): Map<number, number> {
     const map = new Map<number, number>();
     if (a.type === 'summary' || a._isProjRow) return map;
@@ -562,103 +563,70 @@ export function getUsageDailyValues(
         return map;
     }
 
-    // ─── "Trabajo real": previsto up to statusDate, remainder over remDur ───
+    // ─── "Trabajo real": based on progressHistory weekly records ───
+    // Each progress record captures activity % at that date.
+    // Delta % between consecutive records → earned HH → distributed in calendar work days of that period.
+    // After the last progress record → 0 (no data yet).
     if (mode === 'Trabajo real') {
-        const pct = Math.min(100, Math.max(0, a.pct || 0));
-        if (pct === 0) return map;
+        const cal = a.cal || defCal;
+        const history = progressHistory || [];
 
-        const actualWork = work * (pct / 100);
-        const remainingWork = work - actualWork;
-
-        // Use baseline dates for the "planned" portion
-        const blStart = a.blES || a.ES;
-        const blEnd = a.blEF || a.EF;
-        if (!blStart || !blEnd) return map;
-
-        const startBl = new Date(blStart); startBl.setHours(0, 0, 0, 0);
-        const endBl = new Date(blEnd); endBl.setHours(0, 0, 0, 0);
-        const cal = a.blCal || a.cal || defCal;
-        const calReal = a.cal || defCal;
-
-        // Determine the cutoff: status date
-        const sDate = statusDate ? new Date(statusDate) : new Date();
-        sDate.setHours(0, 0, 0, 0);
-        const sDateEnd = new Date(sDate);
-        sDateEnd.setDate(sDateEnd.getDate() + 1); // inclusive
-
-        const activeBl = (a.baselines || [])[activeBaselineIdx] || null;
-
-        // ── Part A: Actual work distributed from blStart to statusDate ──
-        // Use two-segment baseline curve up to statusDate
-        const cutoff = sDateEnd < endBl ? sDateEnd : endBl;
-
-        if (activeBl && activeBl.pct != null && activeBl.pct > 0 && activeBl.statusDate) {
-            const blStatusEnd = new Date(activeBl.statusDate);
-            blStatusEnd.setHours(0, 0, 0, 0);
-            blStatusEnd.setDate(blStatusEnd.getDate() + 1);
-            const blPct = activeBl.pct;
-            const workSeg1 = work * (blPct / 100);
-            const workSeg2 = work * ((100 - blPct) / 100);
-
-            // Segment 1 dates within [blStart, min(blStatusDate, cutoff)]
-            const seg1End = blStatusEnd < cutoff ? blStatusEnd : cutoff;
-            const datesSeg1 = buildWorkDays(startBl, seg1End, cal);
-            // Full segment 1 days count for the rate
-            const fullSeg1 = buildWorkDays(startBl, blStatusEnd < endBl ? blStatusEnd : endBl, cal);
-            const dailySeg1 = fullSeg1.length > 0 ? workSeg1 / fullSeg1.length : 0;
-
-            for (const d of datesSeg1) {
-                if (dailySeg1 > 0) map.set(d.getTime(), dailySeg1);
+        // Filter and sort progress entries that have data for this activity
+        const actId = a.id;
+        const entries: { date: Date; pct: number }[] = [];
+        for (const h of history) {
+            const pctVal = h.details ? h.details[actId] : undefined;
+            if (pctVal !== undefined && pctVal > 0) {
+                const d = new Date(h.date); d.setHours(0, 0, 0, 0);
+                entries.push({ date: d, pct: pctVal });
             }
-
-            // Segment 2 dates within [blStatusDate, cutoff] only if cutoff > blStatusDate
-            if (cutoff > blStatusEnd) {
-                const datesSeg2 = buildWorkDays(blStatusEnd, cutoff, cal);
-                const fullSeg2 = buildWorkDays(blStatusEnd, endBl, cal);
-                const dailySeg2 = fullSeg2.length > 0 ? workSeg2 / fullSeg2.length : 0;
-
-                for (const d of datesSeg2) {
-                    if (dailySeg2 > 0) map.set(d.getTime(), dailySeg2);
-                }
-            }
-        } else {
-            // Fallback: uniform distribution up to statusDate
-            const allDates = buildWorkDays(startBl, endBl, cal);
-            const daily = work / allDates.length;
-            for (const d of allDates) {
-                if (d.getTime() < cutoff.getTime()) {
-                    if (daily > 0) map.set(d.getTime(), daily);
+        }
+        // Also include entries where pct is 0 explicitly (start reference)
+        for (const h of history) {
+            const pctVal = h.details ? h.details[actId] : undefined;
+            if (pctVal === 0) {
+                const d = new Date(h.date); d.setHours(0, 0, 0, 0);
+                // Only add if not already present
+                if (!entries.some(e => e.date.getTime() === d.getTime())) {
+                    entries.push({ date: d, pct: 0 });
                 }
             }
         }
+        entries.sort((a, b) => a.date.getTime() - b.date.getTime());
 
-        // Scale actual portion: the sum of values in map is "planned work up to statusDate"
-        // but we want the actual total to be actualWork, so scale proportionally
-        let plannedSum = 0;
-        for (const v of map.values()) plannedSum += v;
-        if (plannedSum > 0 && Math.abs(plannedSum - actualWork) > 0.01) {
-            const scale = actualWork / plannedSum;
-            for (const [k, v] of map) map.set(k, v * scale);
-        }
+        if (entries.length === 0) return map;
 
-        // ── Part B: Remaining work distributed from statusDate to actual EF ──
-        if (remainingWork > 0 && pct < 100) {
-            const realEF = a.EF;
-            if (realEF) {
-                const endReal = new Date(realEF); endReal.setHours(0, 0, 0, 0);
-                const remStart = sDateEnd > startBl ? sDateEnd : startBl;
-                if (endReal > remStart) {
-                    const remDates = buildWorkDays(remStart, endReal, calReal);
-                    if (remDates.length > 0) {
-                        const dailyRem = remainingWork / remDates.length;
-                        for (const d of remDates) {
-                            const t = d.getTime();
-                            map.set(t, (map.get(t) || 0) + dailyRem);
-                        }
+        // Activity start date as the implicit "0%" anchor
+        const actStart = a.ES || a.blES;
+        if (!actStart) return map;
+        const startD = new Date(actStart); startD.setHours(0, 0, 0, 0);
+
+        // Build periods: from actStart→first record, then record→record
+        let prevDate = startD;
+        let prevPct = 0;
+
+        for (const entry of entries) {
+            const deltaPct = entry.pct - prevPct;
+            if (deltaPct > 0) {
+                const earnedWork = work * (deltaPct / 100);
+                // Period end is inclusive of the record date (end of that day)
+                const periodEnd = new Date(entry.date);
+                periodEnd.setDate(periodEnd.getDate() + 1);
+                const periodDays = buildWorkDays(prevDate, periodEnd, cal);
+                if (periodDays.length > 0) {
+                    const dailyVal = earnedWork / periodDays.length;
+                    for (const d of periodDays) {
+                        const t = d.getTime();
+                        map.set(t, (map.get(t) || 0) + dailyVal);
                     }
                 }
             }
+            prevDate = new Date(entry.date);
+            prevDate.setDate(prevDate.getDate() + 1); // next period starts day after
+            prevPct = entry.pct;
         }
+
+        // After the last progress record → nothing (0). No future projection.
         return map;
     }
 
