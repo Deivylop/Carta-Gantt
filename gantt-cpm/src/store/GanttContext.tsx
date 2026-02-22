@@ -24,6 +24,8 @@ export const DEFAULT_COLS: ColumnDef[] = [
     { key: 'plannedPct', label: '% Prog.', w: 65, edit: false, cls: 'tcell-pct', visible: true },
     { key: 'res', label: 'Recursos', w: 110, edit: true, cls: 'tcell-res', visible: true },
     { key: 'work', label: 'Trabajo', w: 70, edit: true, cls: 'tcell-dur', visible: true },
+    { key: 'earnedValue', label: 'Valor Ganado', w: 85, edit: false, cls: 'tcell-dur', visible: true },
+    { key: 'remainingWork', label: 'Trab. Restante', w: 90, edit: false, cls: 'tcell-dur', visible: true },
     { key: 'weight', label: 'Peso %', w: 65, edit: true, cls: 'tcell-pct', visible: true },
     { key: 'cal', label: 'Calendario', w: 60, edit: 'select', cls: 'tcell-cal', visible: true },
     { key: 'TF', label: 'Holgura Total', w: 75, edit: false, cls: 'tcell-dur', visible: true },

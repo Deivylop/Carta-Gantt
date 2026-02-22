@@ -136,6 +136,26 @@ export default function GanttTable() {
         if (c.key === 'plannedPct') return Number(a._plannedPct != null ? a._plannedPct : (a.pct || 0)).toFixed(1) + '%';
         if (c.key === 'res') return a.res || '';
         if (c.key === 'work') return a.type === 'milestone' ? '0 hrs' : ((a.work || 0) + ' hrs');
+        if (c.key === 'earnedValue' || c.key === 'remainingWork') {
+            let ev: number;
+            if (a.type === 'summary' || a._isProjRow) {
+                // Bottom-up: sum earned value of all leaf descendants (non-summary)
+                ev = 0;
+                const startJ = a._isProjRow ? 1 : activities.indexOf(a) + 1;
+                for (let j = startJ; j < activities.length; j++) {
+                    const ch = activities[j];
+                    if (!a._isProjRow && ch.lv <= a.lv) break;
+                    if (ch.type === 'summary') continue; // skip sub-summaries, count only leaves
+                    ev += (ch.work || 0) * (ch.pct || 0) / 100;
+                }
+            } else {
+                ev = (a.work || 0) * (a.pct || 0) / 100;
+            }
+            ev = Math.round(ev * 10) / 10;
+            if (c.key === 'earnedValue') return ev + ' hrs';
+            const rem = Math.round(((a.work || 0) - ev) * 10) / 10;
+            return rem + ' hrs';
+        }
         if (c.key === 'weight') return getWeightPct(a, activities);
         if (c.key === 'cal') return (a.cal || defCal) + 'd';
         if (c.key === 'TF') {
