@@ -28,7 +28,7 @@ function th(light: boolean): ThemeColors {
 
 export default function TaskUsageGrid() {
     const { state, dispatch } = useGantt();
-    const { visRows, usageZoom, usageMode, totalDays, projStart, selIdx, lightMode, activities } = state;
+    const { visRows, usageZoom, usageMode, totalDays, timelineStart: projStart, selIdx, lightMode, activities } = state;
 
     // Fallback to zoom if usageZoom doesn't exist
     const activeZoom = usageZoom || 'week';
