@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react'
 import { useGantt } from '../store/GanttContext';
 import { dayDiff, addDays, getUsageDailyValues } from '../utils/cpm';
 import type { ThemeColors } from '../types/gantt';
+import DetailContextMenu from './DetailContextMenu';
 
 const LINE_H = 16;      // height per metric line inside a row
 const MIN_ROW_H = 26;   // minimum row height (single line)
@@ -147,6 +148,14 @@ export default function TaskUsageGrid() {
             dh.strokeStyle = t.hdrBotBorder; dh.strokeRect(0, 17, DETAIL_W, 19);
             dh.fillStyle = t.hdrTopText; dh.font = 'bold 10px Segoe UI';
             dh.fillText('Detalles', 6, 30);
+            // Small dropdown triangle
+            dh.beginPath();
+            dh.moveTo(DETAIL_W - 16, 27);
+            dh.lineTo(DETAIL_W - 10, 27);
+            dh.lineTo(DETAIL_W - 13, 31);
+            dh.closePath();
+            dh.fillStyle = t.hdrTopText;
+            dh.fill();
         }
 
         // ── Time Header (scrollable) ──
@@ -376,6 +385,8 @@ export default function TaskUsageGrid() {
     }, [visRows, dispatch, findRow]);
 
     // Header drag-zoom
+    const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+
     const [headerDrag, setHeaderDrag] = useState<{ startX: number; startPX: number } | null>(null);
     const handleHeaderMouseDown = useCallback((e: React.MouseEvent) => { setHeaderDrag({ startX: e.clientX, startPX: PX }); }, [PX]);
     const handleHeaderMouseMove = useCallback((e: React.MouseEvent) => {
@@ -388,14 +399,32 @@ export default function TaskUsageGrid() {
 
     const hdrDetailRef = useRef<HTMLCanvasElement>(null);
 
+    /* Context menu handlers */
+    const handleDetailContextMenu = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        setCtxMenu({ x: e.clientX, y: e.clientY });
+    }, []);
+
+    const handleDetailHeaderClick = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        const rect = (e.target as HTMLElement).getBoundingClientRect();
+        setCtxMenu({ x: rect.left, y: rect.bottom + 2 });
+    }, []);
+
     return (
         <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden', position: 'relative' }}>
+            {/* Context menu for metric selection */}
+            {ctxMenu && <DetailContextMenu x={ctxMenu.x} y={ctxMenu.y} onClose={() => setCtxMenu(null)} />}
+
             {/* Header row: fixed Detail header + scrollable time header */}
             <div style={{ height: HDR_H, flexShrink: 0, display: 'flex', overflow: 'hidden' }}>
-                {/* Fixed "Detalles" header */}
-                <div style={{ width: DETAIL_W, flexShrink: 0, overflow: 'hidden' }}>
+                {/* Fixed "Detalles" header — clickable */}
+                <div style={{ width: DETAIL_W, flexShrink: 0, overflow: 'hidden', cursor: 'pointer' }}
+                    onClick={handleDetailHeaderClick}
+                    onContextMenu={handleDetailContextMenu}
+                    title="Clic para seleccionar campos de detalle">
                     <canvas ref={hdrDetailRef}
-                        style={{ display: 'block', width: DETAIL_W, height: HDR_H }}
+                        style={{ display: 'block', width: DETAIL_W, height: HDR_H, pointerEvents: 'none' }}
                     />
                 </div>
                 {/* Scrollable time header */}
@@ -412,10 +441,11 @@ export default function TaskUsageGrid() {
 
             {/* Body row: fixed Detail labels + scrollable time grid */}
             <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-                {/* Fixed "Detalles" label column */}
+                {/* Fixed "Detalles" label column — right-click opens metric selector */}
                 <div id="usage-detail-col"
+                    onContextMenu={handleDetailContextMenu}
                     style={{ width: DETAIL_W, flexShrink: 0, overflowY: 'hidden', overflowX: 'hidden' }}>
-                    <canvas ref={detailCanvasRef} style={{ display: 'block' }} />
+                    <canvas ref={detailCanvasRef} style={{ display: 'block', pointerEvents: 'none' }} />
                 </div>
 
                 {/* Scrollable time grid */}

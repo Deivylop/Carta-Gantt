@@ -169,24 +169,9 @@ export default function Ribbon() {
                     </RG>
                     {(state.currentView === 'usage' || state.currentView === 'resUsage') && (
                         <RG label="USO (MÉTRICAS)">
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 1, maxHeight: 58, overflowY: 'auto', fontSize: 9, lineHeight: 1.2, paddingRight: 2 }}>
-                                {([
-                                    ['Trabajo', 'Trabajo'],
-                                    ['Trabajo acumulado', 'Trabajo Acumulado'],
-                                    ['Trabajo previsto', 'Trabajo Previsto'],
-                                    ['Trabajo previsto acumulado', 'Trab. Previsto Acum.'],
-                                    ['Trabajo real', 'Trabajo Real'],
-                                    ['Trabajo real acumulado', 'Trab. Real Acum.'],
-                                    ['Trabajo restante', 'Trabajo Restante'],
-                                    ['Trabajo restante acumulado', 'Trab. Restante Acum.'],
-                                ] as [string, string][]).map(([val, lbl]) => (
-                                    <label key={val} style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                                        <input type="checkbox" style={{ margin: 0, width: 11, height: 11 }}
-                                            checked={state.usageModes.includes(val)}
-                                            onChange={() => dispatch({ type: 'TOGGLE_USAGE_MODE', mode: val })} />
-                                        {lbl}
-                                    </label>
-                                ))}
+                            <div style={{ fontSize: 9, lineHeight: 1.3, color: 'var(--text-secondary)', textAlign: 'center', padding: '2px 4px' }}>
+                                <div style={{ fontWeight: 600, marginBottom: 2 }}>{state.usageModes.length} campo{state.usageModes.length !== 1 ? 's' : ''}</div>
+                                <div style={{ fontSize: 8, opacity: 0.7 }}>Clic derecho en<br/>"Detalles" para<br/>configurar</div>
                             </div>
                         </RG>
                     )}
