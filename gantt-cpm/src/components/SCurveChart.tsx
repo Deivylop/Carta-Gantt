@@ -154,19 +154,44 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
             const iso = isoDate(d);
             let actualPct: number | null = null;
 
+            // Determine the effective selection mode
+            const isProjectLevel = !multiSelectIds && effectiveId === '__PROJECT__';
+
             // Only plot actual progress for exact history dates or status date
             if (time <= sTime) {
                 const exactRecord = history.find(h => h.date === iso);
                 if (exactRecord) {
-                    if (selectedId === '__PROJECT__') {
+                    if (isProjectLevel) {
                         actualPct = exactRecord.actualPct;
+                    } else if (multiSelectIds && multiSelectIds.length > 0) {
+                        // Weighted average of selected activities' progress from history details
+                        let weightedSum = 0;
+                        let weightSum = 0;
+                        tasks.forEach(t => {
+                            const cw = t.work || 0;
+                            const w = (t.weight != null && t.weight > 0) ? t.weight : (cw || t.dur || 1);
+                            let actPct = 0;
+                            // Find this activity's actual % from history details
+                            const recIdx = history.indexOf(exactRecord);
+                            for (let i = recIdx; i >= 0; i--) {
+                                const rec = history[i];
+                                if (rec.details && rec.details[t.id] !== undefined) {
+                                    actPct = rec.details[t.id];
+                                    break;
+                                }
+                            }
+                            weightedSum += w * actPct;
+                            weightSum += w;
+                        });
+                        actualPct = weightSum > 0 ? weightedSum / weightSum : 0;
                     } else {
+                        // Single activity selected
                         let found = false;
                         const idx = history.indexOf(exactRecord);
                         for (let i = idx; i >= 0; i--) {
                             const rec = history[i];
-                            if (rec.details && rec.details[selectedId] !== undefined) {
-                                actualPct = rec.details[selectedId];
+                            if (rec.details && rec.details[effectiveId] !== undefined) {
+                                actualPct = rec.details[effectiveId];
                                 found = true;
                                 break;
                             }
@@ -174,11 +199,22 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                         if (!found) actualPct = 0;
                     }
                 } else if (time === sTime) {
-                    if (selectedId === '__PROJECT__') {
+                    if (isProjectLevel) {
                         const projAct = state.activities.find(a => a._isProjRow);
                         actualPct = projAct ? (projAct.pct || 0) : 0;
+                    } else if (multiSelectIds && multiSelectIds.length > 0) {
+                        // Weighted average of selected activities' current pct
+                        let weightedSum = 0;
+                        let weightSum = 0;
+                        tasks.forEach(t => {
+                            const cw = t.work || 0;
+                            const w = (t.weight != null && t.weight > 0) ? t.weight : (cw || t.dur || 1);
+                            weightedSum += w * (t.pct || 0);
+                            weightSum += w;
+                        });
+                        actualPct = weightSum > 0 ? weightedSum / weightSum : 0;
                     } else {
-                        const selAct = state.activities.find(a => a.id === selectedId);
+                        const selAct = state.activities.find(a => a.id === effectiveId);
                         actualPct = selAct ? (selAct.pct || 0) : 0;
                     }
                 }
