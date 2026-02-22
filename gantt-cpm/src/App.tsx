@@ -22,7 +22,6 @@ import { saveToSupabase, loadFromSupabase } from './utils/supabaseSync';
 
 function AppInner() {
   const { state, dispatch } = useGantt();
-  const [tableW, setTableW] = useState(700);
   const [formH, setFormH] = useState(200);
   const [resizing, setResizing] = useState<'v' | 'h' | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -131,7 +130,7 @@ function AppInner() {
     const handleMove = (e: MouseEvent) => {
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
-      setTableW(Math.max(200, Math.min(e.clientX - rect.left, window.innerWidth - 200)));
+      dispatch({ type: 'SET_TABLE_W', width: Math.max(200, Math.min(e.clientX - rect.left, window.innerWidth - 200)) });
     };
     const handleUp = () => { setResizing(null); document.body.style.cursor = ''; document.body.style.userSelect = ''; };
     document.body.style.cursor = 'col-resize';
@@ -218,7 +217,7 @@ function AppInner() {
           {/* Usage Area (Table | Resize | Grid) */}
           <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
             {/* Table */}
-            <div style={{ width: tableW, flexShrink: 0, overflow: 'hidden' }}>
+            <div style={{ width: state.tableW, flexShrink: 0, overflow: 'hidden' }}>
               <GanttTable />
             </div>
 
@@ -246,7 +245,7 @@ function AppInner() {
           {/* Gantt Area (Table | Resize | Timeline) */}
           <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
             {/* Table */}
-            <div style={{ width: tableW, flexShrink: 0, overflow: 'hidden' }}>
+            <div style={{ width: state.tableW, flexShrink: 0, overflow: 'hidden' }}>
               <GanttTable />
             </div>
 

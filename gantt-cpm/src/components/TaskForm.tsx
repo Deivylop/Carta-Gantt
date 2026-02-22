@@ -7,11 +7,16 @@ import { fmtDate, addDays } from '../utils/cpm';
 import type { Activity } from '../types/gantt';
 import SCurveChart from './SCurveChart';
 
+const ZOOM_PX: Record<string, number> = { day: 28, week: 8, month: 2.2 };
+
 export default function TaskForm() {
     const { state, dispatch } = useGantt();
-    const { activities, selIdx, resourcePool } = state;
+    const { activities, selIdx, resourcePool, tableW, totalDays, zoom, projStart } = state;
     const [tab, setTab] = useState<'pred' | 'res' | 'scurve'>('pred');
     const a = selIdx >= 0 ? activities[selIdx] : null;
+
+    const [scurveMode, setScurveMode] = useState<'all' | 'selected'>('all');
+    const [scurveSelection, setScurveSelection] = useState<string[]>([]);
 
     // ── Autocomplete State ──
     const [acOpen, setAcOpen] = useState(false);
@@ -247,8 +252,52 @@ export default function TaskForm() {
                 )}
 
                 {tab === 'scurve' && (
-                    <div style={{ flex: 1, height: '100%', minHeight: 0, position: 'relative' }}>
-                        <SCurveChart hideHeader forcedActivityId={a.id} />
+                    <div style={{ display: 'flex', width: '100%', height: '100%', minHeight: 0 }}>
+                        {/* Selector de Tareas (Lado Izquierdo) */}
+                        <div style={{ width: tableW, flexShrink: 0, padding: 10, borderRight: '1px solid var(--border-color, #e2e8f0)', overflowY: 'auto' }}>
+                            <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+                                    <input type="radio" name="scurveMode" checked={scurveMode === 'all'} onChange={() => setScurveMode('all')} />
+                                    <span>Todas las actividades</span>
+                                </label>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+                                    <input type="radio" name="scurveMode" checked={scurveMode === 'selected'} onChange={() => setScurveMode('selected')} />
+                                    <span>Actividades seleccionadas</span>
+                                </label>
+                            </div>
+                            {scurveMode === 'selected' && (
+                                <div style={{ borderTop: '1px solid var(--border-color, #e2e8f0)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                    {activities.filter(x => !x._isProjRow && x.type === 'task').map(x => (
+                                        <label key={x.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={`${x.id} - ${x.name}`}>
+                                            <input type="checkbox" checked={scurveSelection.includes(x.id)} onChange={e => {
+                                                if (e.target.checked) setScurveSelection(prev => [...prev, x.id]);
+                                                else setScurveSelection(prev => prev.filter(id => id !== x.id));
+                                            }} />
+                                            <span>{x.id} - {x.name}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        {/* Gráfico Curva S (Lado Derecho) */}
+                        <div
+                            id="scurve-scroll-container"
+                            style={{ flex: 1, overflowX: 'auto', overflowY: 'hidden', position: 'relative' }}
+                            onScroll={(e) => {
+                                const ganttScroll = document.getElementById('gantt-timeline-scroll');
+                                if (ganttScroll && ganttScroll.scrollLeft !== e.currentTarget.scrollLeft) {
+                                    ganttScroll.scrollLeft = e.currentTarget.scrollLeft;
+                                }
+                            }}
+                        >
+                            <SCurveChart
+                                hideHeader
+                                multiSelectIds={scurveMode === 'selected' ? scurveSelection : undefined}
+                                exactWidth={totalDays * ZOOM_PX[zoom]}
+                                startDateMs={projStart.getTime()}
+                                endDateMs={addDays(projStart, totalDays).getTime()}
+                            />
+                        </div>
                     </div>
                 )}
 

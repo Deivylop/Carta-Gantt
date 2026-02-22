@@ -56,11 +56,13 @@ export interface GanttState {
     totalDays: number;
     lightMode: boolean;
     showProjRow: boolean;
+    // View state
+    currentView: 'gantt' | 'resources' | 'scurve' | 'usage';
     collapsed: Set<string>;
+    tableW: number;       // Global table width
     activeGroup: string;
     columns: ColumnDef[];
     colWidths: number[];
-    currentView: 'gantt' | 'resources' | 'scurve' | 'usage';
     usageMode: 'Trabajo' | 'Trabajo real' | 'Trabajo acumulado' | 'Trabajo previsto';
     usageZoom: 'day' | 'week' | 'month';
     undoStack: string[];
@@ -86,6 +88,7 @@ export type Action =
     | { type: 'SET_ZOOM'; zoom: ZoomLevel }
     | { type: 'TOGGLE_THEME' }
     | { type: 'SET_VIEW'; view: 'gantt' | 'resources' | 'scurve' | 'usage' }
+    | { type: 'SET_TABLE_W', width: number }
     | { type: 'SET_USAGE_MODE'; mode: GanttState['usageMode'] }
     | { type: 'SET_USAGE_ZOOM'; zoom: GanttState['usageZoom'] }
     | { type: 'TOGGLE_COLLAPSE'; id: string }
@@ -130,7 +133,7 @@ export type Action =
     | { type: 'SET_PROGRESS_HISTORY'; history: ProgressHistoryEntry[] }
     | { type: 'DELETE_PROGRESS_ENTRY'; date: string };
 
-// ─── Grouping / Filtering ───────────────────────────────────────
+// ─── Grouping / Filtering ─────────────────────────────────────────
 function applyGroupFilter(rows: VisibleRow[], activities: Activity[], activeGroup: string, columns: ColumnDef[]): VisibleRow[] {
     if (activeGroup === 'none') return rows;
     if (activeGroup === 'critical') return rows.filter(vr => { const a = activities[vr._idx]; return a._isProjRow || a.type === 'summary' || a.crit; });
@@ -477,6 +480,8 @@ function reducer(state: GanttState, action: Action): GanttState {
         case 'OPEN_SB_MODAL': return { ...state, sbModalOpen: true, actModalOpen: false, projModalOpen: false, linkModalOpen: false, progressModalOpen: false };
         case 'CLOSE_SB_MODAL': return { ...state, sbModalOpen: false };
 
+        case 'SET_TABLE_W': return { ...state, tableW: action.width };
+
         case 'OPEN_PROGRESS_MODAL': return { ...state, progressModalOpen: true, actModalOpen: false, projModalOpen: false, linkModalOpen: false, sbModalOpen: false };
         case 'CLOSE_PROGRESS_MODAL': return { ...state, progressModalOpen: false };
 
@@ -616,16 +621,17 @@ const initialState: GanttState = {
     activities: [],
     resourcePool: [],
     visRows: [],
-    selIdx: -1,
     zoom: 'week',
     totalDays: 400,
     lightMode: false,
     showProjRow: true,
+    currentView: 'gantt',
     collapsed: new Set(),
+    selIdx: -1,
+    tableW: 400,
     activeGroup: 'none',
     columns: DEFAULT_COLS,
     colWidths: DEFAULT_COLS.map(c => c.w),
-    currentView: 'gantt',
     usageMode: 'Trabajo',
     usageZoom: 'week',
     undoStack: [],

@@ -8,9 +8,13 @@ import { isoDate, getExactElapsedRatio } from '../utils/cpm';
 interface SCurveChartProps {
     hideHeader?: boolean;
     forcedActivityId?: string;
+    multiSelectIds?: string[];
+    exactWidth?: number;
+    startDateMs?: number;
+    endDateMs?: number;
 }
 
-export default function SCurveChart({ hideHeader, forcedActivityId }: SCurveChartProps = {}) {
+export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectIds, exactWidth, startDateMs, endDateMs }: SCurveChartProps = {}) {
     const { state } = useGantt();
     const [selectedId, setSelectedId] = useState<string>('__PROJECT__');
 
@@ -18,7 +22,9 @@ export default function SCurveChart({ hideHeader, forcedActivityId }: SCurveChar
         const effectiveId = forcedActivityId || selectedId;
         // 1. Get base tasks for the selected context
         let tasks: any[] = [];
-        if (effectiveId === '__PROJECT__') {
+        if (multiSelectIds) {
+            tasks = state.activities.filter(a => multiSelectIds.includes(a.id) && a.type === 'task');
+        } else if (effectiveId === '__PROJECT__') {
             tasks = state.activities.filter(a => a.type === 'task' && !a._isProjRow);
         } else {
             const idx = state.activities.findIndex(a => a.id === effectiveId);
@@ -197,7 +203,7 @@ export default function SCurveChart({ hideHeader, forcedActivityId }: SCurveChar
     const actualColor = '#10b981'; // Green
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', background: state.lightMode ? '#fff' : '#0f172a' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: exactWidth ? exactWidth : '100%', background: state.lightMode ? '#fff' : '#0f172a' }}>
             {!hideHeader && (
                 <div className="fv-hdr" style={{ padding: '8px 16px', display: 'flex', gap: 10, alignItems: 'center', borderBottom: `1px solid ${gridColor}` }}>
                     <span style={{ fontSize: 13, fontWeight: 600, color: textColor }}>Analizar:</span>
@@ -239,7 +245,7 @@ export default function SCurveChart({ hideHeader, forcedActivityId }: SCurveChar
                             <XAxis
                                 type="number"
                                 scale="time"
-                                domain={['dataMin', 'dataMax']}
+                                domain={startDateMs && endDateMs ? [startDateMs, endDateMs] : ['dataMin', 'dataMax']}
                                 dataKey="dateMs"
                                 stroke={textColor}
                                 tick={{ fill: textColor, fontSize: 12 }}
@@ -249,6 +255,14 @@ export default function SCurveChart({ hideHeader, forcedActivityId }: SCurveChar
                                 height={60}
                             />
                             <YAxis
+                                stroke={textColor}
+                                tick={{ fill: textColor, fontSize: 12 }}
+                                domain={[0, 100]}
+                                tickFormatter={(val: number) => `${val}%`}
+                            />
+                            <YAxis
+                                yAxisId="right"
+                                orientation="right"
                                 stroke={textColor}
                                 tick={{ fill: textColor, fontSize: 12 }}
                                 domain={[0, 100]}
