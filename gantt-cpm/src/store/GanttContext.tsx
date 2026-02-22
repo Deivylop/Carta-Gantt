@@ -211,7 +211,6 @@ function recalc(state: GanttState): GanttState {
     return { ...state, activities: result.activities, totalDays: result.totalDays, visRows, pxPerDay };
 }
 
-const ZOOM_PX: Record<ZoomLevel, number> = { day: 28, week: 8, month: 2.2 };
 
 // ─── Reducer ────────────────────────────────────────────────────
 function reducer(state: GanttState, action: Action): GanttState {
@@ -303,8 +302,11 @@ function reducer(state: GanttState, action: Action): GanttState {
         case 'SET_SELECTION':
             return { ...state, selIdx: action.index };
 
-        case 'SET_ZOOM':
-            return { ...state, zoom: action.zoom, pxPerDay: ZOOM_PX[action.zoom] };
+        case 'SET_ZOOM': {
+            const timelineW = Math.max(400, (typeof window !== 'undefined' ? window.innerWidth : 1200) - state.tableW - 10);
+            const fitPx = Math.max(0.5, Math.min(timelineW / state.totalDays, 150));
+            return { ...state, zoom: action.zoom, pxPerDay: fitPx };
+        }
 
         case 'SET_PX_PER_DAY':
             return { ...state, pxPerDay: action.px };
