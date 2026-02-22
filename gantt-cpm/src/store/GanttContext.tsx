@@ -531,6 +531,8 @@ function reducer(state: GanttState, action: Action): GanttState {
             const blName = action.name || `Línea Base ${blIdx}`;
             const blDesc = action.description || '';
             const now = new Date().toISOString();
+            // Auto-activate the saved baseline
+            const newActiveIdx = blIdx;
             const acts = state.activities.map(a => {
                 const baselines = [...(a.baselines || [])];
                 // Ensure array has slots up to blIdx
@@ -548,8 +550,8 @@ function reducer(state: GanttState, action: Action): GanttState {
                     weight: a.weight != null ? a.weight : null,
                     statusDate: state.statusDate ? state.statusDate.toISOString() : now,
                 } as BaselineEntry;
-                // Set active baseline fields from the currently displayed baseline
-                const active = baselines[state.activeBaselineIdx] || baselines[blIdx];
+                // Always use the newly saved baseline as active fields
+                const active = baselines[newActiveIdx];
                 return {
                     ...a,
                     baselines,
@@ -559,7 +561,7 @@ function reducer(state: GanttState, action: Action): GanttState {
                     blCal: active ? active.cal : null,
                 };
             });
-            return { ...state, activities: acts, visRows: buildVisRows(acts, state.collapsed, state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes) };
+            return recalc({ ...state, activeBaselineIdx: newActiveIdx, activities: acts });
         }
 
         case 'SET_ACTIVE_BASELINE': {
@@ -574,7 +576,7 @@ function reducer(state: GanttState, action: Action): GanttState {
                     blCal: bl ? bl.cal : null,
                 };
             });
-            return { ...state, activeBaselineIdx: blIdx, activities: acts, visRows: buildVisRows(acts, state.collapsed, state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes) };
+            return recalc({ ...state, activeBaselineIdx: blIdx, activities: acts });
         }
 
         case 'CLEAR_BASELINE': {
