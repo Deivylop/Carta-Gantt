@@ -20,6 +20,9 @@ export default function SaveProgressModal() {
 
     const close = () => dispatch({ type: 'CLOSE_PROGRESS_MODAL' });
     const save = () => {
+        if (existingEntry) {
+            if (!confirm(`Ya existe un registro de progreso para ${state.statusDate?.toLocaleDateString() || 'esta fecha'}. ¿Desea sobrescribirlo?`)) return;
+        }
         dispatch({ type: 'SAVE_PERIOD_PROGRESS' });
     };
 
