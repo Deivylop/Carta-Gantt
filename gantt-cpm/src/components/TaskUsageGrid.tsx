@@ -240,11 +240,37 @@ export default function TaskUsageGrid() {
         }
     }, [visRows, dispatch]);
 
+    // ─── Header Continuous Zoom Handlers ───
+    const [headerDrag, setHeaderDrag] = useState<{ startX: number, startPX: number } | null>(null);
+
+    const handleHeaderMouseDown = useCallback((e: React.MouseEvent) => {
+        setHeaderDrag({ startX: e.clientX, startPX: PX });
+    }, [PX]);
+
+    const handleHeaderMouseMove = useCallback((e: React.MouseEvent) => {
+        if (!headerDrag) return;
+        const dx = e.clientX - headerDrag.startX;
+        let newPX = headerDrag.startPX * (1 + dx / 400);
+        newPX = Math.max(0.5, Math.min(newPX, 150)); // Clamp scale
+        dispatch({ type: 'SET_PX_PER_DAY', px: newPX });
+    }, [headerDrag, dispatch]);
+
+    const handleHeaderMouseUpOrLeave = useCallback(() => {
+        setHeaderDrag(null);
+    }, []);
+
     return (
         <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden', position: 'relative' }}>
             {/* Header */}
             <div style={{ height: HDR_H, flexShrink: 0, overflow: 'hidden', position: 'relative' }}>
-                <canvas ref={hdrRef} style={{ display: 'block' }} />
+                <canvas
+                    ref={hdrRef}
+                    style={{ display: 'block', cursor: 'ew-resize' }}
+                    onMouseDown={handleHeaderMouseDown}
+                    onMouseMove={handleHeaderMouseMove}
+                    onMouseUp={handleHeaderMouseUpOrLeave}
+                    onMouseLeave={handleHeaderMouseUpOrLeave}
+                />
             </div>
 
             {/* Body */}
