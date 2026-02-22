@@ -69,12 +69,10 @@ export default function ColumnPickerModal({ onClose }: Props) {
     /* Selected item in left panel */
     const [availHighlight, setAvailHighlight] = useState<string | null>(null);
 
-    /* Column lookup */
-    const colMap = useRef<Map<string, ColumnDef>>(new Map());
+    /* Column lookup – initialise synchronously so first render has labels */
+    const colMap = useRef<Map<string, ColumnDef>>(new Map(state.columns.map(c => [c.key, c])));
     useEffect(() => {
-        const m = new Map<string, ColumnDef>();
-        state.columns.forEach(c => m.set(c.key, c));
-        colMap.current = m;
+        colMap.current = new Map(state.columns.map(c => [c.key, c]));
     }, [state.columns]);
 
     const getLabel = useCallback((key: string) => {
@@ -172,7 +170,6 @@ export default function ColumnPickerModal({ onClose }: Props) {
     }, [selected, state.columns, state.colWidths, dispatch]);
 
     const handleAccept = () => { applyChanges(); onClose(); };
-    const handleApply = () => { applyChanges(); };
 
     /* ── Default (reset) ── */
     const handleDefault = () => {
@@ -270,7 +267,6 @@ export default function ColumnPickerModal({ onClose }: Props) {
                 <div className="col-picker-footer">
                     <button className="col-picker-btn primary" onClick={handleAccept}>✔ Aceptar</button>
                     <button className="col-picker-btn" onClick={onClose}>✖ Cancelar</button>
-                    <button className="col-picker-btn" onClick={handleApply}>Aplicar</button>
                     <div style={{ flex: 1 }} />
                     <button className="col-picker-btn" onClick={handleDefault}>Por defecto</button>
                 </div>
