@@ -26,7 +26,7 @@ function th(light: boolean): ThemeColors {
 
 export default function TaskUsageGrid() {
     const { state, dispatch } = useGantt();
-    const { visRows, usageZoom, usageMode, totalDays, timelineStart: projStart, selIdx, lightMode, activities, pxPerDay, statusDate } = state;
+    const { visRows, usageZoom, usageMode, totalDays, timelineStart: projStart, selIdx, lightMode, activities, pxPerDay, statusDate, activeBaselineIdx } = state;
 
     // Use Gantt's pxPerDay for synchronized column widths
     const PX = pxPerDay;
@@ -165,7 +165,7 @@ export default function TaskUsageGrid() {
             if (!a || a._isProjRow) return;
 
             // Get precalculated daily values for this activity (or specific resource assignment)
-            const dailyValues = getUsageDailyValues(a, usageMode as any, false, 6, r._isResourceAssignment ? r.res : undefined);
+            const dailyValues = getUsageDailyValues(a, usageMode as any, false, 6, r._isResourceAssignment ? r.res : undefined, activeBaselineIdx, statusDate);
 
             ctx.fillStyle = r._isResourceAssignment
                 ? (lightMode ? '#2563eb' : '#60a5fa')
@@ -206,7 +206,7 @@ export default function TaskUsageGrid() {
             ctx.setLineDash([]);
         }
 
-    }, [W, H, visRows, activities, activeZoom, PX, usageMode, projStart, totalDays, t, selIdx, lightMode, getIntervals, statusDate]);
+    }, [W, H, visRows, activities, activeZoom, PX, usageMode, projStart, totalDays, t, selIdx, lightMode, getIntervals, statusDate, activeBaselineIdx]);
 
     useEffect(() => {
         draw();

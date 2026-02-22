@@ -471,67 +471,217 @@ export function calcCPM(
 
 // ─── Usage Distribution Helper ──────────────────────────────────
 
-export function getUsageDailyValues(a: Activity, mode: 'Trabajo' | 'Trabajo real' | 'Trabajo acumulado' | 'Trabajo previsto', calcTotalAccumulated = false, defCal: number = 6, resId?: string): Map<number, number> {
+export function getUsageDailyValues(
+    a: Activity,
+    mode: 'Trabajo' | 'Trabajo real' | 'Trabajo acumulado' | 'Trabajo previsto',
+    calcTotalAccumulated = false,
+    defCal: number = 6,
+    resId?: string,
+    activeBaselineIdx: number = 0,
+    statusDate?: Date | null
+): Map<number, number> {
     const map = new Map<number, number>();
-    if (a.type === 'summary' || a._isProjRow) return map; // Summaries are aggregated bottom-up by the UI
+    if (a.type === 'summary' || a._isProjRow) return map;
     const work = resId ? (a.resources?.find(r => String(r.rid) === String(resId))?.work || 0) : (a.work || 0);
     if (work === 0) return map;
 
-    const ES = (mode === 'Trabajo previsto' ? a.blES : a.ES) || a.ES;
-    const EF = (mode === 'Trabajo previsto' ? a.blEF : a.EF) || a.EF;
-    if (!ES || !EF) return map;
-
-    // Zero out hours
-    const start = new Date(ES); start.setHours(0, 0, 0, 0);
-    const end = new Date(EF); end.setHours(0, 0, 0, 0);
-
-    const cal = (mode === 'Trabajo previsto' ? a.blCal : a.cal) || a.cal || defCal;
-    const isWorkDay = (d: Date) => {
-        const wd = d.getDay();
-        if (cal === 5) return wd >= 1 && wd <= 5;
-        if (cal === 6) return wd !== 0;
-        return true;
+    // ─── Helper: build array of work-day dates between two dates ───
+    const buildWorkDays = (s: Date, e: Date, calN: number): Date[] => {
+        const arr: Date[] = [];
+        const c = new Date(s); c.setHours(0, 0, 0, 0);
+        const ed = new Date(e); ed.setHours(0, 0, 0, 0);
+        while (c < ed) {
+            const wd = c.getDay();
+            const isWork = calN === 5 ? (wd >= 1 && wd <= 5) : calN === 6 ? (wd !== 0) : true;
+            if (isWork) arr.push(new Date(c));
+            c.setDate(c.getDate() + 1);
+        }
+        if (arr.length === 0) arr.push(new Date(s));
+        return arr;
     };
 
-    let workDaysCount = 0;
-    const dates = [];
-    let cur = new Date(start);
-    while (cur < end) {
-        if (isWorkDay(cur)) {
-            workDaysCount++;
-            dates.push(new Date(cur));
+    // ─── "Trabajo previsto" with two-segment baseline interpolation ───
+    if (mode === 'Trabajo previsto') {
+        const blStart = a.blES || a.ES;
+        const blEnd = a.blEF || a.EF;
+        if (!blStart || !blEnd) return map;
+
+        const start = new Date(blStart); start.setHours(0, 0, 0, 0);
+        const end = new Date(blEnd); end.setHours(0, 0, 0, 0);
+        const cal = a.blCal || a.cal || defCal;
+
+        const activeBl = (a.baselines || [])[activeBaselineIdx] || null;
+
+        // Check if we have baseline pct + statusDate for two-segment interpolation
+        if (activeBl && activeBl.pct != null && activeBl.pct > 0 && activeBl.statusDate) {
+            const blStatusEnd = new Date(activeBl.statusDate);
+            blStatusEnd.setHours(0, 0, 0, 0);
+            blStatusEnd.setDate(blStatusEnd.getDate() + 1); // inclusive
+            const blPct = activeBl.pct;
+
+            // Work for each segment
+            const workSeg1 = work * (blPct / 100);
+            const workSeg2 = work * ((100 - blPct) / 100);
+
+            // Segment 1: start → blStatusDate
+            const datesSeg1 = buildWorkDays(start, blStatusEnd < end ? blStatusEnd : end, cal);
+            const dailySeg1 = datesSeg1.length > 0 ? workSeg1 / datesSeg1.length : 0;
+
+            // Segment 2: blStatusDate → end
+            const seg2Start = blStatusEnd < end ? blStatusEnd : end;
+            const datesSeg2 = buildWorkDays(seg2Start, end, cal);
+            const dailySeg2 = datesSeg2.length > 0 ? workSeg2 / datesSeg2.length : 0;
+
+            let acc = 0;
+            for (const d of datesSeg1) {
+                const t = d.getTime();
+                if (calcTotalAccumulated || mode !== 'Trabajo acumulado') {
+                    if (dailySeg1 > 0) map.set(t, dailySeg1);
+                } else {
+                    acc += dailySeg1;
+                    map.set(t, acc);
+                }
+            }
+            for (const d of datesSeg2) {
+                const t = d.getTime();
+                if (calcTotalAccumulated || mode !== 'Trabajo acumulado') {
+                    if (dailySeg2 > 0) map.set(t, dailySeg2);
+                } else {
+                    acc += dailySeg2;
+                    map.set(t, acc);
+                }
+            }
+        } else {
+            // Fallback: uniform distribution
+            const dates = buildWorkDays(start, end, cal);
+            const daily = work / dates.length;
+            for (const d of dates) {
+                if (daily > 0) map.set(d.getTime(), daily);
+            }
         }
-        cur.setDate(cur.getDate() + 1);
-    }
-    // Fallback to 1 day if starting and ending on the same day/weekend
-    if (workDaysCount === 0) {
-        workDaysCount = 1;
-        dates.push(new Date(start));
+        return map;
     }
 
-    let daily = work / workDaysCount;
-    let limitDays = workDaysCount;
-
+    // ─── "Trabajo real": previsto up to statusDate, remainder over remDur ───
     if (mode === 'Trabajo real') {
         const pct = Math.min(100, Math.max(0, a.pct || 0));
         if (pct === 0) return map;
+
         const actualWork = work * (pct / 100);
-        // Distribute the actual work over the proportionally elapsed duration
-        limitDays = Math.max(1, Math.round(workDaysCount * (pct / 100)));
-        daily = actualWork / limitDays;
+        const remainingWork = work - actualWork;
+
+        // Use baseline dates for the "planned" portion
+        const blStart = a.blES || a.ES;
+        const blEnd = a.blEF || a.EF;
+        if (!blStart || !blEnd) return map;
+
+        const startBl = new Date(blStart); startBl.setHours(0, 0, 0, 0);
+        const endBl = new Date(blEnd); endBl.setHours(0, 0, 0, 0);
+        const cal = a.blCal || a.cal || defCal;
+        const calReal = a.cal || defCal;
+
+        // Determine the cutoff: status date
+        const sDate = statusDate ? new Date(statusDate) : new Date();
+        sDate.setHours(0, 0, 0, 0);
+        const sDateEnd = new Date(sDate);
+        sDateEnd.setDate(sDateEnd.getDate() + 1); // inclusive
+
+        const activeBl = (a.baselines || [])[activeBaselineIdx] || null;
+
+        // ── Part A: Actual work distributed from blStart to statusDate ──
+        // Use two-segment baseline curve up to statusDate
+        const cutoff = sDateEnd < endBl ? sDateEnd : endBl;
+
+        if (activeBl && activeBl.pct != null && activeBl.pct > 0 && activeBl.statusDate) {
+            const blStatusEnd = new Date(activeBl.statusDate);
+            blStatusEnd.setHours(0, 0, 0, 0);
+            blStatusEnd.setDate(blStatusEnd.getDate() + 1);
+            const blPct = activeBl.pct;
+            const workSeg1 = work * (blPct / 100);
+            const workSeg2 = work * ((100 - blPct) / 100);
+
+            // Segment 1 dates within [blStart, min(blStatusDate, cutoff)]
+            const seg1End = blStatusEnd < cutoff ? blStatusEnd : cutoff;
+            const datesSeg1 = buildWorkDays(startBl, seg1End, cal);
+            // Full segment 1 days count for the rate
+            const fullSeg1 = buildWorkDays(startBl, blStatusEnd < endBl ? blStatusEnd : endBl, cal);
+            const dailySeg1 = fullSeg1.length > 0 ? workSeg1 / fullSeg1.length : 0;
+
+            for (const d of datesSeg1) {
+                if (dailySeg1 > 0) map.set(d.getTime(), dailySeg1);
+            }
+
+            // Segment 2 dates within [blStatusDate, cutoff] only if cutoff > blStatusDate
+            if (cutoff > blStatusEnd) {
+                const datesSeg2 = buildWorkDays(blStatusEnd, cutoff, cal);
+                const fullSeg2 = buildWorkDays(blStatusEnd, endBl, cal);
+                const dailySeg2 = fullSeg2.length > 0 ? workSeg2 / fullSeg2.length : 0;
+
+                for (const d of datesSeg2) {
+                    if (dailySeg2 > 0) map.set(d.getTime(), dailySeg2);
+                }
+            }
+        } else {
+            // Fallback: uniform distribution up to statusDate
+            const allDates = buildWorkDays(startBl, endBl, cal);
+            const daily = work / allDates.length;
+            for (const d of allDates) {
+                if (d.getTime() < cutoff.getTime()) {
+                    if (daily > 0) map.set(d.getTime(), daily);
+                }
+            }
+        }
+
+        // Scale actual portion: the sum of values in map is "planned work up to statusDate"
+        // but we want the actual total to be actualWork, so scale proportionally
+        let plannedSum = 0;
+        for (const v of map.values()) plannedSum += v;
+        if (plannedSum > 0 && Math.abs(plannedSum - actualWork) > 0.01) {
+            const scale = actualWork / plannedSum;
+            for (const [k, v] of map) map.set(k, v * scale);
+        }
+
+        // ── Part B: Remaining work distributed from statusDate to actual EF ──
+        if (remainingWork > 0 && pct < 100) {
+            const realEF = a.EF;
+            if (realEF) {
+                const endReal = new Date(realEF); endReal.setHours(0, 0, 0, 0);
+                const remStart = sDateEnd > startBl ? sDateEnd : startBl;
+                if (endReal > remStart) {
+                    const remDates = buildWorkDays(remStart, endReal, calReal);
+                    if (remDates.length > 0) {
+                        const dailyRem = remainingWork / remDates.length;
+                        for (const d of remDates) {
+                            const t = d.getTime();
+                            map.set(t, (map.get(t) || 0) + dailyRem);
+                        }
+                    }
+                }
+            }
+        }
+        return map;
     }
+
+    // ─── "Trabajo" and "Trabajo acumulado": standard uniform distribution ───
+    const ES = a.ES;
+    const EF = a.EF;
+    if (!ES || !EF) return map;
+
+    const start = new Date(ES); start.setHours(0, 0, 0, 0);
+    const end = new Date(EF); end.setHours(0, 0, 0, 0);
+    const cal = a.cal || defCal;
+
+    const dates = buildWorkDays(start, end, cal);
+    const daily = work / dates.length;
 
     let acc = 0;
     for (let i = 0; i < dates.length; i++) {
         const t = dates[i].getTime();
-        const isActiveDay = i < limitDays;
-        const valToSet = isActiveDay ? daily : 0;
-
         if (mode === 'Trabajo acumulado' && !calcTotalAccumulated) {
-            acc += valToSet;
+            acc += daily;
             map.set(t, acc);
         } else {
-            if (valToSet > 0) map.set(t, valToSet);
+            if (daily > 0) map.set(t, daily);
         }
     }
     return map;
