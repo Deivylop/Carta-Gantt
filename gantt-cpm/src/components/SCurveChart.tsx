@@ -236,8 +236,8 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                             data={data.points}
                             margin={{
                                 top: 5,
-                                right: 30,
-                                left: 20,
+                                right: exactWidth ? 0 : 30,
+                                left: exactWidth ? 0 : 20,
                                 bottom: 25,
                             }}
                         >
@@ -256,15 +256,17 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                             />
                             <YAxis
                                 stroke={textColor}
-                                tick={{ fill: textColor, fontSize: 12 }}
+                                width={exactWidth ? 1 : 60}
+                                tick={exactWidth ? { fill: textColor, fontSize: 12, dx: 25, textAnchor: 'start', stroke: state.lightMode ? '#fff' : '#0f172a', strokeWidth: 3, paintOrder: 'stroke' } : { fill: textColor, fontSize: 12 }}
                                 domain={[0, 100]}
                                 tickFormatter={(val: number) => `${val}%`}
                             />
                             <YAxis
                                 yAxisId="right"
                                 orientation="right"
+                                width={exactWidth ? 1 : 60}
                                 stroke={textColor}
-                                tick={{ fill: textColor, fontSize: 12 }}
+                                tick={exactWidth ? { fill: textColor, fontSize: 12, dx: -25, textAnchor: 'end', stroke: state.lightMode ? '#fff' : '#0f172a', strokeWidth: 3, paintOrder: 'stroke' } : { fill: textColor, fontSize: 12 }}
                                 domain={[0, 100]}
                                 tickFormatter={(val: number) => `${val}%`}
                             />
