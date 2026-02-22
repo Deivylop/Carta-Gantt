@@ -229,61 +229,69 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
                     No hay suficientes datos de fechas base o duraciones para calcular la Curva S.
                 </div>
-            ) : exactWidth ? (
-                <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                    <LineChart
-                        width={exactWidth}
-                        height={200}
-                        data={data.points}
-                        margin={{ top: 5, right: 0, left: 0, bottom: 5 }}
-                    >
-                        <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
-                        <XAxis
-                            type="number"
-                            scale="time"
-                            domain={startDateMs && endDateMs ? [startDateMs, endDateMs] : ['dataMin', 'dataMax']}
-                            dataKey="dateMs"
-                            tick={false}
-                            axisLine={false}
-                            height={1}
+            ) : exactWidth ? (() => {
+                const AXIS_H = 36;
+                return (
+                    <div ref={(el) => {
+                        if (el && el.dataset.measured !== 'true') {
+                            el.dataset.measured = 'true';
+                            const ro = new ResizeObserver(() => {
+                                const h = el.getBoundingClientRect().height;
+                                const chart = el.querySelector('.recharts-wrapper') as HTMLElement;
+                                if (chart) {
+                                    const ch = Math.max(100, Math.floor(h - AXIS_H));
+                                    chart.style.height = ch + 'px';
+                                }
+                            });
+                            ro.observe(el);
+                        }
+                    }} style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+                        {/* Overlay Y-Axis labels */}
+                        <div style={{ position: 'absolute', left: 4, top: 30, bottom: AXIS_H + 10, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', pointerEvents: 'none', zIndex: 2 }}>
+                            {[100, 75, 50, 25, 0].map(v => (
+                                <span key={v} style={{ fontSize: 10, color: textColor, textShadow: state.lightMode ? '0 0 3px #fff, 0 0 3px #fff' : '0 0 3px #0f172a, 0 0 3px #0f172a' }}>{v}%</span>
+                            ))}
+                        </div>
+                        <LineChart
+                            width={exactWidth}
+                            height={200}
+                            data={data.points}
+                            margin={{ top: 5, right: 0, left: 0, bottom: 0 }}
+                        >
+                            <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+                            <XAxis
+                                type="number"
+                                scale="time"
+                                domain={startDateMs && endDateMs ? [startDateMs, endDateMs] : ['dataMin', 'dataMax']}
+                                dataKey="dateMs"
+                                tick={false}
+                                axisLine={false}
+                                height={1}
+                            />
+                            <YAxis hide domain={[0, 100]} />
+                            <YAxis hide yAxisId="right" orientation="right" domain={[0, 100]} />
+                            <Tooltip
+                                contentStyle={{ backgroundColor: state.lightMode ? '#fff' : '#1e293b', borderColor: gridColor, color: textColor }}
+                                formatter={(value: any, name: any) => [`${value}%`, name]}
+                                labelFormatter={(label: any) => new Date(label).toLocaleDateString()}
+                            />
+                            <Legend verticalAlign="top" height={30} />
+                            <ReferenceLine x={data.statusDateMs} stroke="red" strokeDasharray="3 3" label={{ position: 'insideTopLeft', value: 'Fecha de Corte', fill: 'red', fontSize: 12 }} />
+                            <Line type="monotone" dataKey="planned" name="Avance Programado" stroke={plannedColor} strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 6 }} />
+                            <Line type="monotone" dataKey="actual" name="Avance Real" stroke={actualColor} strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} connectNulls={true} />
+                        </LineChart>
+                        <SCurveTimelineAxis
+                            width={exactWidth}
+                            projStart={state.projStart}
+                            totalDays={state.totalDays}
+                            pxPerDay={exactWidth / state.totalDays}
+                            zoom={state.zoom}
+                            lightMode={state.lightMode}
+                            statusDate={state.statusDate}
                         />
-                        <YAxis
-                            stroke={textColor}
-                            width={1}
-                            tick={{ fill: textColor, fontSize: 10, dx: 25, textAnchor: 'start', stroke: state.lightMode ? '#fff' : '#0f172a', strokeWidth: 3, paintOrder: 'stroke' as any }}
-                            domain={[0, 100]}
-                            tickFormatter={(val: number) => `${val}%`}
-                        />
-                        <YAxis
-                            yAxisId="right"
-                            orientation="right"
-                            width={1}
-                            stroke={textColor}
-                            tick={{ fill: textColor, fontSize: 10, dx: -25, textAnchor: 'end', stroke: state.lightMode ? '#fff' : '#0f172a', strokeWidth: 3, paintOrder: 'stroke' as any }}
-                            domain={[0, 100]}
-                            tickFormatter={(val: number) => `${val}%`}
-                        />
-                        <Tooltip
-                            contentStyle={{ backgroundColor: state.lightMode ? '#fff' : '#1e293b', borderColor: gridColor, color: textColor }}
-                            formatter={(value: any, name: any) => [`${value}%`, name]}
-                            labelFormatter={(label: any) => new Date(label).toLocaleDateString()}
-                        />
-                        <Legend verticalAlign="top" height={36} />
-                        <ReferenceLine x={data.statusDateMs} stroke="red" strokeDasharray="3 3" label={{ position: 'insideTopLeft', value: 'Fecha de Corte', fill: 'red', fontSize: 12 }} />
-                        <Line type="monotone" dataKey="planned" name="Avance Programado" stroke={plannedColor} strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 6 }} />
-                        <Line type="monotone" dataKey="actual" name="Avance Real" stroke={actualColor} strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} connectNulls={true} />
-                    </LineChart>
-                    <SCurveTimelineAxis
-                        width={exactWidth}
-                        projStart={state.projStart}
-                        totalDays={state.totalDays}
-                        pxPerDay={exactWidth / state.totalDays}
-                        zoom={state.zoom}
-                        lightMode={state.lightMode}
-                        statusDate={state.statusDate}
-                    />
-                </div>
-            ) : (
+                    </div>
+                );
+            })() : (
                 <div style={{ flex: 1, minHeight: 0 }}>
                     <ResponsiveContainer width="100%" height="100%">
                         <LineChart
