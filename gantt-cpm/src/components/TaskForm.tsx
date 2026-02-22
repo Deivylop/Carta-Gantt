@@ -9,7 +9,7 @@ import SCurveChart from './SCurveChart';
 
 export default function TaskForm() {
     const { state, dispatch } = useGantt();
-    const { activities, selIdx, resourcePool, tableW, totalDays, projStart, pxPerDay } = state;
+    const { activities, selIdx, resourcePool, tableW, totalDays, pxPerDay } = state;
     const [tab, setTab] = useState<'pred' | 'res' | 'scurve'>('pred');
     const a = selIdx >= 0 ? activities[selIdx] : null;
 
@@ -278,22 +278,11 @@ export default function TaskForm() {
                             )}
                         </div>
                         {/* Gráfico Curva S (Lado Derecho) */}
-                        <div
-                            id="scurve-scroll-container"
-                            style={{ flex: 1, overflowX: 'auto', overflowY: 'hidden', position: 'relative' }}
-                            onScroll={(e) => {
-                                const ganttScroll = document.getElementById('gantt-timeline-scroll');
-                                if (ganttScroll && ganttScroll.scrollLeft !== e.currentTarget.scrollLeft) {
-                                    ganttScroll.scrollLeft = e.currentTarget.scrollLeft;
-                                }
-                            }}
-                        >
+                        <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
                             <SCurveChart
                                 hideHeader
                                 multiSelectIds={scurveMode === 'selected' ? scurveSelection : undefined}
                                 exactWidth={totalDays * pxPerDay}
-                                startDateMs={projStart.getTime()}
-                                endDateMs={addDays(projStart, totalDays).getTime()}
                             />
                         </div>
                     </div>

@@ -270,8 +270,8 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                     width={exactWidth}
                     projStart={state.timelineStart}
                     totalDays={state.totalDays}
-                    pxPerDay={exactWidth / state.totalDays}
-                    zoom={state.zoom}
+                    pxPerDay={state.pxPerDay}
+                    zoom={state.currentView === 'usage' ? (state.usageZoom || 'week') : state.zoom}
                     lightMode={state.lightMode}
                     statusDate={state.statusDate}
                     points={data.points}
