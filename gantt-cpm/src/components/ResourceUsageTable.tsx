@@ -3,12 +3,14 @@ import { useGantt } from '../store/GanttContext';
 import { ChevronDown, ChevronRight, User } from 'lucide-react';
 
 const ROW_H = 26;
+const LINE_H = 16;
 const HDR_H = 36;
 
 export default function ResourceUsageTable() {
     const { state, dispatch } = useGantt();
-    const { resourcePool, activities, expResources, lightMode, tableW } = state;
+    const { resourcePool, activities, expResources, lightMode, tableW, usageModes } = state;
     const bodyRef = useRef<HTMLDivElement>(null);
+    const modes = usageModes.length > 0 ? usageModes : ['Trabajo'];
 
     // Filter project rows
     const normalActs = activities.filter(a => !a._isProjRow && a.type !== 'summary');
@@ -81,9 +83,12 @@ export default function ResourceUsageTable() {
 
             {/* Body */}
             <div ref={bodyRef} id="res-gl-body" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
-                {renderRows.map((r, i) => (
-                    <div key={r._isResParent ? `res - ${r.id} ` : `act - ${r.id} -${i} `}
-                        style={{ display: 'flex', height: ROW_H, borderBottom: `1px solid ${t.border} `, background: i % 2 === 0 ? t.rowEven : t.rowOdd }}
+                {renderRows.map((r, i) => {
+                    const isParent = r._isResParent;
+                    const rH = isParent ? ROW_H : Math.max(ROW_H, modes.length * LINE_H + 4);
+                    return (
+                    <div key={isParent ? `res-${r.id}` : `act-${r.id}-${i}`}
+                        style={{ display: 'flex', height: rH, minHeight: rH, borderBottom: `1px solid ${t.border}`, background: i % 2 === 0 ? t.rowEven : t.rowOdd }}
                     >
                         {r._isResParent ? (
                             <>
@@ -110,7 +115,8 @@ export default function ResourceUsageTable() {
                             </>
                         )}
                     </div>
-                ))}
+                    );
+                })}
             </div>
         </div>
     );
