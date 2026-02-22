@@ -323,21 +323,27 @@ function drawSmoothCurve(ctx: CanvasRenderingContext2D, pts: { x: number; y: num
     if (pts.length === 2) {
         ctx.lineTo(pts[1].x, pts[1].y);
     } else {
-        const tension = 0.3;
+        const tension = 0.15; // Very subtle smoothing
         for (let i = 0; i < pts.length - 1; i++) {
             const p0 = pts[Math.max(0, i - 1)];
             const p1 = pts[i];
             const p2 = pts[i + 1];
             const p3 = pts[Math.min(pts.length - 1, i + 2)];
-            let cp1x = p1.x + (p2.x - p0.x) * tension;
             let cp1y = p1.y + (p2.y - p0.y) * tension;
-            let cp2x = p2.x - (p3.x - p1.x) * tension;
             let cp2y = p2.y - (p3.y - p1.y) * tension;
-            // Clamp control points to 0%..100% range (canvas Y is inverted: minY=top=100%, maxY=bottom=0%)
+            // Monotonicity: clamp control points Y between segment endpoints
+            // This guarantees the curve never dips below the previous value
+            const segMinY = Math.min(p1.y, p2.y);
+            const segMaxY = Math.max(p1.y, p2.y);
+            cp1y = Math.max(segMinY, Math.min(segMaxY, cp1y));
+            cp2y = Math.max(segMinY, Math.min(segMaxY, cp2y));
+            // Also clamp to 0..100% range
             if (minY !== undefined && maxY !== undefined) {
                 cp1y = Math.max(minY, Math.min(maxY, cp1y));
                 cp2y = Math.max(minY, Math.min(maxY, cp2y));
             }
+            const cp1x = p1.x + (p2.x - p0.x) * tension;
+            const cp2x = p2.x - (p3.x - p1.x) * tension;
             ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
         }
     }
