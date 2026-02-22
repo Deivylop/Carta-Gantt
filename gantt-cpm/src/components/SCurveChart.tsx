@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { useGantt } from '../store/GanttContext';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine
 } from 'recharts';
-import { isoDate, getExactElapsedRatio } from '../utils/cpm';
+import { isoDate, getExactElapsedRatio, dayDiff, addDays } from '../utils/cpm';
 
 interface SCurveChartProps {
     hideHeader?: boolean;
@@ -230,12 +230,12 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                     No hay suficientes datos de fechas base o duraciones para calcular la Curva S.
                 </div>
             ) : exactWidth ? (
-                <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+                <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                     <LineChart
                         width={exactWidth}
-                        height={250}
+                        height={200}
                         data={data.points}
-                        margin={{ top: 5, right: 0, left: 0, bottom: 25 }}
+                        margin={{ top: 5, right: 0, left: 0, bottom: 5 }}
                     >
                         <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
                         <XAxis
@@ -243,12 +243,9 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                             scale="time"
                             domain={startDateMs && endDateMs ? [startDateMs, endDateMs] : ['dataMin', 'dataMax']}
                             dataKey="dateMs"
-                            stroke={textColor}
-                            tick={{ fill: textColor, fontSize: 10 }}
-                            tickFormatter={(val) => new Date(val).toLocaleDateString()}
-                            angle={-45}
-                            textAnchor="end"
-                            height={50}
+                            tick={false}
+                            axisLine={false}
+                            height={1}
                         />
                         <YAxis
                             stroke={textColor}
@@ -276,6 +273,15 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                         <Line type="monotone" dataKey="planned" name="Avance Programado" stroke={plannedColor} strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 6 }} />
                         <Line type="monotone" dataKey="actual" name="Avance Real" stroke={actualColor} strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} connectNulls={true} />
                     </LineChart>
+                    <SCurveTimelineAxis
+                        width={exactWidth}
+                        projStart={state.projStart}
+                        totalDays={state.totalDays}
+                        pxPerDay={exactWidth / state.totalDays}
+                        zoom={state.zoom}
+                        lightMode={state.lightMode}
+                        statusDate={state.statusDate}
+                    />
                 </div>
             ) : (
                 <div style={{ flex: 1, minHeight: 0 }}>
@@ -314,4 +320,101 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
             )}
         </div>
     );
+}
+
+// ─── Gantt-style timeline axis for the embedded S-Curve ──────────
+interface SCurveTimelineAxisProps {
+    width: number;
+    projStart: Date;
+    totalDays: number;
+    pxPerDay: number;
+    zoom: string;
+    lightMode: boolean;
+    statusDate: Date | null;
+}
+
+function SCurveTimelineAxis({ width, projStart, totalDays, pxPerDay, zoom, lightMode, statusDate }: SCurveTimelineAxisProps) {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const HDR_H = 36;
+    const PX = pxPerDay;
+
+    const draw = useCallback(() => {
+        const c = canvasRef.current; if (!c) return;
+        c.width = width; c.height = HDR_H;
+        c.style.width = width + 'px'; c.style.height = HDR_H + 'px';
+        const ctx = c.getContext('2d')!;
+        ctx.clearRect(0, 0, width, HDR_H);
+
+        const colors = lightMode ? {
+            topBg: '#e2e8f0', topBorder: '#cbd5e1', topText: '#334155',
+            botBg: '#f1f5f9', botBorder: '#e2e8f0', botText: '#334155', weekend: '#e0e7ff',
+        } : {
+            topBg: '#0a0f1a', topBorder: '#1f2937', topText: '#94a3b8',
+            botBg: '#0f172a', botBorder: '#1e293b', botText: '#64748b', weekend: '#1a1040',
+        };
+
+        // Month headers (row 1: 0..17)
+        let cur = new Date(projStart);
+        const end = addDays(projStart, totalDays);
+        while (cur < end) {
+            const x = dayDiff(projStart, cur) * PX;
+            const nm = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+            const w = Math.min(dayDiff(cur, nm) * PX, width - x);
+            ctx.fillStyle = colors.topBg; ctx.fillRect(x, 0, w, 17);
+            ctx.strokeStyle = colors.topBorder; ctx.strokeRect(x, 0, w, 17);
+            ctx.fillStyle = colors.topText; ctx.font = 'bold 10px Segoe UI';
+            const lbl = cur.toLocaleDateString('es-CL', { month: 'short', year: '2-digit' });
+            if (w > 24) ctx.fillText(lbl, x + 4, 12);
+            cur = nm;
+        }
+
+        // Sub-headers (row 2: 17..36)
+        cur = new Date(projStart);
+        while (cur < end) {
+            const x = dayDiff(projStart, cur) * PX;
+            if (zoom === 'month') {
+                const nm = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+                const w = dayDiff(cur, nm) * PX;
+                ctx.fillStyle = colors.botBg; ctx.fillRect(x, 17, w, 19);
+                ctx.strokeStyle = colors.botBorder; ctx.beginPath(); ctx.moveTo(x, 17); ctx.lineTo(x, HDR_H); ctx.stroke();
+                cur = nm;
+            } else if (zoom === 'week') {
+                const w = 7 * PX;
+                ctx.fillStyle = colors.botBg; ctx.fillRect(x, 17, w, 19);
+                ctx.strokeStyle = colors.botBorder; ctx.beginPath(); ctx.moveTo(x, 17); ctx.lineTo(x, HDR_H); ctx.stroke();
+                const dd = 'S ' + String(cur.getDate()).padStart(2, '0') + '/' + String(cur.getMonth() + 1).padStart(2, '0');
+                ctx.fillStyle = colors.botText; ctx.font = '9px Segoe UI';
+                if (PX * 7 > 40) ctx.fillText(dd, x + 2, 30);
+                cur.setDate(cur.getDate() + 7);
+            } else {
+                const isSun = cur.getDay() === 0, isSat = cur.getDay() === 6;
+                ctx.fillStyle = isSun || isSat ? colors.weekend : colors.botBg; ctx.fillRect(x, 17, PX, 19);
+                ctx.strokeStyle = colors.botBorder; ctx.beginPath(); ctx.moveTo(x, 17); ctx.lineTo(x, HDR_H); ctx.stroke();
+                const days = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
+                ctx.fillStyle = isSun || isSat ? (lightMode ? '#94a3b8' : '#374151') : colors.botText; ctx.font = '9px Segoe UI';
+                if (PX >= 18) ctx.fillText(days[cur.getDay()], x + 2, 30);
+                else if (PX >= 14) ctx.fillText(String(cur.getDate()), x + 2, 30);
+                cur.setDate(cur.getDate() + 1);
+            }
+        }
+
+        // Today marker
+        const today = new Date();
+        const todayX = dayDiff(projStart, today) * PX;
+        if (todayX >= 0 && todayX <= width) {
+            ctx.fillStyle = '#f59e0b'; ctx.fillRect(todayX, 0, 2, HDR_H);
+        }
+
+        // Status date marker
+        if (statusDate) {
+            const sdx = dayDiff(projStart, statusDate) * PX;
+            if (sdx >= 0 && sdx <= width) {
+                ctx.fillStyle = '#06b6d4'; ctx.fillRect(sdx, 0, 2, HDR_H);
+            }
+        }
+    }, [width, projStart, totalDays, PX, zoom, lightMode, statusDate]);
+
+    useEffect(() => { draw(); }, [draw]);
+
+    return <canvas ref={canvasRef} style={{ display: 'block', flexShrink: 0 }} />;
 }
