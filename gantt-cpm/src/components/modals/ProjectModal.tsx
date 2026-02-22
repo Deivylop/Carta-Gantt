@@ -50,6 +50,9 @@ export default function ProjectModal() {
                     </div>
                     <div className="form-group"><label className="form-label">Fecha de Corte (Status)</label>
                         <input className="form-input" type="date" value={form.status} onChange={e => F('status', e.target.value)} />
+                        <div style={{ fontSize: '10px', color: '#64748b', marginTop: 4, lineHeight: 1.2 }}>
+                            Nota: Se evalúa al final del día (jornada completa).
+                        </div>
                     </div>
                 </div>
                 <div className="form-group"><label className="form-label">Calendario por Defecto</label>

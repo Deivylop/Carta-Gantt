@@ -60,7 +60,9 @@ export interface GanttState {
     activeGroup: string;
     columns: ColumnDef[];
     colWidths: number[];
-    currentView: 'gantt' | 'resources' | 'scurve';
+    currentView: 'gantt' | 'resources' | 'scurve' | 'usage';
+    usageMode: 'Trabajo' | 'Trabajo real' | 'Trabajo acumulado' | 'Trabajo previsto';
+    usageZoom: 'day' | 'week' | 'month';
     undoStack: string[];
     clipboard: Activity | null;
     // Modal state
@@ -83,7 +85,9 @@ export type Action =
     | { type: 'SET_SELECTION'; index: number }
     | { type: 'SET_ZOOM'; zoom: ZoomLevel }
     | { type: 'TOGGLE_THEME' }
-    | { type: 'SET_VIEW'; view: 'gantt' | 'resources' | 'scurve' }
+    | { type: 'SET_VIEW'; view: 'gantt' | 'resources' | 'scurve' | 'usage' }
+    | { type: 'SET_USAGE_MODE'; mode: GanttState['usageMode'] }
+    | { type: 'SET_USAGE_ZOOM'; zoom: GanttState['usageZoom'] }
     | { type: 'TOGGLE_COLLAPSE'; id: string }
     | { type: 'COLLAPSE_ALL' }
     | { type: 'EXPAND_ALL' }
@@ -273,6 +277,12 @@ function reducer(state: GanttState, action: Action): GanttState {
                 }
                 if (!a.constraint && a.ES) { a.constraint = 'MSO'; a.constraintDate = isoDate(a.ES); a.manual = true; }
             }
+            else if (key === 'cal') {
+                const calVal = parseInt(val);
+                if (calVal === 5 || calVal === 6 || calVal === 7) {
+                    a.cal = calVal as CalendarType;
+                }
+            }
             else if (key === 'notes') a.notes = val;
             else if (key.startsWith('txt')) (a as any)[key] = val;
             acts[action.index] = a;
@@ -288,9 +298,11 @@ function reducer(state: GanttState, action: Action): GanttState {
         case 'TOGGLE_THEME':
             return { ...state, lightMode: !state.lightMode };
 
-        case 'SET_VIEW':
+        case 'SET_VIEW': {
             return { ...state, currentView: action.view };
-
+        }
+        case 'SET_USAGE_MODE': return { ...state, usageMode: action.mode };
+        case 'SET_USAGE_ZOOM': return { ...state, usageZoom: action.zoom };
         case 'TOGGLE_COLLAPSE': {
             const c = new Set(state.collapsed);
             c.has(action.id) ? c.delete(action.id) : c.add(action.id);
@@ -450,6 +462,7 @@ function reducer(state: GanttState, action: Action): GanttState {
                 blDur: a.dur,
                 blES: a.ES ? new Date(a.ES) : null,
                 blEF: a.EF ? new Date(a.EF) : null,
+                blCal: a.cal,
             }));
             return { ...state, activities: acts, visRows: buildVisRows(acts, state.collapsed, state.activeGroup, state.columns) };
         }
@@ -613,6 +626,8 @@ const initialState: GanttState = {
     columns: DEFAULT_COLS,
     colWidths: DEFAULT_COLS.map(c => c.w),
     currentView: 'gantt',
+    usageMode: 'Trabajo',
+    usageZoom: 'week',
     undoStack: [],
     clipboard: null,
     actModalOpen: false,

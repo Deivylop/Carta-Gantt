@@ -110,8 +110,8 @@ export default function GanttTable() {
         if (c.key === 'startDate') return a.ES ? fmtDate(a.ES) : '';
         if (c.key === 'endDate') return a.EF ? fmtDate(addDays(a.EF, -1)) : '';
         if (c.key === 'predStr') return predsToStr(a.preds);
-        if (c.key === 'pct') return (a.pct || 0) + '%';
-        if (c.key === 'plannedPct') return (a._plannedPct != null ? a._plannedPct : (a.pct || 0)) + '%';
+        if (c.key === 'pct') return Number(a.pct || 0).toFixed(1) + '%';
+        if (c.key === 'plannedPct') return Number(a._plannedPct != null ? a._plannedPct : (a.pct || 0)).toFixed(1) + '%';
         if (c.key === 'res') return a.res || '';
         if (c.key === 'work') return a.type === 'milestone' ? '0 hrs' : ((a.work || 0) + ' hrs');
         if (c.key === 'weight') return getWeightPct(a, activities);

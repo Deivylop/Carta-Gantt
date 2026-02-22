@@ -7,7 +7,7 @@ import { newActivity, isoDate, parseDate } from '../utils/cpm';
 import { autoId, exportJSON, exportCSV, importJSONData, importCSVData } from '../utils/helpers';
 import {
     Save, Plus, Trash2, ArrowRight, ClipboardPaste, Scissors, Settings, Calculator, BarChart3, Sun, Moon, Clock,
-    TrendingUp, LineChart, FileText, Diamond, ArrowLeft, ArrowUp, ArrowDown, Info, Undo2, Cloud, Database, Upload, Download
+    TrendingUp, LineChart, FileText, Diamond, ArrowLeft, ArrowUp, ArrowDown, Info, Undo2, Cloud, Database, Upload, Download, LayoutTemplate
 } from 'lucide-react';
 import type { ZoomLevel }
     from '../types/gantt';
@@ -128,11 +128,14 @@ export default function Ribbon() {
                         <RB icon={<Calculator size={16} />} label="Calcular CPM" onClick={() => dispatch({ type: 'RECALC_CPM' })} />
                     </RG>
                     <RG label="FECHA DE CORTE">
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10 }}>
-                            <Clock size={12} />
-                            <input type="date" className="form-input" style={{ fontSize: 10, padding: '2px 4px', width: 110 }}
-                                value={isoDate(state.statusDate)}
-                                onChange={e => { const d = parseDate(e.target.value); if (d) dispatch({ type: 'SET_PROJECT_CONFIG', config: { statusDate: d } }); }} />
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10 }}>
+                                <Clock size={12} />
+                                <input type="date" className="form-input" style={{ fontSize: 10, padding: '2px 4px', width: 110 }}
+                                    value={isoDate(state.statusDate)}
+                                    onChange={e => { const d = parseDate(e.target.value); if (d) dispatch({ type: 'SET_PROJECT_CONFIG', config: { statusDate: d } }); }} />
+                            </div>
+                            <span style={{ fontSize: 9, color: '#64748b', maxWidth: 120, lineHeight: 1.1 }}>Se considera al final del día</span>
                         </div>
                     </RG>
                     <RG label="LÍNEA BASE">
@@ -151,12 +154,30 @@ export default function Ribbon() {
                         <RB icon={<BarChart3 size={16} />} label="Diagrama de Gantt" active={state.currentView === 'gantt'} onClick={() => dispatch({ type: 'SET_VIEW', view: 'gantt' })} />
                         <RB label="Hoja de Recursos" active={state.currentView === 'resources'} onClick={() => dispatch({ type: 'SET_VIEW', view: 'resources' })} />
                         <RB icon={<LineChart size={16} />} label="Curva S" active={state.currentView === 'scurve'} onClick={() => dispatch({ type: 'SET_VIEW', view: 'scurve' })} />
+                        <RB icon={<LayoutTemplate size={16} />} label="Uso de Tareas" active={state.currentView === 'usage'} onClick={() => dispatch({ type: 'SET_VIEW', view: 'usage' })} />
                     </RG>
+                    {state.currentView === 'usage' && (
+                        <RG label="USO (MÉTRICA)">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <select className="form-input" style={{ fontSize: 10, padding: '2px 4px' }} value={state.usageMode}
+                                    onChange={e => dispatch({ type: 'SET_USAGE_MODE', mode: e.target.value as any })}>
+                                    <option value="Trabajo">Trabajo</option>
+                                    <option value="Trabajo real">Trabajo Real</option>
+                                    <option value="Trabajo acumulado">Trabajo Acumulado</option>
+                                    <option value="Trabajo previsto">Trabajo Previsto</option>
+                                </select>
+                            </div>
+                        </RG>
+                    )}
                     <RG label="ZOOM">
-                        {(['day', 'week', 'month'] as ZoomLevel[]).map(z => (
-                            <RB key={z} label={z === 'day' ? 'Día' : z === 'week' ? 'Semana' : 'Mes'} active={state.zoom === z} onClick={() => dispatch({ type: 'SET_ZOOM', zoom: z })} />
-                        ))}
-                        <RB label="Hoy" onClick={() => window.dispatchEvent(new Event('gantt-go-today'))} />
+                        {(['day', 'week', 'month'] as ZoomLevel[]).map(z => {
+                            const active = state.currentView === 'usage' ? state.usageZoom === z : state.zoom === z;
+                            const onClick = () => state.currentView === 'usage'
+                                ? dispatch({ type: 'SET_USAGE_ZOOM', zoom: z as any })
+                                : dispatch({ type: 'SET_ZOOM', zoom: z });
+                            return <RB key={z} label={z === 'day' ? 'Día' : z === 'week' ? 'Semana' : 'Mes'} active={active} onClick={onClick} />;
+                        })}
+                        {state.currentView !== 'usage' && <RB label="Hoy" onClick={() => window.dispatchEvent(new Event('gantt-go-today'))} />}
                     </RG>
                     <RG label="TEMA">
                         <RB icon={state.lightMode ? <Moon size={14} /> : <Sun size={14} />} label={state.lightMode ? '☾ Oscuro' : '☀ Claro'} onClick={() => dispatch({ type: 'TOGGLE_THEME' })} />

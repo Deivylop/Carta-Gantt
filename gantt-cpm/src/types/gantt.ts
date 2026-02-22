@@ -71,6 +71,7 @@ export interface Activity {
     blDur: number | null;
     blES: Date | null;    // Baseline Early Start
     blEF: Date | null;    // Baseline Early Finish
+    blCal: CalendarType | null; // Baseline Calendar
 
     // ── Custom Text Fields ──
     txt1: string;

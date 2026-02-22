@@ -33,6 +33,39 @@ export function calWorkDays(a: Date, b: Date, cal: CalendarType): number {
     return Math.max(0, Math.round(cd / f));
 }
 
+export function getExactWorkDays(start: Date, end: Date, cal: number): number {
+    let count = 0;
+    let cur = new Date(start);
+    cur.setHours(0, 0, 0, 0);
+    const endD = new Date(end);
+    endD.setHours(0, 0, 0, 0);
+
+    while (cur < endD) {
+        const wd = cur.getDay();
+        const isWork = cal === 5 ? (wd >= 1 && wd <= 5) : cal === 6 ? (wd !== 0) : true;
+        if (isWork) count++;
+        cur.setDate(cur.getDate() + 1);
+    }
+    return count;
+}
+
+export function getExactElapsedRatio(start: Date, end: Date, target: Date, cal: number): number {
+    const stObj = new Date(start); stObj.setHours(0, 0, 0, 0);
+    const endObj = new Date(end); endObj.setHours(0, 0, 0, 0);
+    const tgtObj = new Date(target); tgtObj.setHours(0, 0, 0, 0);
+
+    if (tgtObj <= stObj) return 0;
+    if (tgtObj >= endObj) return 1;
+
+    const totalWd = getExactWorkDays(stObj, endObj, cal);
+    if (totalWd === 0) {
+        // Fallback to linear ms ratio if no work days found
+        return (tgtObj.getTime() - stObj.getTime()) / (endObj.getTime() - stObj.getTime());
+    }
+    const elapsedWd = getExactWorkDays(stObj, tgtObj, cal);
+    return elapsedWd / totalWd;
+}
+
 export function fmtDate(d: Date | null): string {
     if (!d) return '';
     const dd = String(d.getDate()).padStart(2, '0');
@@ -83,7 +116,7 @@ export function newActivity(id?: string, defCal: CalendarType = 6): Activity {
         manual: true,
         ES: null, EF: null, LS: null, LF: null, TF: null,
         crit: false,
-        blDur: null, blES: null, blEF: null,
+        blDur: null, blES: null, blEF: null, blCal: null,
         txt1: '', txt2: '', txt3: '', txt4: '', txt5: '',
     };
 }
@@ -288,6 +321,9 @@ export function calcCPM(
     const sDateObj = statusDate ? new Date(statusDate) : new Date();
     sDateObj.setHours(0, 0, 0, 0);
 
+    const sDateEnd = new Date(sDateObj);
+    sDateEnd.setDate(sDateEnd.getDate() + 1); // target is start of next day (so strictly inclusive of status date)
+
     activities.forEach(a => {
         if (a.type === 'summary') return;
         const start = a.blES || a.ES;
@@ -296,18 +332,8 @@ export function calcCPM(
             a._plannedPct = 0;
             return;
         }
-        const stObj = new Date(start); stObj.setHours(0, 0, 0, 0);
-        const endObj = new Date(end); endObj.setHours(0, 0, 0, 0);
 
-        if (sDateObj >= endObj) {
-            a._plannedPct = 100;
-        } else if (sDateObj <= stObj) {
-            a._plannedPct = 0;
-        } else {
-            const totalMs = endObj.getTime() - stObj.getTime();
-            const elapsedMs = sDateObj.getTime() - stObj.getTime();
-            a._plannedPct = totalMs > 0 ? (elapsedMs / totalMs) * 100 : 100;
-        }
+        a._plannedPct = getExactElapsedRatio(start, end, sDateEnd, a.cal || defCal) * 100;
     });
 
     // ═══ Summary Tasks: work + weighted pct (bottom-up) ═══
@@ -393,4 +419,72 @@ export function calcCPM(
     });
 
     return { activities, totalDays };
+}
+
+// ─── Usage Distribution Helper ──────────────────────────────────
+
+export function getUsageDailyValues(a: Activity, mode: 'Trabajo' | 'Trabajo real' | 'Trabajo acumulado' | 'Trabajo previsto', calcTotalAccumulated = false, defCal: number = 6): Map<number, number> {
+    const map = new Map<number, number>();
+    if (a.type === 'summary' || a._isProjRow) return map; // Summaries are aggregated bottom-up by the UI
+    const work = a.work || 0;
+    if (work === 0) return map;
+
+    const ES = (mode === 'Trabajo previsto' ? a.blES : a.ES) || a.ES;
+    const EF = (mode === 'Trabajo previsto' ? a.blEF : a.EF) || a.EF;
+    if (!ES || !EF) return map;
+
+    // Zero out hours
+    const start = new Date(ES); start.setHours(0, 0, 0, 0);
+    const end = new Date(EF); end.setHours(0, 0, 0, 0);
+
+    const cal = (mode === 'Trabajo previsto' ? a.blCal : a.cal) || a.cal || defCal;
+    const isWorkDay = (d: Date) => {
+        const wd = d.getDay();
+        if (cal === 5) return wd >= 1 && wd <= 5;
+        if (cal === 6) return wd !== 0;
+        return true;
+    };
+
+    let workDaysCount = 0;
+    const dates = [];
+    let cur = new Date(start);
+    while (cur < end) {
+        if (isWorkDay(cur)) {
+            workDaysCount++;
+            dates.push(new Date(cur));
+        }
+        cur.setDate(cur.getDate() + 1);
+    }
+    // Fallback to 1 day if starting and ending on the same day/weekend
+    if (workDaysCount === 0) {
+        workDaysCount = 1;
+        dates.push(new Date(start));
+    }
+
+    let daily = work / workDaysCount;
+    let limitDays = workDaysCount;
+
+    if (mode === 'Trabajo real') {
+        const pct = Math.min(100, Math.max(0, a.pct || 0));
+        if (pct === 0) return map;
+        const actualWork = work * (pct / 100);
+        // Distribute the actual work over the proportionally elapsed duration
+        limitDays = Math.max(1, Math.round(workDaysCount * (pct / 100)));
+        daily = actualWork / limitDays;
+    }
+
+    let acc = 0;
+    for (let i = 0; i < dates.length; i++) {
+        const t = dates[i].getTime();
+        const isActiveDay = i < limitDays;
+        const valToSet = isActiveDay ? daily : 0;
+
+        if (mode === 'Trabajo acumulado' && !calcTotalAccumulated) {
+            acc += valToSet;
+            map.set(t, acc);
+        } else {
+            if (valToSet > 0) map.set(t, valToSet);
+        }
+    }
+    return map;
 }

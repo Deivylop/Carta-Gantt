@@ -47,10 +47,13 @@ export default function SaveProgressModal() {
                     </p>
 
                     <div style={{ background: state.lightMode ? '#f1f5f9' : '#1e293b', padding: 12, borderRadius: 6, fontSize: 13 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                             <span style={{ fontWeight: 600 }}>Nueva Fecha de Corte a Guardar:</span>
                             <span>{state.statusDate?.toLocaleDateString() || new Date().toLocaleDateString()}</span>
                         </div>
+                        <p style={{ margin: '0 0 10px 0', fontSize: 11, color: state.lightMode ? '#64748b' : '#94a3b8', fontStyle: 'italic' }}>
+                            * La medición se realiza asumiendo el final del día (100% de la jornada de la fecha indicada).
+                        </p>
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                             <span style={{ fontWeight: 600 }}>Actividades con Avance Actual:</span>
                             <span>{tasksWithProgress}</span>

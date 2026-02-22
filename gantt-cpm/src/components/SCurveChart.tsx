@@ -3,7 +3,7 @@ import { useGantt } from '../store/GanttContext';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine
 } from 'recharts';
-import { isoDate } from '../utils/cpm';
+import { isoDate, getExactElapsedRatio } from '../utils/cpm';
 
 export default function SCurveChart() {
     const { state } = useGantt();
@@ -40,8 +40,13 @@ export default function SCurveChart() {
         let fallbackTotalWeight = 0;
 
         tasks.forEach(t => {
-            const start = t.blES || t.ES;
-            const end = t.blEF || t.EF;
+            const rawStart = t.blES || t.ES;
+            const rawEnd = t.blEF || t.EF;
+
+            if (!rawStart || !rawEnd) return;
+            const start = new Date(rawStart); start.setHours(0, 0, 0, 0);
+            const end = new Date(rawEnd); end.setHours(0, 0, 0, 0);
+
             const cw = t.work || 0;
             const w = (t.weight != null && t.weight > 0) ? t.weight : cw;
             const wBackup = t.dur || 1;
@@ -86,27 +91,24 @@ export default function SCurveChart() {
         const calcPlannedPct = (date: Date) => {
             let earned = 0;
             let fallbackEarned = 0;
+
+            // The status date or chart coordinate evaluates to the end of the day.
+            const evalDate = new Date(date);
+            evalDate.setDate(evalDate.getDate() + 1);
+
             tasks.forEach(t => {
-                const tStart = t.blES || t.ES;
-                const tEnd = t.blEF || t.EF;
+                const rawStart = t.blES || t.ES;
+                const rawEnd = t.blEF || t.EF;
+                if (!rawStart || !rawEnd) return;
+
                 const cw = t.work || 0;
                 const w = (t.weight != null && t.weight > 0) ? t.weight : cw;
                 const wBackup = t.dur || 1;
 
-                if (!tStart || !tEnd) return;
+                const ratio = getExactElapsedRatio(rawStart, rawEnd, evalDate, t.blCal || t.cal || state.defCal);
 
-                if (date >= tEnd) {
-                    earned += w; // 100% completed of this task time
-                    fallbackEarned += wBackup;
-                } else if (date > tStart) {
-                    // linear interpolation
-                    const totalMs = tEnd.getTime() - tStart.getTime();
-                    const elapsedMs = date.getTime() - tStart.getTime();
-                    if (totalMs > 0) {
-                        earned += w * (elapsedMs / totalMs);
-                        fallbackEarned += wBackup * (elapsedMs / totalMs);
-                    }
-                }
+                earned += w * ratio;
+                fallbackEarned += wBackup * ratio;
             });
             if (totalWeight > 0) return (earned / totalWeight) * 100;
             if (fallbackTotalWeight > 0) return (fallbackEarned / fallbackTotalWeight) * 100;
