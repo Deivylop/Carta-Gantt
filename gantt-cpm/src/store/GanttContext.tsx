@@ -111,6 +111,7 @@ export type Action =
     | { type: 'UNDO' }
     | { type: 'PUSH_UNDO' }
     | { type: 'SET_COLUMN_VISIBLE'; key: string; visible: boolean }
+    | { type: 'SET_COLUMNS_ORDER'; columns: ColumnDef[]; colWidths: number[] }
     | { type: 'SET_COL_WIDTH'; index: number; width: number }
     | { type: 'SET_SHOW_PROJ_ROW'; show: boolean }
     | { type: 'INDENT'; dir: number }
@@ -439,6 +440,10 @@ function reducer(state: GanttState, action: Action): GanttState {
         case 'SET_COLUMN_VISIBLE': {
             const cols = state.columns.map(c => c.key === action.key ? { ...c, visible: action.visible } : c);
             return { ...state, columns: cols };
+        }
+
+        case 'SET_COLUMNS_ORDER': {
+            return { ...state, columns: action.columns, colWidths: action.colWidths };
         }
 
         case 'SET_COL_WIDTH': {

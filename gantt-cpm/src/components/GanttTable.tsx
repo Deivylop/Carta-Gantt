@@ -6,6 +6,7 @@ import React, { useCallback, useRef, useState, useEffect } from 'react';
 import { useGantt } from '../store/GanttContext';
 import { fmtDate, addDays, isoDate, newActivity, parseDate } from '../utils/cpm';
 import { predsToStr, getWeightPct, strToPreds, autoId, syncResFromString } from '../utils/helpers';
+import ColumnPickerModal from './ColumnPickerModal';
 
 const EditableNumberCell = ({ rawValue, displayValue, onUpdate, onFocus, step }: { rawValue: string, displayValue: string, onUpdate: (val: string) => void, onFocus: () => void, step?: number }) => {
     const [isEditing, setIsEditing] = useState(false);
@@ -54,7 +55,7 @@ export default function GanttTable() {
     const bodyRef = useRef<HTMLDivElement>(null);
     const [tip, setTip] = useState<{ x: number; y: number; html: string } | null>(null);
     const [colResize, setColResize] = useState<{ idx: number; startX: number; startW: number } | null>(null);
-    const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+    const [colPickerOpen, setColPickerOpen] = useState(false);
 
     const visCols = columns.filter(c => c.visible);
     const totalW = visCols.reduce((s, c) => s + colWidths[columns.indexOf(c)], 0);
@@ -90,13 +91,6 @@ export default function GanttTable() {
         return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
     }, [colResize, dispatch]);
 
-    // Close context menu on click outside
-    useEffect(() => {
-        if (!ctxMenu) return;
-        const handler = () => setCtxMenu(null);
-        document.addEventListener('click', handler);
-        return () => document.removeEventListener('click', handler);
-    }, [ctxMenu]);
 
     const isUsageView = state.currentView === 'usage';
 
@@ -239,7 +233,7 @@ export default function GanttTable() {
                     const ci = columns.indexOf(c);
                     return (
                         <div key={c.key} className="col-hdr" style={{ width: colWidths[ci] }}
-                            onContextMenu={e => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}
+                            onContextMenu={e => { e.preventDefault(); setColPickerOpen(true); }}
                             onDoubleClick={() => {
                                 if (c.key.startsWith('txt')) {
                                     const newName = prompt('Renombrar columna "' + c.label + '":', c.label);
@@ -429,19 +423,8 @@ export default function GanttTable() {
             {/* Tooltip */}
             {tip && <div className="gantt-tip" style={{ display: 'block', left: tip.x, top: tip.y }} dangerouslySetInnerHTML={{ __html: tip.html }} />}
 
-            {/* Column context menu */}
-            {ctxMenu && (
-                <div className="col-ctx-menu" style={{ display: 'block', left: ctxMenu.x, top: ctxMenu.y }}
-                    onClick={e => e.stopPropagation()}>
-                    {columns.filter(c => !['_num', '_info', '_mode'].includes(c.key)).map(c => (
-                        <label key={c.key} className="ctx-item">
-                            <input type="checkbox" checked={c.visible}
-                                onChange={e => { dispatch({ type: 'SET_COLUMN_VISIBLE', key: c.key, visible: e.target.checked }); }} />
-                            {' ' + (c.label || c.key)}
-                        </label>
-                    ))}
-                </div>
-            )}
+            {/* Column picker modal (P6-style) */}
+            {colPickerOpen && <ColumnPickerModal onClose={() => setColPickerOpen(false)} />}
         </div>
     );
 }
