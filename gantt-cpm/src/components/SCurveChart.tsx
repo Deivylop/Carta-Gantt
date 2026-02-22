@@ -5,17 +5,23 @@ import {
 } from 'recharts';
 import { isoDate, getExactElapsedRatio } from '../utils/cpm';
 
-export default function SCurveChart() {
+interface SCurveChartProps {
+    hideHeader?: boolean;
+    forcedActivityId?: string;
+}
+
+export default function SCurveChart({ hideHeader, forcedActivityId }: SCurveChartProps = {}) {
     const { state } = useGantt();
     const [selectedId, setSelectedId] = useState<string>('__PROJECT__');
 
     const data = useMemo(() => {
+        const effectiveId = forcedActivityId || selectedId;
         // 1. Get base tasks for the selected context
         let tasks: any[] = [];
-        if (selectedId === '__PROJECT__') {
+        if (effectiveId === '__PROJECT__') {
             tasks = state.activities.filter(a => a.type === 'task' && !a._isProjRow);
         } else {
-            const idx = state.activities.findIndex(a => a.id === selectedId);
+            const idx = state.activities.findIndex(a => a.id === effectiveId);
             if (idx >= 0) {
                 const node = state.activities[idx];
                 if (node.type === 'task') {
@@ -191,25 +197,27 @@ export default function SCurveChart() {
     const actualColor = '#10b981'; // Green
 
     return (
-        <div style={{ padding: 20, width: '100%', height: '100%', backgroundColor: state.lightMode ? '#ffffff' : '#0f172a', color: textColor, display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>Curva S (Avance Programado vs Avance Real)</h2>
-                <select
-                    value={selectedId}
-                    onChange={e => setSelectedId(e.target.value)}
-                    style={{
-                        padding: '4px 8px', borderRadius: 4, border: `1px solid ${gridColor}`,
-                        background: state.lightMode ? '#fff' : '#1e293b', color: textColor, outline: 'none', maxWidth: '300px'
-                    }}
-                >
-                    <option value="__PROJECT__">Todo el Proyecto</option>
-                    {state.activities.filter(a => !a._isProjRow).map(a => (
-                        <option key={a.id} value={a.id}>
-                            {'\u00A0'.repeat(a.lv * 4)}{a.id} - {a.name}
-                        </option>
-                    ))}
-                </select>
-            </div>
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', background: state.lightMode ? '#fff' : '#0f172a' }}>
+            {!hideHeader && (
+                <div className="fv-hdr" style={{ padding: '8px 16px', display: 'flex', gap: 10, alignItems: 'center', borderBottom: `1px solid ${gridColor}` }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: textColor }}>Analizar:</span>
+                    <select
+                        value={selectedId}
+                        onChange={e => setSelectedId(e.target.value)}
+                        style={{
+                            padding: '4px 8px', borderRadius: 4, border: `1px solid ${gridColor}`,
+                            background: state.lightMode ? '#fff' : '#1e293b', color: textColor, outline: 'none', maxWidth: '300px'
+                        }}
+                    >
+                        <option value="__PROJECT__">Todo el Proyecto</option>
+                        {state.activities.filter(a => !a._isProjRow).map(a => (
+                            <option key={a.id} value={a.id}>
+                                {'\u00A0'.repeat(a.lv * 4)}{a.id} - {a.name}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+            )}
 
             {data.points.length === 0 ? (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>

@@ -5,11 +5,12 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useGantt } from '../store/GanttContext';
 import { fmtDate, addDays } from '../utils/cpm';
 import type { Activity } from '../types/gantt';
+import SCurveChart from './SCurveChart';
 
 export default function TaskForm() {
     const { state, dispatch } = useGantt();
     const { activities, selIdx, resourcePool } = state;
-    const [tab, setTab] = useState<'pred' | 'res'>('pred');
+    const [tab, setTab] = useState<'pred' | 'res' | 'scurve'>('pred');
     const a = selIdx >= 0 ? activities[selIdx] : null;
 
     // ── Autocomplete State ──
@@ -120,6 +121,7 @@ export default function TaskForm() {
             <div className="fv-tabs">
                 <div className={`fv-tab ${tab === 'pred' ? 'active' : ''}`} onClick={() => setTab('pred')}>▼ Predecesoras / Sucesoras</div>
                 <div className={`fv-tab ${tab === 'res' ? 'active' : ''}`} onClick={() => setTab('res')}>🔧 Recursos</div>
+                <div className={`fv-tab ${tab === 'scurve' ? 'active' : ''}`} onClick={() => setTab('scurve')}>📈 Curva S</div>
             </div>
 
             {/* Content */}
@@ -241,6 +243,12 @@ export default function TaskForm() {
                                 )}
                             </div>
                         </div>
+                    </div>
+                )}
+
+                {tab === 'scurve' && (
+                    <div style={{ flex: 1, height: '100%', minHeight: 0, position: 'relative' }}>
+                        <SCurveChart hideHeader forcedActivityId={a.id} />
                     </div>
                 )}
 
