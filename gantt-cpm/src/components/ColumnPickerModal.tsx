@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useGantt } from '../store/GanttContext';
 import type { ColumnDef } from '../types/gantt';
+import { useResizable } from '../hooks/useResizable';
 
 /* ── Column groupings (P6-style categories) ── */
 const COLUMN_GROUPS: { group: string; keys: string[] }[] = [
@@ -55,7 +56,7 @@ interface Props {
 
 export default function ColumnPickerModal({ onClose }: Props) {
     const { state, dispatch } = useGantt();
-    const modalRef = useRef<HTMLDivElement>(null);
+    const { ref: resizeRef, style: resizeStyle } = useResizable({ initW: 680, minW: 450, minH: 350 });
 
     /* Local state: selected keys (visible columns, ordered) and available grouped */
     const [selected, setSelected] = useState<string[]>(() =>
@@ -188,7 +189,7 @@ export default function ColumnPickerModal({ onClose }: Props) {
 
     return (
         <div className="col-picker-overlay" onClick={onClose}>
-            <div className="col-picker-modal" ref={modalRef} onClick={e => e.stopPropagation()}>
+            <div className="col-picker-modal" ref={resizeRef} onClick={e => e.stopPropagation()} style={{ ...resizeStyle, maxWidth: '95vw', maxHeight: '92vh' }}>
                 {/* Title bar */}
                 <div className="col-picker-title">
                     <span>Columnas</span>

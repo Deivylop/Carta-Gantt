@@ -1,8 +1,10 @@
 import { useGantt } from '../../store/GanttContext';
 import { isoDate, parseDate } from '../../utils/cpm';
+import { useResizable } from '../../hooks/useResizable';
 
 export default function SaveProgressModal() {
     const { state, dispatch } = useGantt();
+    const { ref: resizeRef, style: resizeStyle } = useResizable({ initW: 450, minW: 350, minH: 280 });
 
     if (!state.progressModalOpen) return null;
 
@@ -34,7 +36,7 @@ export default function SaveProgressModal() {
 
     return (
         <div id="progress-modal-overlay" className="modal-overlay open" onMouseDown={close}>
-            <div className="modal" onMouseDown={e => e.stopPropagation()} style={{ width: 450, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+            <div className="modal" ref={resizeRef} onMouseDown={e => e.stopPropagation()} style={{ ...resizeStyle, maxHeight: '92vh', display: 'flex', flexDirection: 'column', maxWidth: '95vw' }}>
                 <div className="modal-header">
                     <h2>Guardar Progreso Semanal</h2>
                     <button className="modal-close" onClick={close}>✕</button>

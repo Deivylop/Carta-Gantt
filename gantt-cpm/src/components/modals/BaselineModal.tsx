@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════════════════════════════════
 import { useState } from 'react';
 import { useGantt } from '../../store/GanttContext';
+import { useResizable } from '../../hooks/useResizable';
 
 const BL_COLORS = [
     '#94a3b8', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6',
@@ -15,6 +16,8 @@ export default function BaselineModal() {
     const [slotIdx, setSlotIdx] = useState(0);
     const [blName, setBlName] = useState('');
     const [blDesc, setBlDesc] = useState('');
+
+    const { ref: resizeRef, style: resizeStyle } = useResizable({ initW: 720, minW: 450, minH: 300 });
 
     if (!state.blModalOpen) return null;
 
@@ -75,7 +78,7 @@ export default function BaselineModal() {
 
     return (
         <div className="modal-overlay open" onClick={e => { if (e.target === e.currentTarget) close(); }}>
-            <div className="modal" style={{ maxWidth: 720, minWidth: 500 }}>
+            <div className="modal" ref={resizeRef} style={{ ...resizeStyle, maxWidth: '95vw', minWidth: 450, display: 'flex', flexDirection: 'column', maxHeight: '92vh' }}>
                 <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     📊 Administrador de Líneas Base
                 </h2>
@@ -103,6 +106,8 @@ export default function BaselineModal() {
                     </button>
                 </div>
 
+                {/* Scrollable content area */}
+                <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
                 {/* TAB: List saved baselines */}
                 {tab === 'list' && (
                     <div>
@@ -112,7 +117,7 @@ export default function BaselineModal() {
                                 <span style={{ fontSize: 11 }}>Use la pestaña "Guardar Nueva" para crear una.</span>
                             </div>
                         ) : (
-                            <div style={{ maxHeight: 350, overflowY: 'auto', border: '1px solid #1e293b', borderRadius: 6 }}>
+                            <div style={{ overflowY: 'auto', border: '1px solid #1e293b', borderRadius: 6 }}>
                                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                     <thead>
                                         <tr style={{ background: 'rgba(30,41,59,.6)' }}>
@@ -245,8 +250,9 @@ export default function BaselineModal() {
                         </div>
                     </div>
                 )}
+                </div>
 
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16, flexShrink: 0 }}>
                     <button className="btn btn-ghost" onClick={close}>Cerrar</button>
                 </div>
             </div>
