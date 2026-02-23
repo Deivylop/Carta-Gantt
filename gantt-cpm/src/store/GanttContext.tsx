@@ -4,8 +4,8 @@
 // ═══════════════════════════════════════════════════════════════════
 import React, { createContext, useContext, useReducer, type ReactNode } from 'react';
 import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, VisibleRow, ProgressHistoryEntry, BaselineEntry, CustomCalendar, CustomFilter } from '../types/gantt';
-import { calcCPM, newActivity, isoDate, parseDate, addDays, calWorkDays } from '../utils/cpm';
-import { autoId, computeOutlineNumbers, syncResFromString, deriveResString, distributeWork, strToPreds } from '../utils/helpers';
+import { calcCPM, newActivity, isoDate, parseDate, addDays, calWorkDays, fmtDate } from '../utils/cpm';
+import { autoId, computeOutlineNumbers, syncResFromString, deriveResString, distributeWork, strToPreds, predsToStr } from '../utils/helpers';
 
 // ─── Column Definitions ─────────────────────────────────────────
 export const DEFAULT_COLS: ColumnDef[] = [
@@ -543,6 +543,26 @@ function reducer(state: GanttState, action: Action): GanttState {
             if (a.type === 'summary' && (action.key === 'work' || action.key === 'pct' || action.key === 'dur')) return state;
             const val = action.value;
             const { key } = action;
+
+            // ── Early return: si el valor no cambió, NO recalcular ──
+            const curVal = (() => {
+                if (key === 'name') return a.name || '';
+                if (key === 'id') return a.id || '';
+                if (key === 'dur') return String(a._spanDur != null ? a._spanDur : (a.dur || 0));
+                if (key === 'remDur') return String(a.remDur != null ? a.remDur : '');
+                if (key === 'pct') return String(a.pct || 0);
+                if (key === 'work') return String(a.work || 0);
+                if (key === 'weight') return a.weight != null ? String(a.weight) : '';
+                if (key === 'predStr') return predsToStr(a.preds);
+                if (key === 'startDate') return a.ES ? fmtDate(a.ES) : '';
+                if (key === 'endDate') return a.EF ? fmtDate(addDays(a.EF, -1)) : '';
+                if (key === 'cal') return String(a.cal || state.defCal);
+                if (key === 'notes') return a.notes || '';
+                if (key === 'res') return a.res || '';
+                if (key.startsWith('txt')) return (a as any)[key] || '';
+                return '';
+            })();
+            if (val === curVal) return state;
             if (key === 'name') a.name = val;
             else if (key === 'id') {
                 const oldId = a.id; a.id = val;
