@@ -585,7 +585,7 @@ function reducer(state: GanttState, action: Action): GanttState {
                 if (key === 'weight') return a.weight != null ? String(a.weight) : '';
                 if (key === 'predStr') return predsToStr(a.preds);
                 if (key === 'startDate') return a.ES ? fmtDate(a.ES) : '';
-                if (key === 'endDate') return a.EF ? fmtDate(addDays(a.EF, -1)) : '';
+                if (key === 'endDate') return a.EF ? fmtDate(a.type === 'milestone' ? a.EF : addDays(a.EF, -1)) : '';
                 if (key === 'cal') return String(a.cal || state.defCal);
                 if (key === 'notes') return a.notes || '';
                 if (key === 'res') return a.res || '';

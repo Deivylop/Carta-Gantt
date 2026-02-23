@@ -698,7 +698,7 @@ export default function GanttTimeline() {
                     : '';
                 const html = `<b style="color:#f9fafb">${a.outlineNum || ''} ${a.id}</b><br>
               <span style="color:#94a3b8">${a.name}</span><br>
-              Inicio: <b>${fmtDate(a.ES!)}</b> &nbsp; Fin: <b>${a.EF ? fmtDate(addDays(a.EF, -1)) : ''}</b><br>
+              Inicio: <b>${fmtDate(a.ES!)}</b> &nbsp; Fin: <b>${a.EF ? fmtDate(a.type === 'milestone' ? a.EF : addDays(a.EF, -1)) : ''}</b><br>
               Dur: <b style="color:#7dd3fc">${a.type === 'milestone' ? 'Hito' : ((a as any)._spanDur != null ? (a as any)._spanDur : (a.dur || 0)) + 'd'}</b> &nbsp; Avance: <b style="color:#6ee7b7">${a.pct || 0}%</b><br>
               TF: <b style="color:${a.crit ? '#ef4444' : '#22c55e'}">${a.crit ? 'CRÍTICA' : a.TF + 'd'}</b><br>
               ${mfpLine}<span style="color:#6b7280">Pred: ${preds}</span>`;

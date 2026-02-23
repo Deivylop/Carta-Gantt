@@ -7,7 +7,7 @@ import { newActivity, isoDate, parseDate } from '../utils/cpm';
 import { autoId, exportJSON, exportCSV, importJSONData, importCSVData } from '../utils/helpers';
 import {
     Plus, Trash2, ArrowRight, ClipboardPaste, Scissors, Settings, Calculator, BarChart3, Sun, Moon, Clock,
-    TrendingUp, LineChart, FileText, Diamond, ArrowLeft, ArrowUp, ArrowDown, Info, Undo2, Cloud, Database, Upload, Download, LayoutTemplate, Users, CalendarDays, Filter
+    TrendingUp, LineChart, FileText, Diamond, ArrowLeft, ArrowUp, ArrowDown, Info, Undo2, Cloud, Database, Upload, Download, LayoutTemplate, Users, CalendarDays, Filter, ArrowLeftRight
 } from 'lucide-react';
 import type { ZoomLevel } from '../types/gantt';
 
@@ -210,7 +210,7 @@ export default function Ribbon() {
                                         if (state.chainTrace?.dir === 'both') dispatch({ type: 'CLEAR_CHAIN_TRACE' });
                                         else dispatch({ type: 'SET_CHAIN_TRACE', dir: 'both' });
                                     }}>
-                                    <ArrowRight size={13} />
+                                    <ArrowLeftRight size={13} />
                                     <span>Ambas</span>
                                 </button>
                                 <button className={`rbtn ${state.chainTrace?.dir === 'fwd' ? 'active' : ''}`}

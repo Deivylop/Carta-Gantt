@@ -161,7 +161,7 @@ export default function GanttTable() {
             const parent = activities[a._idx];
             if (parent) {
                 if (c.key === 'startDate') return parent.ES ? fmtDate(parent.ES) : '';
-                if (c.key === 'endDate') return parent.EF ? fmtDate(addDays(parent.EF, -1)) : '';
+                if (c.key === 'endDate') return parent.EF ? fmtDate(parent.type === 'milestone' ? parent.EF : addDays(parent.EF, -1)) : '';
                 if (c.key === 'dur') {
                     if (parent.type === 'milestone') return '0 días';
                     const displayDur = (parent as any)._spanDur != null ? (parent as any)._spanDur : (parent.dur || 0);
@@ -190,7 +190,7 @@ export default function GanttTable() {
         }
         if (c.key === 'remDur') return a.type === 'milestone' ? '0 días' : (a.remDur != null ? a.remDur : (a.dur || 0)) + ' días';
         if (c.key === 'startDate') return a.ES ? fmtDate(a.ES) : '';
-        if (c.key === 'endDate') return a.EF ? fmtDate(addDays(a.EF, -1)) : '';
+        if (c.key === 'endDate') return a.EF ? fmtDate(a.type === 'milestone' ? a.EF : addDays(a.EF, -1)) : '';
         if (c.key === 'predStr') return predsToStr(a.preds);
         if (c.key === 'pct') return Number(a.pct || 0).toFixed(1) + '%';
         if (c.key === 'plannedPct') return Number(a._plannedPct != null ? a._plannedPct : (a.pct || 0)).toFixed(1) + '%';
