@@ -459,9 +459,9 @@ function ensureProjRow(activities: Activity[], showProjRow: boolean, projName: s
     return acts;
 }
 
-function recalc(state: GanttState): GanttState {
+function recalcInternal(state: GanttState, statusDate: Date | null): GanttState {
     let acts = ensureProjRow([...state.activities], state.showProjRow, state.projName, state.defCal);
-    const result = calcCPM(acts, state.projStart, state.defCal, state.statusDate, state.projName, state.activeBaselineIdx, state.customCalendars);
+    const result = calcCPM(acts, state.projStart, state.defCal, statusDate, state.projName, state.activeBaselineIdx, state.customCalendars);
     computeOutlineNumbers(result.activities);
     const visRows = buildVisRows(result.activities, state.collapsed, state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes, state.activeCheckerFilter, state.checkerThresholds, state.statusDate, state.customFilters, state.filtersMatchAll);
     // Auto-fit: pxPerDay based on PROJECT span (not totalDays) so project fills viewport
@@ -471,7 +471,17 @@ function recalc(state: GanttState): GanttState {
     const pxPerDay = Math.max(0.5, Math.min(fitPx, 150));
     // Timeline rendering starts 30 days before project start
     const timelineStart = addDays(state.projStart, -30);
-    return { ...state, activities: result.activities, totalDays: result.totalDays, visRows, pxPerDay, timelineStart, _cpmStatusDate: state.statusDate };
+    return { ...state, activities: result.activities, totalDays: result.totalDays, visRows, pxPerDay, timelineStart, _cpmStatusDate: statusDate };
+}
+
+/** Recalc básico: forward/backward pass SIN retained logic. Usado en ediciones automáticas. */
+function recalc(state: GanttState): GanttState {
+    return recalcInternal(state, state._cpmStatusDate);
+}
+
+/** Recalc completo: forward/backward pass CON retained logic. Solo para botón "Calcular CPM". */
+function recalcFull(state: GanttState): GanttState {
+    return recalcInternal(state, state.statusDate);
 }
 
 /** Actualizar solo los datos sin recalcular CPM (para ediciones de avance, etc.) */
@@ -776,7 +786,7 @@ function reducer(state: GanttState, action: Action): GanttState {
         }
 
         case 'RECALC_CPM':
-            return recalc(state);
+            return recalcFull(state);
 
         case 'SET_RESOURCES':
             return { ...state, resourcePool: action.resources };
@@ -1087,7 +1097,7 @@ function reducer(state: GanttState, action: Action): GanttState {
         }
 
         case 'LOAD_STATE':
-            return recalc({ ...state, ...action.state });
+            return recalcFull({ ...state, ...action.state });
 
         case 'SET_PROGRESS_HISTORY':
             return { ...state, progressHistory: action.history };
@@ -1159,7 +1169,7 @@ function reducer(state: GanttState, action: Action): GanttState {
                 }
                 return a;
             });
-            return recalc({ ...state, activities: acts, statusDate: newStatusDate, progressModalOpen: false });
+            return recalcFull({ ...state, activities: acts, statusDate: newStatusDate, progressModalOpen: false });
         }
 
         case 'DELETE_PROGRESS_ENTRY': {
