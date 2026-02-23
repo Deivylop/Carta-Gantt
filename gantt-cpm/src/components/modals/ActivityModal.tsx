@@ -120,6 +120,10 @@ export default function ActivityModal() {
                     <div className="form-group"><label className="form-label">Fin temprano (EF)</label><input className="form-input" readOnly style={{ opacity: 0.6 }} value={a.EF ? fmtDate(addDays(a.EF, -1)) + ' (' + isoDate(addDays(a.EF, -1)) + ')' : ''} /></div>
                     <div className="form-group"><label className="form-label">Holgura Total (TF)</label><input className="form-input" readOnly style={{ opacity: 0.6 }} value={a.crit ? '0 — RUTA CRÍTICA' : (a.TF != null ? a.TF + ' días' : '')} /></div>
                 </div>
+                <div className="form-row">
+                    <div className="form-group"><label className="form-label">Inicio Real</label><input className="form-input" readOnly style={{ opacity: 0.6, color: a.actualStart ? '#34d399' : undefined }} value={a.actualStart ? fmtDate(new Date(a.actualStart)) + ' (' + a.actualStart + ')' : '—'} /></div>
+                    <div className="form-group"><label className="form-label">Fin Real</label><input className="form-input" readOnly style={{ opacity: 0.6, color: a.actualFinish ? '#34d399' : undefined }} value={a.actualFinish ? fmtDate(new Date(a.actualFinish)) + ' (' + a.actualFinish + ')' : '—'} /></div>
+                </div>
                 <hr style={{ borderColor: '#1f2937', margin: '10px 0' }} />
                 <div style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', marginBottom: 6, textTransform: 'uppercase' }}>
                     Líneas Base (Activa: LB {state.activeBaselineIdx})

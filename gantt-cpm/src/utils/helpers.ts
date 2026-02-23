@@ -110,7 +110,7 @@ export function exportJSON(
         activities: activities.filter(a => !a._isProjRow).map(a => ({
             id: a.id, name: a.name, type: a.type, dur: a.dur, remDur: a.remDur, cal: a.cal,
             pct: a.pct, preds: a.preds, lv: a.lv, constraint: a.constraint,
-            constraintDate: a.constraintDate, manual: a.manual, actualStart: a.actualStart || null,
+            constraintDate: a.constraintDate, manual: a.manual, actualStart: a.actualStart || null, actualFinish: a.actualFinish || null,
             res: a.res, work: a.work || 0,
             weight: a.weight, resources: a.resources || [], notes: a.notes,
             blDur: a.blDur, blES: a.blES ? isoDate(a.blES) : null, blEF: a.blEF ? isoDate(a.blEF) : null,

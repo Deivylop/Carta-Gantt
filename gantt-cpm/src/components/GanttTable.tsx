@@ -162,7 +162,11 @@ export default function GanttTable() {
             if (parent) {
                 if (c.key === 'startDate') return parent.ES ? fmtDate(parent.ES) : '';
                 if (c.key === 'endDate') return parent.EF ? fmtDate(addDays(parent.EF, -1)) : '';
-                if (c.key === 'dur') return parent.type === 'milestone' ? '0 días' : (parent.dur || 0) + ' días';
+                if (c.key === 'dur') {
+                    if (parent.type === 'milestone') return '0 días';
+                    const displayDur = (parent as any)._spanDur != null ? (parent as any)._spanDur : (parent.dur || 0);
+                    return displayDur + ' días';
+                }
             }
             return ''; // Leave other cells empty for resource sub-rows
         }
@@ -178,7 +182,12 @@ export default function GanttTable() {
         if (c.key === 'outlineNum') return a.outlineNum || '';
         if (c.key === 'id') return a.id || '';
         if (c.key === 'name') return a.name || '';
-        if (c.key === 'dur') return a.type === 'milestone' ? '0 días' : (a.dur || 0) + ' días';
+        if (c.key === 'dur') {
+            if (a.type === 'milestone') return '0 días';
+            // Si hay span visual calculado (split por retained logic), mostrarlo
+            const displayDur = (a as any)._spanDur != null ? (a as any)._spanDur : (a.dur || 0);
+            return displayDur + ' días';
+        }
         if (c.key === 'remDur') return a.type === 'milestone' ? '0 días' : (a.remDur != null ? a.remDur : (a.dur || 0)) + ' días';
         if (c.key === 'startDate') return a.ES ? fmtDate(a.ES) : '';
         if (c.key === 'endDate') return a.EF ? fmtDate(addDays(a.EF, -1)) : '';
@@ -224,6 +233,7 @@ export default function GanttTable() {
         if (c.key === 'type') return a.type === 'milestone' ? 'Hito' : a.type === 'summary' ? 'Resumen' : 'Tarea';
         if (c.key === 'lv') return String(a.lv);
         if (c.key === 'actualStart') return a.actualStart ? fmtDate(new Date(a.actualStart)) : '';
+        if (c.key === 'actualFinish') return a.actualFinish ? fmtDate(new Date(a.actualFinish)) : '';
         if (c.key === 'remStartDate') return a._remES ? fmtDate(a._remES) : '';
         if (c.key === 'remEndDate') return a._remEF ? fmtDate(addDays(a._remEF, -1)) : '';
         if (c.key === 'blDur') return a.blDur != null ? a.blDur + ' días' : '';
@@ -241,7 +251,7 @@ export default function GanttTable() {
             return '';
         }
 
-        if (key === 'dur') return String(a.dur || 0);
+        if (key === 'dur') return String(a._spanDur != null ? a._spanDur : (a.dur || 0));
         if (key === 'remDur') return String(a.remDur != null ? a.remDur : '');
         if (key === 'pct') return String(a.pct || 0);
         if (key === 'work') return String(a.work || 0);

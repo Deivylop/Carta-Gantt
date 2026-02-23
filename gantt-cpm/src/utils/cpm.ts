@@ -166,6 +166,7 @@ export function newActivity(id?: string, defCal: CalendarType = 6): Activity {
         constraintDate: '',
         manual: false,
         actualStart: null,
+        actualFinish: null,
         ES: null, EF: null, LS: null, LF: null, TF: null,
         crit: false,
         blDur: null, blES: null, blEF: null, blCal: null,
@@ -206,6 +207,7 @@ export function calcCPM(
         a._remStart = null; a._remDur = null; a._doneDur = null;
         a._origDur = null; a._actualEnd = null;
         a._remES = null; a._remEF = null; a._isSplit = false;
+        a._spanDur = null;
     });
 
     // Update project summary row name
@@ -259,10 +261,25 @@ export function calcCPM(
 
         a.ES = es;
         a.EF = addWorkDays(es, a.type === 'milestone' ? 0 : (a.dur || 0), a.cal || defCal);
+        // Para actividades 100% completas con Fin Real, usar actualFinish como EF
+        if ((a.pct || 0) >= 100 && a.actualFinish) {
+            const af = parseDate(a.actualFinish);
+            if (af) {
+                a.EF = addDays(af, 1); // EF es exclusivo
+            }
+        }
         return a.ES;
     }
 
     activities.forEach(a => getES(a));
+
+    // Recalcular duración para actividades 100% con actualFinish (sin retained logic)
+    activities.forEach(a => {
+        if (a.type === 'summary' || a.type === 'milestone') return;
+        if ((a.pct || 0) >= 100 && a.actualFinish && a.ES && a.EF) {
+            a.dur = calWorkDays(a.ES, a.EF, a.cal || defCal);
+        }
+    });
 
     // ═══ RETAINED LOGIC (Status Date reprogramming) ═══
     if (statusDate) {
@@ -296,6 +313,13 @@ export function calcCPM(
             if (a._retES !== undefined && a._retES !== null) return a._retES;
             const pct = a.pct || 0;
             if (a.type === 'summary' || pct >= 100) {
+                // Para actividades 100% completas con actualFinish, usar esa fecha como EF
+                if (pct >= 100 && a.actualFinish) {
+                    const af = parseDate(a.actualFinish);
+                    if (af) {
+                        a.EF = addDays(af, 1); // EF es exclusivo (día siguiente al último día de trabajo)
+                    }
+                }
                 a._retES = a.ES; a._retEF = a.EF;
                 return a._retES;
             }
@@ -361,7 +385,9 @@ export function calcCPM(
                     a._isSplit = false;
                 }
 
-                // La duración original NO cambia — el usuario la definió
+                // La duración del modelo NO cambia — la definió el usuario.
+                // _spanDur guarda el span visual real ES→EF para mostrar en tabla.
+                a._spanDur = calWorkDays(a.ES!, a.EF!, a.cal || defCal);
             } else {
                 // Sin avance: mover si newES es posterior al ES actual
                 if (newES > a.ES!) {
@@ -377,7 +403,14 @@ export function calcCPM(
 
         activities.forEach(a => getRetES(a));
 
-        // NO recalcular la duración — la duración la define el usuario.
+        // Recalcular duración para actividades 100% completas con fin real
+        activities.forEach(a => {
+            if (a.type === 'summary' || a.type === 'milestone') return;
+            const pct = a.pct || 0;
+            if (pct >= 100 && a.actualFinish && a.ES && a.EF) {
+                a.dur = calWorkDays(a.ES, a.EF, a.cal || defCal);
+            }
+        });
     }
 
     // ═══ Summary Tasks: compute ES/EF from children ═══

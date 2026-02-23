@@ -324,7 +324,7 @@ export default function GanttTimeline() {
                 if ((r.pct || 0) > 0) { const pw = bw * r.pct / 100; ctx.fillStyle = '#22c55ecc'; ctx.fillRect(bx, sy, pw, sh); }
                 // Label — always show for summary bars
                 ctx.fillStyle = t.barLabelOut; ctx.font = 'bold 9px Segoe UI';
-                const lbl = (r.dur || 0) + 'd' + (r.pct ? ' ' + r.pct + '%' : '');
+                const lbl = ((r as any)._spanDur != null ? (r as any)._spanDur : (r.dur || 0)) + 'd' + (r.pct ? ' ' + r.pct + '%' : '');
                 const lblW = ctx.measureText(lbl).width;
                 if (lblW < bw - 8) ctx.fillText(lbl, bx + 5, y + ROW_H / 2 + 9);
                 else ctx.fillText(lbl, bx + bw + 4, y + ROW_H / 2 + 9); // outside
@@ -390,7 +390,7 @@ export default function GanttTimeline() {
                     ctx.fillStyle = g2; rrect(ctx, seg2x, by, seg2w, bh, 3); ctx.fill();
 
                     // Label — show on segment 2 or to its right
-                    const lbl = (r.dur || 0) + 'd' + (pct ? ' ' + pct + '%' : '');
+                    const lbl = ((r as any)._spanDur != null ? (r as any)._spanDur : (r.dur || 0)) + 'd' + (pct ? ' ' + pct + '%' : '');
                     ctx.font = (r.lv <= 1 ? 'bold ' : '') + '9px Segoe UI';
                     const lblW = ctx.measureText(lbl).width;
                     if (lblW < seg2w - 8) {
@@ -423,7 +423,7 @@ export default function GanttTimeline() {
                     g.addColorStop(0, t.gradTop); g.addColorStop(1, t.gradBot);
                     ctx.fillStyle = g; rrect(ctx, bx, by, bw, bh, 3); ctx.fill();
                     // Label — ALWAYS show, either inside or outside bar
-                    const lbl = (r.dur || 0) + 'd' + (pct ? ' ' + pct + '%' : '');
+                    const lbl = ((r as any)._spanDur != null ? (r as any)._spanDur : (r.dur || 0)) + 'd' + (pct ? ' ' + pct + '%' : '');
                     const lblW = ctx.measureText(lbl).width;
                     ctx.font = (r.lv <= 1 ? 'bold ' : '') + '9px Segoe UI';
                     if (lblW < bw - 8) {
@@ -672,7 +672,7 @@ export default function GanttTimeline() {
                 const html = `<b style="color:#f9fafb">${a.outlineNum || ''} ${a.id}</b><br>
               <span style="color:#94a3b8">${a.name}</span><br>
               Inicio: <b>${fmtDate(a.ES!)}</b> &nbsp; Fin: <b>${a.EF ? fmtDate(addDays(a.EF, -1)) : ''}</b><br>
-              Dur: <b style="color:#7dd3fc">${a.type === 'milestone' ? 'Hito' : (a.dur || 0) + 'd'}</b> &nbsp; Avance: <b style="color:#6ee7b7">${a.pct || 0}%</b><br>
+              Dur: <b style="color:#7dd3fc">${a.type === 'milestone' ? 'Hito' : ((a as any)._spanDur != null ? (a as any)._spanDur : (a.dur || 0)) + 'd'}</b> &nbsp; Avance: <b style="color:#6ee7b7">${a.pct || 0}%</b><br>
               TF: <b style="color:${a.crit ? '#ef4444' : '#22c55e'}">${a.crit ? 'CRÍTICA' : a.TF + 'd'}</b><br>
               <span style="color:#6b7280">Pred: ${preds}</span>`;
                 setTip({ x: e.clientX + 14, y: e.clientY - 10, html });

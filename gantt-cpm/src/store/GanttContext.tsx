@@ -30,6 +30,7 @@ export const DEFAULT_COLS: ColumnDef[] = [
     { key: 'cal', label: 'Calendario', w: 60, edit: 'select', cls: 'tcell-cal', visible: true },
     { key: 'TF', label: 'Holgura Total', w: 75, edit: false, cls: 'tcell-dur', visible: true },
     { key: 'actualStart', label: 'Comienzo Real', w: 95, edit: false, cls: 'tcell-date', visible: false },
+    { key: 'actualFinish', label: 'Fin Real', w: 95, edit: false, cls: 'tcell-date', visible: false },
     { key: 'remStartDate', label: 'Inicio Trab. Rest.', w: 105, edit: false, cls: 'tcell-date', visible: false },
     { key: 'remEndDate', label: 'Fin Trab. Rest.', w: 105, edit: false, cls: 'tcell-date', visible: false },
     { key: 'blDur', label: 'Dur. LB', w: 60, edit: false, cls: 'tcell-dur', visible: false },
@@ -520,6 +521,16 @@ function reducer(state: GanttState, action: Action): GanttState {
             }
             if (newPct === 0) {
                 updated.actualStart = null;
+                updated.actualFinish = null;
+            }
+            // Track actualFinish: when pct reaches 100, record the current EF
+            if (newPct === 100 && !updated.actualFinish) {
+                if (orig.EF) {
+                    updated.actualFinish = isoDate(addDays(orig.EF, -1));
+                }
+            }
+            if (newPct < 100) {
+                updated.actualFinish = null;
             }
             acts[action.index] = updated;
             return recalc({ ...state, activities: acts });
@@ -538,19 +549,40 @@ function reducer(state: GanttState, action: Action): GanttState {
                 acts.forEach(x => { if (x.preds) x.preds.forEach(p => { if (p.id === oldId) p.id = val; }); });
             }
             else if (key === 'dur') {
-                const n = parseInt(val); if (!isNaN(n)) { a.dur = Math.max(0, n); if (n === 0) a.type = 'milestone'; else if (a.type === 'milestone') a.type = 'task'; }
-                a.remDur = null;
+                const n = parseInt(val); if (!isNaN(n)) {
+                    const newDur = Math.max(0, n);
+                    if (newDur === 0) a.type = 'milestone'; else if (a.type === 'milestone') a.type = 'task';
+                    // Calcular delta respecto a lo que el usuario VE (_spanDur o dur)
+                    const visualDur = a._spanDur != null ? a._spanDur : (a.dur || 0);
+                    const delta = newDur - visualDur;
+                    // Bidireccional: si tiene avance, ajustar remDur por el mismo delta
+                    if ((a.pct || 0) > 0 && a.remDur != null) {
+                        a.remDur = Math.max(0, a.remDur + delta);
+                    } else if ((a.pct || 0) === 0) {
+                        a.remDur = null;
+                    }
+                    // Ajustar dur modelo por el delta (no asignar newDur directo)
+                    a.dur = Math.max(0, (a.dur || 0) + delta);
+                }
             }
             else if (key === 'remDur') {
                 const n = parseInt(val);
                 if (!isNaN(n)) {
-                    a.remDur = Math.max(0, n);
-                    if ((a.pct || 0) === 0) {
-                        a.dur = a.remDur;
+                    const newRemDur = Math.max(0, n);
+                    // Bidireccional: ajustar dur por el mismo delta
+                    if ((a.pct || 0) > 0) {
+                        const delta = newRemDur - (a.remDur != null ? a.remDur : Math.round((a.dur || 0) * (100 - (a.pct || 0)) / 100));
+                        a.dur = Math.max(0, (a.dur || 0) + delta);
+                    } else {
+                        a.dur = newRemDur;
                     }
+                    a.remDur = newRemDur;
                 }
-                // Solo guardar — NO recalcular CPM
+                // Si se cambió dur (bidireccional), recalcular CPM
                 acts[action.index] = a;
+                if ((a.pct || 0) > 0) {
+                    return recalc({ ...state, activities: acts });
+                }
                 return refreshVisRows({ ...state, activities: acts });
             }
             else if (key === 'predStr') {
@@ -601,9 +633,19 @@ function reducer(state: GanttState, action: Action): GanttState {
                         a.actualStart = a.constraintDate;
                     }
                 }
-                // Si vuelve a 0, limpiar actualStart
+                // Si vuelve a 0, limpiar actualStart y actualFinish
                 if (newPct === 0) {
                     a.actualStart = null;
+                    a.actualFinish = null;
+                }
+                // Track actualFinish: cuando llega a 100, guardar EF como Fin Real
+                if (newPct === 100 && !a.actualFinish) {
+                    if (a.EF) {
+                        a.actualFinish = isoDate(addDays(a.EF, -1));
+                    }
+                }
+                if (newPct < 100) {
+                    a.actualFinish = null;
                 }
                 // Recalcular duración restante basado en el nuevo avance
                 a.remDur = Math.round((a.dur || 0) * (100 - newPct) / 100);
@@ -1050,6 +1092,7 @@ function reducer(state: GanttState, action: Action): GanttState {
                     constraint: a.constraint,
                     constraintDate: a.constraintDate,
                     actualStart: a.actualStart,
+                    actualFinish: a.actualFinish,
                 };
             });
             const newEntry: ProgressHistoryEntry = { date: todayISO, actualPct, details, snapshots };
@@ -1085,6 +1128,7 @@ function reducer(state: GanttState, action: Action): GanttState {
                         constraint: snap.constraint ?? a.constraint,
                         constraintDate: snap.constraintDate ?? a.constraintDate,
                         actualStart: snap.actualStart !== undefined ? snap.actualStart : a.actualStart,
+                        actualFinish: snap.actualFinish !== undefined ? snap.actualFinish : a.actualFinish,
                     };
                 }
                 // Legacy: only pct from details

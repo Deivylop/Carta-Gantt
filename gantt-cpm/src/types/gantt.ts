@@ -88,6 +88,7 @@ export interface Activity {
     constraintDate: string; // ISO date string
     manual: boolean;      // manually scheduled
     actualStart: string | null; // Actual Start date (ISO) – set when progress > 0
+    actualFinish: string | null; // Actual Finish date (ISO) – set when progress = 100
 
     // ── CPM Calculated Fields ──
     ES: Date | null;      // Early Start
@@ -123,6 +124,7 @@ export interface Activity {
     _remES?: Date | null;     // Remaining-work Early Start (split bar)
     _remEF?: Date | null;     // Remaining-work Early Finish (split bar)
     _isSplit?: boolean;       // true when out-of-sequence → draw split bar
+    _spanDur?: number | null; // visual duration (ES→EF span) for split activities
     _plannedPct?: number;
     outlineNum?: string;
 }
@@ -212,6 +214,8 @@ export interface ProgressActivitySnapshot {
     manual: boolean;
     constraint: ConstraintType;
     constraintDate: string;
+    actualStart?: string | null;
+    actualFinish?: string | null;
 }
 
 // ─── Progress History (S-Curve) ─────────────────────────────────
