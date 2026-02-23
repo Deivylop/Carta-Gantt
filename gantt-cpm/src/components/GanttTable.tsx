@@ -103,7 +103,7 @@ const EditableDateCell = ({ dateValue, displayValue, onUpdate, onFocus }: { date
 
 export default function GanttTable() {
     const { state, dispatch } = useGantt();
-    const { visRows, columns, colWidths, selIdx, activities, lightMode, defCal, chainIds, chainTrace } = state;
+    const { visRows, columns, colWidths, selIdx, selIndices, activities, lightMode, defCal, chainIds, chainTrace } = state;
     const bodyRef = useRef<HTMLDivElement>(null);
     const [colResize, setColResize] = useState<{ idx: number; startX: number; startW: number } | null>(null);
     const [colPickerOpen, setColPickerOpen] = useState(false);
@@ -338,7 +338,7 @@ export default function GanttTable() {
                         const isSummary = a.type === 'summary';
                         const isResRow = vr._isResourceAssignment;
                         const hasResources = isUsageView && !isResRow && actualAct?.resources && actualAct.resources.length > 0;
-                        const rowCls = `trow ${isProj ? 'trow-proj' : `trow-lv${Math.min(a.lv, 2)}`} ${!isProj && isSummary ? 'trow-summary' : ''} ${selIdx === vr._idx ? 'sel' : ''} ${isResRow ? 'trow-resource-assign' : ''}`;
+                        const rowCls = `trow ${isProj ? 'trow-proj' : `trow-lv${Math.min(a.lv, 2)}`} ${!isProj && isSummary ? 'trow-summary' : ''} ${selIndices.has(vr._idx) ? 'sel' : ''} ${isResRow ? 'trow-resource-assign' : ''}`;
 
                         // Chain trace highlighting
                         const chainActive = chainTrace != null && chainIds.size > 0;
@@ -366,7 +366,7 @@ export default function GanttTable() {
                                 ...(hasResources ? { fontWeight: 600 } : {}),
                                 ...chainStyle
                             }}
-                                onClick={() => dispatch({ type: 'SET_SELECTION', index: vr._idx })}
+                                onClick={(e) => dispatch({ type: 'SET_SELECTION', index: vr._idx, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })}
                                 onDoubleClick={() => { dispatch({ type: 'SET_SELECTION', index: vr._idx }); dispatch({ type: 'OPEN_ACT_MODAL' }); }}>
                                 {visCols.map((c) => {
                                     const ci = columns.indexOf(c);

@@ -61,6 +61,7 @@ export interface GanttState {
     resourcePool: PoolResource[];
     visRows: VisibleRow[];
     selIdx: number;       // active row index in Gantt mode
+    selIndices: Set<number>;  // multi-selection set of row indices
     zoom: ZoomLevel;
     pxPerDay: number;
     totalDays: number;
@@ -114,7 +115,7 @@ export type Action =
     | { type: 'DELETE_ACTIVITY'; index: number }
     | { type: 'UPDATE_ACTIVITY'; index: number; updates: Partial<Activity> }
     | { type: 'COMMIT_EDIT'; index: number; key: string; value: string }
-    | { type: 'SET_SELECTION'; index: number }
+    | { type: 'SET_SELECTION'; index: number; shift?: boolean; ctrl?: boolean }
     | { type: 'SET_ZOOM'; zoom: ZoomLevel }
     | { type: 'SET_PX_PER_DAY'; px: number }
     | { type: 'TOGGLE_THEME' }
@@ -718,8 +719,25 @@ function reducer(state: GanttState, action: Action): GanttState {
             return recalc({ ...state, activities: acts });
         }
 
-        case 'SET_SELECTION':
-            return { ...state, selIdx: action.index };
+        case 'SET_SELECTION': {
+            const idx = action.index;
+            if (action.shift && state.selIdx >= 0) {
+                // Shift: range selection from last selIdx to clicked index
+                const lo = Math.min(state.selIdx, idx);
+                const hi = Math.max(state.selIdx, idx);
+                const next = new Set(state.selIndices);
+                for (let i = lo; i <= hi; i++) next.add(i);
+                return { ...state, selIndices: next };
+            }
+            if (action.ctrl) {
+                // Ctrl: toggle individual
+                const next = new Set(state.selIndices);
+                if (next.has(idx)) next.delete(idx); else next.add(idx);
+                return { ...state, selIdx: idx, selIndices: next };
+            }
+            // Normal click: single selection
+            return { ...state, selIdx: idx, selIndices: new Set([idx]) };
+        }
 
         case 'SET_ZOOM': {
             const timelineW = Math.max(400, (typeof window !== 'undefined' ? window.innerWidth : 1200) - state.tableW - 10);
@@ -1286,6 +1304,7 @@ const initialState: GanttState = {
     collapsed: new Set(),
     expResources: new Set(),
     selIdx: -1,
+    selIndices: new Set<number>(),
     tableW: 400,
     activeGroup: 'none',
     columns: DEFAULT_COLS,

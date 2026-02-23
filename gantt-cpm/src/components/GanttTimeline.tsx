@@ -53,7 +53,7 @@ interface DragPreview {
 
 export default function GanttTimeline() {
     const { state, dispatch } = useGantt();
-    const { visRows, zoom, totalDays, timelineStart: projStart, statusDate, _cpmStatusDate, selIdx, lightMode, activities, defCal, pxPerDay, showProjRow: _showProjRow, showTodayLine, showStatusLine, showDependencies, mfpConfig, chainIds, chainTrace } = state;
+    const { visRows, zoom, totalDays, timelineStart: projStart, statusDate, _cpmStatusDate, selIdx, selIndices, lightMode, activities, defCal, pxPerDay, showProjRow: _showProjRow, showTodayLine, showStatusLine, showDependencies, mfpConfig, chainIds, chainTrace } = state;
     // For bar rendering, use the statusDate from last CPM calc (not the live one from the picker)
     const barStatusDate = _cpmStatusDate || statusDate;
     const PX = pxPerDay;
@@ -544,15 +544,19 @@ export default function GanttTimeline() {
             });
         }
 
-        // Selection highlight
-        if (selIdx >= 0) {
-            const vi = visRows.findIndex(v => v._idx === selIdx);
-            if (vi >= 0) { ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 1.5; ctx.strokeRect(0, vi * ROW_H, W, ROW_H); }
+        // Selection highlight (multi)
+        if (selIndices.size > 0) {
+            ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 1.5;
+            visRows.forEach((v, vi) => {
+                if (selIndices.has(v._idx)) {
+                    ctx.strokeRect(0, vi * ROW_H, W, ROW_H);
+                }
+            });
         }
 
         // Draw drag overlay if active
         if (dragPreviewRef.current) drawDragOverlay();
-    }, [visRows, zoom, totalDays, projStart, statusDate, selIdx, lightMode, activities, W, H, t, PX, defCal, drawDragOverlay, state.activeBaselineIdx, showTodayLine, showStatusLine, showDependencies]);
+    }, [visRows, zoom, totalDays, projStart, statusDate, selIdx, selIndices, lightMode, activities, W, H, t, PX, defCal, drawDragOverlay, state.activeBaselineIdx, showTodayLine, showStatusLine, showDependencies]);
 
     useEffect(() => { draw(); }, [draw]);
 
@@ -803,7 +807,7 @@ export default function GanttTimeline() {
         }
 
         if (i >= 0 && i < visRows.length && !visRows[i]._isGroupHeader) {
-            dispatch({ type: 'SET_SELECTION', index: visRows[i]._idx });
+            dispatch({ type: 'SET_SELECTION', index: visRows[i]._idx, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey });
         }
     }, [visRows, activities, dispatch]);
 
