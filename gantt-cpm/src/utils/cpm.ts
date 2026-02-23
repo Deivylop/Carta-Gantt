@@ -205,6 +205,7 @@ export function calcCPM(
         a.TF = null; a.crit = false;
         a._remStart = null; a._remDur = null; a._doneDur = null;
         a._origDur = null; a._actualEnd = null;
+        a._remES = null; a._remEF = null; a._isSplit = false;
     });
 
     // Update project summary row name
@@ -347,6 +348,19 @@ export function calcCPM(
                 a._retES = a.ES;
                 a._retEF = newEF;
                 a.EF = newEF;
+
+                // ── Split bar detection ──
+                // _remES / _remEF = dónde empieza y termina el trabajo restante
+                a._remES = newES;
+                a._remEF = newEF;
+                // _isSplit = true cuando hay un gap entre la parte hecha y la parte restante
+                // (la actividad empezó pero la predecesora aún no terminó, out-of-sequence)
+                if (a._actualEnd && a._remES) {
+                    a._isSplit = a._remES.getTime() > a._actualEnd.getTime();
+                } else {
+                    a._isSplit = false;
+                }
+
                 // La duración original NO cambia — el usuario la definió
             } else {
                 // Sin avance: mover si newES es posterior al ES actual

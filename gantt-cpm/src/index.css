@@ -625,6 +625,12 @@ body,
   font-family: inherit;
 }
 
+/* Force native dropdown options to be readable (dark text on light bg) */
+.form-input option {
+  background: #1f2937;
+  color: #e5e7eb;
+}
+
 .form-input:focus {
   border-color: var(--color-indigo);
 }
@@ -1295,6 +1301,11 @@ textarea.form-input {
   background: #fff;
   color: #1e293b;
   border: 1px solid #cbd5e1;
+}
+
+.light .form-input option {
+  background: #fff;
+  color: #1e293b;
 }
 
 .light .fh-input:focus,

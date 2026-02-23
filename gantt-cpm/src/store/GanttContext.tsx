@@ -29,6 +29,9 @@ export const DEFAULT_COLS: ColumnDef[] = [
     { key: 'weight', label: 'Peso %', w: 65, edit: true, cls: 'tcell-pct', visible: true },
     { key: 'cal', label: 'Calendario', w: 60, edit: 'select', cls: 'tcell-cal', visible: true },
     { key: 'TF', label: 'Holgura Total', w: 75, edit: false, cls: 'tcell-dur', visible: true },
+    { key: 'actualStart', label: 'Comienzo Real', w: 95, edit: false, cls: 'tcell-date', visible: false },
+    { key: 'remStartDate', label: 'Inicio Trab. Rest.', w: 105, edit: false, cls: 'tcell-date', visible: false },
+    { key: 'remEndDate', label: 'Fin Trab. Rest.', w: 105, edit: false, cls: 'tcell-date', visible: false },
     { key: 'blDur', label: 'Dur. LB', w: 60, edit: false, cls: 'tcell-dur', visible: false },
     { key: 'blStart', label: 'Inicio LB', w: 90, edit: false, cls: 'tcell-date', visible: false },
     { key: 'blEnd', label: 'Fin LB', w: 90, edit: false, cls: 'tcell-date', visible: false },
@@ -271,6 +274,38 @@ function buildVisRows(
                 break;
             case 'Restricciones Flexibles':
                 pass = a.type === 'task' && ['ASAP', 'ALAP', 'SNET', 'FNET'].includes(a.constraint || '');
+                break;
+            case 'Lógica Rota':
+                // Actividades cuya relación con su predecesora no se cumple
+                if (a.type === 'task' && a.preds && a.preds.length > 0) {
+                    const aPct = a.pct || 0;
+                    pass = a.preds.some(p => {
+                        const pred = activities.find(x => x.id === p.id);
+                        if (!pred) return false;
+                        const pPct = pred.pct || 0;
+                        switch (p.type) {
+                            case 'FS': // Sucesora empezó pero predecesora no terminó
+                                return aPct > 0 && pPct < 100;
+                            case 'SS': // Sucesora empezó pero predecesora no empezó
+                                return aPct > 0 && pPct === 0;
+                            case 'FF': // Sucesora terminó pero predecesora no terminó
+                                return aPct >= 100 && pPct < 100;
+                            case 'SF': // Sucesora terminó pero predecesora no empezó
+                                return aPct >= 100 && pPct === 0;
+                            default:
+                                return false;
+                        }
+                    });
+                }
+                break;
+            case 'Avance Post. F. Estado':
+                if (a.type === 'task' && (a.pct || 0) > 0 && a.actualStart) {
+                    const as = new Date(a.actualStart);
+                    pass = as.getTime() > statusDate.getTime();
+                }
+                break;
+            case 'Sin Comienzo Real':
+                pass = a.type === 'task' && (a.pct || 0) > 0 && !a.actualStart;
                 break;
         }
         if (pass) filteredSet.add(a.id);

@@ -120,6 +120,9 @@ export interface Activity {
     _actualEnd?: Date | null;
     _retES?: Date | null;
     _retEF?: Date | null;
+    _remES?: Date | null;     // Remaining-work Early Start (split bar)
+    _remEF?: Date | null;     // Remaining-work Early Finish (split bar)
+    _isSplit?: boolean;       // true when out-of-sequence → draw split bar
     _plannedPct?: number;
     outlineNum?: string;
 }

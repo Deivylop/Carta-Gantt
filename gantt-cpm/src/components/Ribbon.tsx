@@ -200,23 +200,47 @@ export default function Ribbon() {
                         <RB icon={<Filter size={16} />} label="Filtros" active={state.filtersModalOpen || state.customFilters.some(f => f.active)} onClick={() => dispatch({ type: 'OPEN_FILTERS_MODAL' })} />
                     </RG>
                     <RG label="COMPROBACIÓN">
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <select className="form-input" style={{ fontSize: 10, padding: '2px 4px', width: 140 }}
-                                value={state.activeCheckerFilter || ''}
-                                onChange={e => dispatch({ type: 'SET_CHECKER_FILTER', filter: e.target.value || null })}>
-                                <option value="">(Sin filtro)</option>
-                                <option value="Malla Abierta">Malla Abierta</option>
-                                <option value="Sin Predecesora">Sin Predecesora</option>
-                                <option value="Fechas no Válidas">Fechas no Válidas</option>
-                                <option value="Tipo de Relación">Tipo de Relación</option>
-                                <option value="Demoras Negativas">Demoras Negativas</option>
-                                <option value="Demoras Prolongadas">Demoras Prolongadas</option>
-                                <option value="Duraciones Prolongadas">Duraciones Prolongadas</option>
-                                <option value="Márgenes Grandes">Márgenes Grandes</option>
-                                <option value="Restricciones Obligatorias">Restricciones Oblig.</option>
-                                <option value="Restricciones Flexibles">Restricc. Flexibles</option>
-                            </select>
-                            <RB icon={<Settings size={14} />} onClick={() => dispatch({ type: 'OPEN_CHECK_MODAL' })} />
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <select className="form-input" style={{ fontSize: 10, padding: '2px 4px', width: 160 }}
+                                    value={state.activeCheckerFilter || ''}
+                                    onChange={e => dispatch({ type: 'SET_CHECKER_FILTER', filter: e.target.value || null })}>
+                                    <option value="">(Sin filtro)</option>
+                                    <option value="Malla Abierta">Malla Abierta</option>
+                                    <option value="Sin Predecesora">Sin Predecesora</option>
+                                    <option value="Fechas no Válidas">Fechas no Válidas</option>
+                                    <option value="Tipo de Relación">Tipo de Relación</option>
+                                    <option value="Demoras Negativas">Demoras Negativas</option>
+                                    <option value="Demoras Prolongadas">Demoras Prolongadas</option>
+                                    <option value="Duraciones Prolongadas">Duraciones Prolongadas</option>
+                                    <option value="Márgenes Grandes">Márgenes Grandes</option>
+                                    <option value="Restricciones Obligatorias">Restricciones Oblig.</option>
+                                    <option value="Restricciones Flexibles">Restricc. Flexibles</option>
+                                    <option value="Lógica Rota">Lógica Rota</option>
+                                    <option value="Avance Post. F. Estado">Avance Post. F. Estado</option>
+                                    <option value="Sin Comienzo Real">Sin Comienzo Real</option>
+                                </select>
+                                <RB icon={<Settings size={14} />} onClick={() => dispatch({ type: 'OPEN_CHECK_MODAL' })} />
+                            </div>
+                            {state.activeCheckerFilter && (
+                                <span style={{ fontSize: 8, color: 'var(--text-muted)', maxWidth: 170, lineHeight: 1.2 }}>
+                                    {({
+                                        'Malla Abierta': 'Tareas sin sucesora (avance < 100%)',
+                                        'Sin Predecesora': 'Tareas sin predecesora (avance < 100%)',
+                                        'Fechas no Válidas': 'ES o EF antes de la fecha de corte',
+                                        'Tipo de Relación': 'Relaciones distintas a FS',
+                                        'Demoras Negativas': 'Predecesoras con lag negativo',
+                                        'Demoras Prolongadas': 'Lag ≥ umbral configurado',
+                                        'Duraciones Prolongadas': 'Duración > umbral configurado',
+                                        'Márgenes Grandes': 'Holgura total > umbral configurado',
+                                        'Restricciones Obligatorias': 'MSO, MFO, SNLT, FNLT',
+                                        'Restricciones Flexibles': 'ASAP, ALAP, SNET, FNET',
+                                        'Lógica Rota': 'Relación con predecesora no se cumple',
+                                        'Avance Post. F. Estado': 'Comienzo real posterior a fecha de corte',
+                                        'Sin Comienzo Real': 'Avance > 0% sin fecha de comienzo real',
+                                    } as Record<string, string>)[state.activeCheckerFilter] || ''}
+                                </span>
+                            )}
                         </div>
                     </RG>
                     <RG label="AGRUPAR">

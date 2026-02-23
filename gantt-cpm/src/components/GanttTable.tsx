@@ -223,6 +223,9 @@ export default function GanttTable() {
         }
         if (c.key === 'type') return a.type === 'milestone' ? 'Hito' : a.type === 'summary' ? 'Resumen' : 'Tarea';
         if (c.key === 'lv') return String(a.lv);
+        if (c.key === 'actualStart') return a.actualStart ? fmtDate(new Date(a.actualStart)) : '';
+        if (c.key === 'remStartDate') return a._remES ? fmtDate(a._remES) : '';
+        if (c.key === 'remEndDate') return a._remEF ? fmtDate(addDays(a._remEF, -1)) : '';
         if (c.key === 'blDur') return a.blDur != null ? a.blDur + ' días' : '';
         if (c.key === 'blStart') return a.blES ? fmtDate(a.blES) : '';
         if (c.key === 'blEnd') return a.blEF ? fmtDate(addDays(a.blEF, -1)) : '';

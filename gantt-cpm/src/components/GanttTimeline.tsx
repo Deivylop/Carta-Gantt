@@ -96,14 +96,36 @@ export default function GanttTimeline() {
         const r = visRows[vi];
         if (r._isGroupHeader) return null;
         if (!r.ES || r.type === 'summary' || r.type === 'milestone' || r._isProjRow) return null;
-        const bx = Math.max(0, dayDiff(projStart, r.ES) * PX);
-        const efX = r.EF ? dayDiff(projStart, r.EF) * PX : bx;
-        const bw = Math.max(4, efX - bx);
         const bh = ROW_H - 10;
         const barTop = vi * ROW_H + 5;
         const barBot = barTop + bh;
         const absY = my;
         if (absY < barTop || absY > barBot) return null;
+
+        const isSplit = !!(r._isSplit && r._remES && r._remEF && r._actualEnd);
+        if (isSplit) {
+            // Check segment 1 (done work — extends to statusDate)
+            const seg1x = Math.max(0, dayDiff(projStart, r.ES) * PX);
+            const seg1EndX = statusDate
+                ? dayDiff(projStart, statusDate) * PX
+                : dayDiff(projStart, r._actualEnd!) * PX;
+            const seg1w = Math.max(4, seg1EndX - seg1x);
+            if (mx >= seg1x - 3 && mx <= seg1x + seg1w + 3) return { visIdx: vi, zone: 'move' };
+            // Check segment 2 (remaining work)
+            const seg2x = dayDiff(projStart, r._remES!) * PX;
+            const seg2EndX = dayDiff(projStart, r._remEF!) * PX;
+            const seg2w = Math.max(4, seg2EndX - seg2x);
+            const LINK_ZONE = 12;
+            if (mx > seg2x + seg2w + 2 && mx <= seg2x + seg2w + LINK_ZONE) return { visIdx: vi, zone: 'link' };
+            if (mx >= seg2x - 3 && mx <= seg2x + seg2w + 3) return { visIdx: vi, zone: 'move' };
+            // Check dashed connector zone
+            if (mx >= seg1x + seg1w && mx <= seg2x) return { visIdx: vi, zone: 'move' };
+            return null;
+        }
+
+        const bx = Math.max(0, dayDiff(projStart, r.ES) * PX);
+        const efX = r.EF ? dayDiff(projStart, r.EF) * PX : bx;
+        const bw = Math.max(4, efX - bx);
         const EDGE = Math.min(7, Math.max(3, bw * 0.25));
         const LINK_ZONE = 12;
         if (mx > bx + bw + 2 && mx <= bx + bw + LINK_ZONE) return { visIdx: vi, zone: 'link' };
@@ -111,7 +133,7 @@ export default function GanttTimeline() {
         if (mx >= bx + EDGE && mx < bx + bw - EDGE) return { visIdx: vi, zone: 'move' };
         if (mx >= bx - 3 && mx < bx + EDGE) return { visIdx: vi, zone: 'resize-r' };
         return null;
-    }, [visRows, projStart, PX]);
+    }, [visRows, projStart, PX, statusDate]);
 
     const getHoveredActivity = useCallback((mx: number, my: number) => {
         const vi = Math.floor(my / ROW_H);
@@ -119,16 +141,32 @@ export default function GanttTimeline() {
         const r = visRows[vi];
         if (r._isGroupHeader) return null;
         if (!r.ES) return null;
+        const barTop = vi * ROW_H;
+        const barBot = barTop + ROW_H;
+        if (my < barTop || my > barBot) return null;
+
+        const isSplit = !!(r._isSplit && r._remES && r._remEF && r._actualEnd);
+        if (isSplit) {
+            const seg1x = Math.max(0, dayDiff(projStart, r.ES) * PX);
+            const seg1EndX = statusDate
+                ? dayDiff(projStart, statusDate) * PX
+                : dayDiff(projStart, r._actualEnd!) * PX;
+            const seg2x = dayDiff(projStart, r._remES!) * PX;
+            const seg2EndX = dayDiff(projStart, r._remEF!) * PX;
+            if ((mx >= seg1x - 6 && mx <= seg1EndX + 6) ||
+                (mx >= seg2x - 6 && mx <= seg2EndX + 6) ||
+                (mx >= seg1EndX && mx <= seg2x)) return r;
+            return null;
+        }
+
         const bx = Math.max(0, dayDiff(projStart, r.ES) * PX);
         const efX = r.EF ? dayDiff(projStart, r.EF) * PX : bx;
         let bw = Math.max(4, efX - bx);
         if (r.type === 'milestone') bw = 12;
-        const barTop = vi * ROW_H;
-        const barBot = barTop + ROW_H;
 
-        if (my >= barTop && my <= barBot && mx >= bx - 6 && mx <= bx + bw + 6) return r;
+        if (mx >= bx - 6 && mx <= bx + bw + 6) return r;
         return null;
-    }, [visRows, projStart, PX]);
+    }, [visRows, projStart, PX, statusDate]);
 
     // Draw drag overlay (preview bar or link line)
     const drawDragOverlay = useCallback(() => {
@@ -292,38 +330,109 @@ export default function GanttTimeline() {
                 else ctx.fillText(lbl, bx + bw + 4, y + ROW_H / 2 + 9); // outside
             } else {
                 const pct = r.pct || 0;
-                ctx.fillStyle = color;
-                if (!lightMode) { ctx.shadowColor = color; ctx.shadowBlur = 3; }
-                rrect(ctx, bx, by, bw, bh, 3); ctx.fill();
-                if (!lightMode) ctx.shadowBlur = 0;
-                if (lightMode) {
-                    ctx.strokeStyle = r.crit ? '#b91c1c' : (r.lv <= 1 ? '#4338ca' : '#1d4ed8');
-                    ctx.lineWidth = 1; rrect(ctx, bx, by, bw, bh, 3); ctx.stroke();
-                }
-                // Progress fill
-                if (pct > 0 && statusDate && r.ES) {
-                    const sdX = dayDiff(projStart, statusDate) * PX;
-                    const progressW = Math.min(Math.max(0, sdX - bx), bw);
-                    if (progressW > 0) { ctx.fillStyle = lightMode ? '#22c55eaa' : '#22c55e99'; rrect(ctx, bx, by, progressW, bh, 3); ctx.fill(); }
-                } else if (pct > 0) {
-                    const pw = bw * pct / 100; ctx.fillStyle = lightMode ? '#22c55eaa' : '#22c55e99'; rrect(ctx, bx, by, pw, bh, 3); ctx.fill();
-                }
-                // Gradient sheen
-                const g = ctx.createLinearGradient(0, by, 0, by + bh);
-                g.addColorStop(0, t.gradTop); g.addColorStop(1, t.gradBot);
-                ctx.fillStyle = g; rrect(ctx, bx, by, bw, bh, 3); ctx.fill();
-                // Label — ALWAYS show, either inside or outside bar
-                const lbl = (r.dur || 0) + 'd' + (pct ? ' ' + pct + '%' : '');
-                const lblW = ctx.measureText(lbl).width;
-                ctx.font = (r.lv <= 1 ? 'bold ' : '') + '9px Segoe UI';
-                if (lblW < bw - 8) {
-                    // Inside bar
-                    ctx.fillStyle = t.barLabel;
-                    ctx.fillText(lbl, bx + 5, y + ROW_H / 2 + 3.5);
+                const isSplit = !!(r._isSplit && r._remES && r._remEF && r._actualEnd);
+
+                if (isSplit) {
+                    // ═══ SPLIT BAR — two segments with dashed connector ═══
+                    // Segment 1: done work (ES → statusDate) — progress extends to the cut-off date
+                    const seg1x = bx;
+                    const seg1EndX = statusDate
+                        ? dayDiff(projStart, statusDate) * PX
+                        : dayDiff(projStart, r._actualEnd!) * PX;
+                    const seg1w = Math.max(4, seg1EndX - seg1x);
+                    // Segment 2: remaining work (_remES → _remEF)
+                    const seg2x = dayDiff(projStart, r._remES!) * PX;
+                    const seg2EndX = dayDiff(projStart, r._remEF!) * PX;
+                    const seg2w = Math.max(4, seg2EndX - seg2x);
+
+                    // Draw segment 1 (done)
+                    ctx.fillStyle = color;
+                    if (!lightMode) { ctx.shadowColor = color; ctx.shadowBlur = 3; }
+                    rrect(ctx, seg1x, by, seg1w, bh, 3); ctx.fill();
+                    if (!lightMode) ctx.shadowBlur = 0;
+                    if (lightMode) {
+                        ctx.strokeStyle = r.crit ? '#b91c1c' : (r.lv <= 1 ? '#4338ca' : '#1d4ed8');
+                        ctx.lineWidth = 1; rrect(ctx, seg1x, by, seg1w, bh, 3); ctx.stroke();
+                    }
+                    // Progress fill on segment 1
+                    ctx.fillStyle = lightMode ? '#22c55eaa' : '#22c55e99';
+                    rrect(ctx, seg1x, by, seg1w, bh, 3); ctx.fill();
+                    // Gradient sheen seg 1
+                    const g1 = ctx.createLinearGradient(0, by, 0, by + bh);
+                    g1.addColorStop(0, t.gradTop); g1.addColorStop(1, t.gradBot);
+                    ctx.fillStyle = g1; rrect(ctx, seg1x, by, seg1w, bh, 3); ctx.fill();
+
+                    // Dashed connector between segments
+                    const gapStart = seg1x + seg1w;
+                    const gapEnd = seg2x;
+                    if (gapEnd > gapStart + 2) {
+                        ctx.save();
+                        ctx.strokeStyle = lightMode ? '#9ca3af' : '#6b7280';
+                        ctx.lineWidth = 1.5;
+                        ctx.setLineDash([4, 3]);
+                        const midY = by + bh / 2;
+                        ctx.beginPath(); ctx.moveTo(gapStart, midY); ctx.lineTo(gapEnd, midY); ctx.stroke();
+                        ctx.restore();
+                    }
+
+                    // Draw segment 2 (remaining)
+                    ctx.fillStyle = color;
+                    if (!lightMode) { ctx.shadowColor = color; ctx.shadowBlur = 3; }
+                    rrect(ctx, seg2x, by, seg2w, bh, 3); ctx.fill();
+                    if (!lightMode) ctx.shadowBlur = 0;
+                    if (lightMode) {
+                        ctx.strokeStyle = r.crit ? '#b91c1c' : (r.lv <= 1 ? '#4338ca' : '#1d4ed8');
+                        ctx.lineWidth = 1; rrect(ctx, seg2x, by, seg2w, bh, 3); ctx.stroke();
+                    }
+                    // Gradient sheen seg 2
+                    const g2 = ctx.createLinearGradient(0, by, 0, by + bh);
+                    g2.addColorStop(0, t.gradTop); g2.addColorStop(1, t.gradBot);
+                    ctx.fillStyle = g2; rrect(ctx, seg2x, by, seg2w, bh, 3); ctx.fill();
+
+                    // Label — show on segment 2 or to its right
+                    const lbl = (r.dur || 0) + 'd' + (pct ? ' ' + pct + '%' : '');
+                    ctx.font = (r.lv <= 1 ? 'bold ' : '') + '9px Segoe UI';
+                    const lblW = ctx.measureText(lbl).width;
+                    if (lblW < seg2w - 8) {
+                        ctx.fillStyle = t.barLabel;
+                        ctx.fillText(lbl, seg2x + 5, y + ROW_H / 2 + 3.5);
+                    } else {
+                        ctx.fillStyle = t.barLabelOut;
+                        ctx.fillText(lbl, seg2x + seg2w + 4, y + ROW_H / 2 + 3.5);
+                    }
                 } else {
-                    // Outside bar (to the right)
-                    ctx.fillStyle = t.barLabelOut;
-                    ctx.fillText(lbl, bx + bw + 4, y + ROW_H / 2 + 3.5);
+                    // ═══ NORMAL BAR (single continuous) ═══
+                    ctx.fillStyle = color;
+                    if (!lightMode) { ctx.shadowColor = color; ctx.shadowBlur = 3; }
+                    rrect(ctx, bx, by, bw, bh, 3); ctx.fill();
+                    if (!lightMode) ctx.shadowBlur = 0;
+                    if (lightMode) {
+                        ctx.strokeStyle = r.crit ? '#b91c1c' : (r.lv <= 1 ? '#4338ca' : '#1d4ed8');
+                        ctx.lineWidth = 1; rrect(ctx, bx, by, bw, bh, 3); ctx.stroke();
+                    }
+                    // Progress fill
+                    if (pct > 0 && statusDate && r.ES) {
+                        const sdX = dayDiff(projStart, statusDate) * PX;
+                        const progressW = Math.min(Math.max(0, sdX - bx), bw);
+                        if (progressW > 0) { ctx.fillStyle = lightMode ? '#22c55eaa' : '#22c55e99'; rrect(ctx, bx, by, progressW, bh, 3); ctx.fill(); }
+                    } else if (pct > 0) {
+                        const pw = bw * pct / 100; ctx.fillStyle = lightMode ? '#22c55eaa' : '#22c55e99'; rrect(ctx, bx, by, pw, bh, 3); ctx.fill();
+                    }
+                    // Gradient sheen
+                    const g = ctx.createLinearGradient(0, by, 0, by + bh);
+                    g.addColorStop(0, t.gradTop); g.addColorStop(1, t.gradBot);
+                    ctx.fillStyle = g; rrect(ctx, bx, by, bw, bh, 3); ctx.fill();
+                    // Label — ALWAYS show, either inside or outside bar
+                    const lbl = (r.dur || 0) + 'd' + (pct ? ' ' + pct + '%' : '');
+                    const lblW = ctx.measureText(lbl).width;
+                    ctx.font = (r.lv <= 1 ? 'bold ' : '') + '9px Segoe UI';
+                    if (lblW < bw - 8) {
+                        ctx.fillStyle = t.barLabel;
+                        ctx.fillText(lbl, bx + 5, y + ROW_H / 2 + 3.5);
+                    } else {
+                        ctx.fillStyle = t.barLabelOut;
+                        ctx.fillText(lbl, bx + bw + 4, y + ROW_H / 2 + 3.5);
+                    }
                 }
 
                 // Draw resize/link hit zones as subtle handles (only on hover)

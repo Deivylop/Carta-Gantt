@@ -15,7 +15,7 @@ const COLUMN_GROUPS: { group: string; keys: string[] }[] = [
     },
     {
         group: 'Fechas',
-        keys: ['startDate', 'endDate', 'constraint', 'constraintDate'],
+        keys: ['startDate', 'endDate', 'actualStart', 'remStartDate', 'remEndDate', 'constraint', 'constraintDate'],
     },
     {
         group: 'Relaciones',
