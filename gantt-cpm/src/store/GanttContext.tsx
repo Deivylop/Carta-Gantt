@@ -3,8 +3,8 @@
 // All state management matching HTML globals + actions
 // ═══════════════════════════════════════════════════════════════════
 import React, { createContext, useContext, useReducer, type ReactNode } from 'react';
-import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, VisibleRow, ProgressHistoryEntry, BaselineEntry, CustomCalendar, CustomFilter } from '../types/gantt';
-import { calcCPM, newActivity, isoDate, parseDate, addDays, calWorkDays, fmtDate } from '../utils/cpm';
+import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, VisibleRow, ProgressHistoryEntry, BaselineEntry, CustomCalendar, CustomFilter, MFPConfig } from '../types/gantt';
+import { calcCPM, calcMultipleFloatPaths, newActivity, isoDate, parseDate, addDays, calWorkDays, fmtDate } from '../utils/cpm';
 import { autoId, computeOutlineNumbers, syncResFromString, deriveResString, distributeWork, strToPreds, predsToStr } from '../utils/helpers';
 
 // ─── Column Definitions ─────────────────────────────────────────
@@ -29,6 +29,8 @@ export const DEFAULT_COLS: ColumnDef[] = [
     { key: 'weight', label: 'Peso %', w: 65, edit: true, cls: 'tcell-pct', visible: true },
     { key: 'cal', label: 'Calendario', w: 60, edit: 'select', cls: 'tcell-cal', visible: true },
     { key: 'TF', label: 'Holgura Total', w: 75, edit: false, cls: 'tcell-dur', visible: true },
+    { key: 'FF', label: 'Holgura Libre', w: 75, edit: false, cls: 'tcell-dur', visible: false },
+    { key: 'floatPath', label: 'Float Path', w: 70, edit: false, cls: 'tcell-num', visible: false },
     { key: 'actualStart', label: 'Comienzo Real', w: 95, edit: false, cls: 'tcell-date', visible: false },
     { key: 'actualFinish', label: 'Fin Real', w: 95, edit: false, cls: 'tcell-date', visible: false },
     { key: 'remStartDate', label: 'Inicio Trab. Rest.', w: 105, edit: false, cls: 'tcell-date', visible: false },
@@ -98,6 +100,8 @@ export interface GanttState {
     customFilters: CustomFilter[];
     filtersMatchAll: boolean; // true = AND all selected, false = OR any selected
     filtersModalOpen: boolean;
+    // Multiple Float Paths
+    mfpConfig: MFPConfig;
 }
 
 // ─── Actions ────────────────────────────────────────────────────
@@ -177,12 +181,18 @@ export type Action =
     | { type: 'SET_CUSTOM_FILTERS'; filters: CustomFilter[] }
     | { type: 'SET_FILTERS_MATCH_ALL'; matchAll: boolean }
     | { type: 'OPEN_FILTERS_MODAL' }
-    | { type: 'CLOSE_FILTERS_MODAL' };
+    | { type: 'CLOSE_FILTERS_MODAL' }
+    | { type: 'SET_MFP_CONFIG'; config: Partial<MFPConfig> }
+    | { type: 'TOGGLE_MFP' };
 
 // ─── Grouping / Filtering ─────────────────────────────────────────
 function applyGroupFilter(rows: VisibleRow[], activities: Activity[], activeGroup: string, columns: ColumnDef[]): VisibleRow[] {
     if (activeGroup === 'none') return rows;
     if (activeGroup === 'critical') return rows.filter(vr => { const a = activities[vr._idx]; return a._isProjRow || a.type === 'summary' || a.crit; });
+    if (activeGroup.startsWith('floatpath')) {
+        const pathNum = parseInt(activeGroup.replace('floatpath', ''));
+        if (!isNaN(pathNum)) return rows.filter(vr => { const a = activities[vr._idx]; return a._isProjRow || a.type === 'summary' || a._floatPath === pathNum; });
+    }
     if (activeGroup === 'inprogress') return rows.filter(vr => { const a = activities[vr._idx]; return a._isProjRow || a.type === 'summary' || ((a.pct || 0) > 0 && (a.pct || 0) < 100 && a.type === 'task'); });
     if (activeGroup === 'notstarted') return rows.filter(vr => { const a = activities[vr._idx]; return a._isProjRow || a.type === 'summary' || ((a.pct || 0) === 0 && a.type === 'task'); });
     if (activeGroup === 'completed') return rows.filter(vr => { const a = activities[vr._idx]; return a._isProjRow || a.type === 'summary' || (a.pct || 0) >= 100; });
@@ -462,6 +472,10 @@ function ensureProjRow(activities: Activity[], showProjRow: boolean, projName: s
 function recalcInternal(state: GanttState, statusDate: Date | null): GanttState {
     let acts = ensureProjRow([...state.activities], state.showProjRow, state.projName, state.defCal);
     const result = calcCPM(acts, state.projStart, state.defCal, statusDate, state.projName, state.activeBaselineIdx, state.customCalendars);
+    // Multiple Float Paths
+    if (state.mfpConfig.enabled) {
+        calcMultipleFloatPaths(result.activities, state.mfpConfig.endActivityId, state.mfpConfig.mode, state.mfpConfig.maxPaths, state.defCal);
+    }
     computeOutlineNumbers(result.activities);
     const visRows = buildVisRows(result.activities, state.collapsed, state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes, state.activeCheckerFilter, state.checkerThresholds, state.statusDate, state.customFilters, state.filtersMatchAll);
     // Auto-fit: pxPerDay based on PROJECT span (not totalDays) so project fills viewport
@@ -1201,6 +1215,16 @@ function reducer(state: GanttState, action: Action): GanttState {
         case 'CLOSE_FILTERS_MODAL':
             return { ...state, filtersModalOpen: false };
 
+        case 'SET_MFP_CONFIG': {
+            const newMfp = { ...state.mfpConfig, ...action.config };
+            return recalc({ ...state, mfpConfig: newMfp });
+        }
+
+        case 'TOGGLE_MFP': {
+            const newMfp = { ...state.mfpConfig, enabled: !state.mfpConfig.enabled };
+            return recalc({ ...state, mfpConfig: newMfp });
+        }
+
         default:
             return state;
     }
@@ -1272,6 +1296,7 @@ const initialState: GanttState = {
     customFilters: [],
     filtersMatchAll: true,
     filtersModalOpen: false,
+    mfpConfig: { enabled: false, endActivityId: null, mode: 'totalFloat', maxPaths: 10 },
 };
 
 // ─── Context ────────────────────────────────────────────────────

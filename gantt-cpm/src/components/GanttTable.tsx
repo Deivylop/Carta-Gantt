@@ -230,6 +230,15 @@ export default function GanttTable() {
             if (a.TF != null) return a.TF + 'd';
             return '';
         }
+        if (c.key === 'FF') {
+            if (a.type === 'summary' || a._isProjRow) return '';
+            if (a._freeFloat != null) return a._freeFloat + 'd';
+            return '';
+        }
+        if (c.key === 'floatPath') {
+            if (a.type === 'summary' || a._isProjRow) return '';
+            return a._floatPath != null ? String(a._floatPath) : '';
+        }
         if (c.key === 'type') return a.type === 'milestone' ? 'Hito' : a.type === 'summary' ? 'Resumen' : 'Tarea';
         if (c.key === 'lv') return String(a.lv);
         if (c.key === 'actualStart') return a.actualStart ? fmtDate(new Date(a.actualStart)) : '';

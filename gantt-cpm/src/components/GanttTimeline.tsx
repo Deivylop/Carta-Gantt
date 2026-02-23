@@ -53,7 +53,7 @@ interface DragPreview {
 
 export default function GanttTimeline() {
     const { state, dispatch } = useGantt();
-    const { visRows, zoom, totalDays, timelineStart: projStart, statusDate, _cpmStatusDate, selIdx, lightMode, activities, defCal, pxPerDay, showProjRow: _showProjRow, showTodayLine, showStatusLine, showDependencies } = state;
+    const { visRows, zoom, totalDays, timelineStart: projStart, statusDate, _cpmStatusDate, selIdx, lightMode, activities, defCal, pxPerDay, showProjRow: _showProjRow, showTodayLine, showStatusLine, showDependencies, mfpConfig } = state;
     // For bar rendering, use the statusDate from last CPM calc (not the live one from the picker)
     const barStatusDate = _cpmStatusDate || statusDate;
     const PX = pxPerDay;
@@ -307,7 +307,13 @@ export default function GanttTimeline() {
             const efX = r.EF ? dayDiff(projStart, r.EF) * PX : bx;
             const bw = Math.max(r.type === 'milestone' ? 0 : 4, efX - bx);
             const by = y + 5, bh = ROW_H - 10;
-            const color = r.crit ? '#ef4444' : (r.lv <= 1 ? '#6366f1' : '#3b82f6');
+            const color = (() => {
+                if (mfpConfig.enabled && r._floatPath != null) {
+                    const MFP_COLORS = ['#FF0000','#FF6600','#FFCC00','#00AA00','#0066FF','#9933FF','#FF66CC','#00CCCC','#996633','#666666'];
+                    return MFP_COLORS[(r._floatPath - 1) % MFP_COLORS.length];
+                }
+                return r.crit ? '#ef4444' : (r.lv <= 1 ? '#6366f1' : '#3b82f6');
+            })();
 
             if (r.type === 'milestone') {
                 const mx = bx, my = y + ROW_H / 2, sz = 7;
@@ -671,12 +677,15 @@ export default function GanttTimeline() {
             const a = activities[hoveredRow._idx];
             if (a) {
                 const preds = (a.preds || []).map((p: any) => `${p.id} ${p.type}${p.lag > 0 ? '+' + p.lag : p.lag < 0 ? p.lag : ''}`).join(', ') || '';
+                const mfpLine = mfpConfig.enabled && a._floatPath != null
+                    ? `Float Path: <b style="color:#fbbf24">${a._floatPath}</b>${a._freeFloat != null ? ` &nbsp; FF: <b>${a._freeFloat}d</b>` : ''}<br>`
+                    : '';
                 const html = `<b style="color:#f9fafb">${a.outlineNum || ''} ${a.id}</b><br>
               <span style="color:#94a3b8">${a.name}</span><br>
               Inicio: <b>${fmtDate(a.ES!)}</b> &nbsp; Fin: <b>${a.EF ? fmtDate(addDays(a.EF, -1)) : ''}</b><br>
               Dur: <b style="color:#7dd3fc">${a.type === 'milestone' ? 'Hito' : ((a as any)._spanDur != null ? (a as any)._spanDur : (a.dur || 0)) + 'd'}</b> &nbsp; Avance: <b style="color:#6ee7b7">${a.pct || 0}%</b><br>
               TF: <b style="color:${a.crit ? '#ef4444' : '#22c55e'}">${a.crit ? 'CRÍTICA' : a.TF + 'd'}</b><br>
-              <span style="color:#6b7280">Pred: ${preds}</span>`;
+              ${mfpLine}<span style="color:#6b7280">Pred: ${preds}</span>`;
                 setTip({ x: e.clientX + 14, y: e.clientY - 10, html });
             }
         } else {

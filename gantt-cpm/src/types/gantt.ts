@@ -127,6 +127,20 @@ export interface Activity {
     _spanDur?: number | null; // visual duration (ES→EF span) for split activities
     _plannedPct?: number;
     outlineNum?: string;
+
+    // ── Multiple Float Paths (MFP) runtime fields ──
+    _floatPath?: number | null;     // Float Path number (1 = most critical)
+    _drivingPredId?: string | null; // ID of the driving predecessor for this path
+    _relFloat?: number | null;      // Relationship Float of the driving link
+    _freeFloat?: number | null;     // Free Float of the activity
+}
+
+// ─── Multiple Float Paths Configuration ─────────────────────────
+export interface MFPConfig {
+    enabled: boolean;                      // MFP calculation active?
+    endActivityId: string | null;          // target end activity (null = auto-detect project end)
+    mode: 'totalFloat' | 'freeFloat';     // which float to use for path selection
+    maxPaths: number;                      // max float paths to compute (default: 10)
 }
 
 // ─── Resource Pool Entry ────────────────────────────────────────

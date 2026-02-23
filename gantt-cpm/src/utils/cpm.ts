@@ -2,7 +2,7 @@
 // CPM Engine – Pure TypeScript (no React dependency)
 // Ported 1:1 from the calcCPM() function in Carta Gantt CPM.html
 // ═══════════════════════════════════════════════════════════════════
-import type { Activity, CalendarType, ProgressHistoryEntry, CustomCalendar } from '../types/gantt';
+import type { Activity, CalendarType, ProgressHistoryEntry, CustomCalendar, PredecessorLink, MFPConfig } from '../types/gantt';
 
 /** Calendar conversion factors: work days → calendar days */
 const CAL_F: Record<number, number> = { 5: 7 / 5, 6: 7 / 6, 7: 1 };
@@ -598,6 +598,226 @@ export function calcCPM(
     });
 
     return { activities, totalDays, projectDays };
+}
+
+// ─── Multiple Float Paths (Access Critical Path) ────────────────
+
+/**
+ * Calculate Relationship Float for a single link.
+ * RF measures how much "slack" exists in this specific relationship.
+ * RF = 0 means the relationship is "driving" (it controls the successor's timing).
+ */
+function calcRelationshipFloat(
+    pred: Activity,
+    succ: Activity,
+    link: PredecessorLink,
+    defCal: CalendarType
+): number {
+    const lag = link.lag || 0;
+    const succCal = succ.cal || defCal;
+    const predCal = pred.cal || defCal;
+
+    if (!pred.ES || !pred.EF || !succ.ES || !succ.EF) return Infinity;
+
+    let impliedDate: Date;
+    switch (link.type) {
+        case 'FS':
+            // Successor can start when pred finishes + lag
+            impliedDate = addWorkDays(pred.EF, lag, succCal);
+            return Math.max(0, dayDiff(impliedDate, succ.ES));
+        case 'SS':
+            // Successor can start when pred starts + lag
+            impliedDate = addWorkDays(pred.ES, lag, succCal);
+            return Math.max(0, dayDiff(impliedDate, succ.ES));
+        case 'FF':
+            // Successor can finish when pred finishes + lag
+            impliedDate = addWorkDays(pred.EF, lag, succCal);
+            return Math.max(0, dayDiff(impliedDate, succ.EF));
+        case 'SF':
+            // Successor can finish when pred starts + lag
+            impliedDate = addWorkDays(pred.ES, lag, succCal);
+            return Math.max(0, dayDiff(impliedDate, succ.EF));
+        default:
+            impliedDate = addWorkDays(pred.EF, lag, succCal);
+            return Math.max(0, dayDiff(impliedDate, succ.ES));
+    }
+}
+
+/**
+ * Calculate Free Float for an activity.
+ * Free Float = minimum of (ES_successor - EF_activity - lag) across all successors.
+ * For activities with no successors, FF = TF.
+ */
+function calcFreeFloat(
+    a: Activity,
+    successors: { succ: Activity; link: PredecessorLink }[],
+    defCal: CalendarType
+): number {
+    if (!a.EF || successors.length === 0) return a.TF || 0;
+
+    let minSlack = Infinity;
+    for (const { succ, link } of successors) {
+        const rf = calcRelationshipFloat(a, succ, link, defCal);
+        if (rf < minSlack) minSlack = rf;
+    }
+    return Math.max(0, minSlack);
+}
+
+/**
+ * P6-style Multiple Float Paths calculation.
+ *
+ * Traces backward from an end activity, identifying driving predecessor chains
+ * and numbering them by criticality (1 = most critical).
+ *
+ * Algorithm:
+ *  1. Build successor map and compute Relationship Float for every link.
+ *  2. Starting from the end activity, trace backward through driving predecessors.
+ *  3. "Driving" = the predecessor with the lowest RF (tied → lowest TF/FF → longest dur → latest EF).
+ *  4. When a path runs out of predecessors, increment the path counter and pick
+ *     the next unassigned activity with the lowest TF.
+ */
+export function calcMultipleFloatPaths(
+    activities: Activity[],
+    endActivityId: string | null,
+    mode: 'totalFloat' | 'freeFloat',
+    maxPaths: number,
+    defCal: CalendarType
+): void {
+    // Reset MFP fields
+    activities.forEach(a => {
+        a._floatPath = null;
+        a._drivingPredId = null;
+        a._relFloat = null;
+        a._freeFloat = null;
+    });
+
+    // Only process actual tasks/milestones (not summary rows)
+    const tasks = activities.filter(a => a.type !== 'summary' && !a._isProjRow);
+    if (tasks.length === 0) return;
+
+    const byId: Record<string, Activity> = {};
+    activities.forEach(a => { byId[a.id] = a; });
+
+    // Build successor map: predId → [{succ, link}]
+    const succMap = new Map<string, { succ: Activity; link: PredecessorLink }[]>();
+    for (const a of tasks) {
+        if (!a.preds) continue;
+        for (const p of a.preds) {
+            const pred = byId[p.id];
+            if (!pred || pred.type === 'summary') continue;
+            if (!succMap.has(p.id)) succMap.set(p.id, []);
+            succMap.get(p.id)!.push({ succ: a, link: p });
+        }
+    }
+
+    // Compute Free Float for all tasks
+    for (const a of tasks) {
+        const succs = succMap.get(a.id) || [];
+        a._freeFloat = calcFreeFloat(a, succs, defCal);
+    }
+
+    // Determine end activity
+    let endAct: Activity | null = null;
+    if (endActivityId && byId[endActivityId]) {
+        endAct = byId[endActivityId];
+    } else {
+        // Auto-detect: task/milestone with latest EF
+        let maxEF: Date | null = null;
+        for (const a of tasks) {
+            if (a.EF && (!maxEF || a.EF > maxEF)) {
+                maxEF = a.EF;
+                endAct = a;
+            }
+        }
+    }
+    if (!endAct) return;
+
+    // Set of assigned activity IDs
+    const assigned = new Set<string>();
+
+    /**
+     * Select the "most driving" predecessor of `current` that hasn't been assigned yet.
+     * Tie-breaking (P6 rules):
+     *   1. Lowest Relationship Float (RF)
+     *   2. Lowest Total Float (or Free Float if mode = freeFloat)
+     *   3. Longest duration
+     *   4. Latest Early Finish
+     */
+    function selectDrivingPred(current: Activity): { pred: Activity; link: PredecessorLink; rf: number } | null {
+        if (!current.preds || current.preds.length === 0) return null;
+
+        const candidates: { pred: Activity; link: PredecessorLink; rf: number }[] = [];
+        for (const p of current.preds) {
+            const pred = byId[p.id];
+            if (!pred || pred.type === 'summary' || pred._isProjRow) continue;
+            if (assigned.has(pred.id)) continue;
+            const rf = calcRelationshipFloat(pred, current, p, defCal);
+            candidates.push({ pred, link: p, rf });
+        }
+        if (candidates.length === 0) return null;
+
+        // Sort by P6 tie-breaking rules
+        candidates.sort((a, b) => {
+            // 1. Lowest RF (most driving)
+            if (a.rf !== b.rf) return a.rf - b.rf;
+            // 2. Lowest float (TF or FF depending on mode)
+            const aFloat = mode === 'freeFloat' ? (a.pred._freeFloat ?? a.pred.TF ?? 0) : (a.pred.TF ?? 0);
+            const bFloat = mode === 'freeFloat' ? (b.pred._freeFloat ?? b.pred.TF ?? 0) : (b.pred.TF ?? 0);
+            if (aFloat !== bFloat) return aFloat - bFloat;
+            // 3. Longest duration
+            const aDur = a.pred.dur || 0;
+            const bDur = b.pred.dur || 0;
+            if (aDur !== bDur) return bDur - aDur;
+            // 4. Latest EF
+            const aEF = a.pred.EF?.getTime() || 0;
+            const bEF = b.pred.EF?.getTime() || 0;
+            return bEF - aEF;
+        });
+
+        return candidates[0];
+    }
+
+    let pathCounter = 1;
+    let current: Activity | null = endAct;
+
+    while (current && pathCounter <= maxPaths) {
+        // Trace backward from current through driving predecessors
+        let tracing: Activity | null = current;
+        while (tracing) {
+            if (assigned.has(tracing.id)) break;
+
+            // Assign float path
+            tracing._floatPath = pathCounter;
+            assigned.add(tracing.id);
+
+            // Select driving predecessor
+            const best = selectDrivingPred(tracing);
+            if (best) {
+                tracing._drivingPredId = best.pred.id;
+                tracing._relFloat = best.rf;
+                tracing = best.pred;
+            } else {
+                tracing._relFloat = null;
+                tracing = null;
+            }
+        }
+
+        // Path complete — find next unassigned activity with lowest float
+        pathCounter++;
+        if (pathCounter > maxPaths) break;
+
+        let nextBest: Activity | null = null;
+        let nextBestFloat = Infinity;
+        for (const a of tasks) {
+            if (assigned.has(a.id)) continue;
+            const f = mode === 'freeFloat' ? (a._freeFloat ?? a.TF ?? Infinity) : (a.TF ?? Infinity);
+            if (f < nextBestFloat || (f === nextBestFloat && nextBest && (a.EF?.getTime() || 0) > (nextBest.EF?.getTime() || 0))) {
+                nextBestFloat = f;
+                nextBest = a;
+            }
+        }
+        current = nextBest;
+    }
 }
 
 // ─── Usage Distribution Helper ──────────────────────────────────

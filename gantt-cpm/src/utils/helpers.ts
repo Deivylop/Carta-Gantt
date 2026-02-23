@@ -2,7 +2,7 @@
 // ═══════════════════════════════════════════════════════════════════
 // Import / Export utilities – JSON and CSV
 // ═══════════════════════════════════════════════════════════════════
-import type { Activity, CalendarType, PoolResource, ActivityResource, CustomFilter } from '../types/gantt';
+import type { Activity, CalendarType, PoolResource, ActivityResource, CustomFilter, MFPConfig } from '../types/gantt';
 import { newActivity, isoDate, parseDate } from './cpm';
 
 // ─── Predecessor Formatting ─────────────────────────────────────
@@ -100,12 +100,14 @@ export function syncResFromString(a: Activity, pool: PoolResource[]): void {
 export function exportJSON(
     activities: Activity[], projStart: Date, projName: string,
     defCal: CalendarType, statusDate: Date, resourcePool: PoolResource[],
-    customFilters: CustomFilter[] = [], filtersMatchAll: boolean = true
+    customFilters: CustomFilter[] = [], filtersMatchAll: boolean = true,
+    mfpConfig?: MFPConfig
 ): void {
     const data = {
         projStart: isoDate(projStart), projName, defCal,
         statusDate: isoDate(statusDate),
         customFilters, filtersMatchAll,
+        mfpConfig: mfpConfig || undefined,
         resourcePool: JSON.parse(JSON.stringify(resourcePool)),
         activities: activities.filter(a => !a._isProjRow).map(a => ({
             id: a.id, name: a.name, type: a.type, dur: a.dur, remDur: a.remDur, cal: a.cal,
@@ -129,7 +131,7 @@ export function exportJSON(
 export function importJSONData(
     text: string,
     defCalDefault: CalendarType
-): { projStart: Date; projName: string; defCal: CalendarType; statusDate: Date; activities: Activity[]; resourcePool: PoolResource[]; customFilters: CustomFilter[]; filtersMatchAll: boolean } | null {
+): { projStart: Date; projName: string; defCal: CalendarType; statusDate: Date; activities: Activity[]; resourcePool: PoolResource[]; customFilters: CustomFilter[]; filtersMatchAll: boolean; mfpConfig?: MFPConfig } | null {
     try {
         const d = JSON.parse(text);
         const projStart = d.projStart ? (parseDate(d.projStart) || new Date()) : new Date();
@@ -138,6 +140,7 @@ export function importJSONData(
         const statusDate = d.statusDate ? (parseDate(d.statusDate) || new Date()) : new Date();
         const customFilters = d.customFilters || [];
         const filtersMatchAll = d.filtersMatchAll !== undefined ? d.filtersMatchAll : true;
+        const mfpConfig: MFPConfig | undefined = d.mfpConfig || undefined;
         const resourcePool = Array.isArray(d.resourcePool) ? d.resourcePool : [];
         if (resourcePool.length) {
             _rsNextId = resourcePool.reduce((mx: number, r: PoolResource) => Math.max(mx, r.rid || 0), 0) + 1;
@@ -160,7 +163,7 @@ export function importJSONData(
         activities.forEach((a: Activity) => {
             if (a.resources && a.resources.length) deriveResString(a, resourcePool);
         });
-        return { projStart, projName, defCal, statusDate, activities, resourcePool, customFilters, filtersMatchAll };
+        return { projStart, projName, defCal, statusDate, activities, resourcePool, customFilters, filtersMatchAll, mfpConfig };
     } catch (err) {
         alert('Error JSON: ' + (err as Error).message);
         return null;

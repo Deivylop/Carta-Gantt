@@ -57,6 +57,7 @@ export default function Ribbon() {
                         projStart: data.projStart, projName: data.projName, defCal: data.defCal,
                         statusDate: data.statusDate, activities: data.activities, resourcePool: data.resourcePool,
                         selIdx: data.activities.length ? 0 : -1,
+                        ...(data.mfpConfig ? { mfpConfig: data.mfpConfig } : {}),
                     }
                 });
             }
@@ -125,6 +126,61 @@ export default function Ribbon() {
                     <RG label="PROYECTO">
                         <RB icon={<Settings size={16} />} label="Configuración" onClick={() => dispatch({ type: 'OPEN_PROJ_MODAL' })} />
                         <RB icon={<Calculator size={16} />} label="Calcular CPM" onClick={() => dispatch({ type: 'RECALC_CPM' })} />
+                    </RG>
+                    <RG label="RUTAS DE ACCESO">
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-start', minWidth: 160 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <label style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                                    <input type="checkbox" checked={state.mfpConfig.enabled}
+                                        onChange={() => dispatch({ type: 'TOGGLE_MFP' })} />
+                                    <span style={{ fontWeight: 600 }}>MFP</span>
+                                </label>
+                                <select className="form-input" style={{ fontSize: 9, padding: '1px 3px', width: 80 }}
+                                    value={state.mfpConfig.mode}
+                                    disabled={!state.mfpConfig.enabled}
+                                    onChange={e => dispatch({ type: 'SET_MFP_CONFIG', config: { mode: e.target.value as any } })}>
+                                    <option value="totalFloat">Total Float</option>
+                                    <option value="freeFloat">Free Float</option>
+                                </select>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>Fin:</span>
+                                <select className="form-input" style={{ fontSize: 9, padding: '1px 3px', width: 120 }}
+                                    value={state.mfpConfig.endActivityId || ''}
+                                    disabled={!state.mfpConfig.enabled}
+                                    onChange={e => dispatch({ type: 'SET_MFP_CONFIG', config: { endActivityId: e.target.value || null } })}>
+                                    <option value="">(Auto – max EF)</option>
+                                    {state.activities.filter(a => a.type !== 'summary' && !a._isProjRow).map(a =>
+                                        <option key={a.id} value={a.id}>{a.id} – {a.name?.substring(0, 20)}</option>
+                                    )}
+                                </select>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>Paths:</span>
+                                <input type="number" className="form-input" style={{ fontSize: 9, padding: '1px 3px', width: 40 }}
+                                    min={1} max={50}
+                                    value={state.mfpConfig.maxPaths}
+                                    disabled={!state.mfpConfig.enabled}
+                                    onChange={e => dispatch({ type: 'SET_MFP_CONFIG', config: { maxPaths: Math.max(1, parseInt(e.target.value) || 10) } })} />
+                            </div>
+                            {state.mfpConfig.enabled && (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2, maxWidth: 170 }}>
+                                    {(() => {
+                                        const MFP_COLORS = ['#FF0000','#FF6600','#FFCC00','#00AA00','#0066FF','#9933FF','#FF66CC','#00CCCC','#996633','#666666'];
+                                        const paths = new Set<number>();
+                                        state.activities.forEach(a => { if (a._floatPath) paths.add(a._floatPath); });
+                                        const sorted = [...paths].sort((a, b) => a - b);
+                                        return sorted.map(p => (
+                                            <span key={p} style={{ fontSize: 8, display: 'inline-flex', alignItems: 'center', gap: 2, cursor: 'pointer', opacity: state.activeGroup === `floatpath${p}` ? 1 : 0.7, fontWeight: state.activeGroup === `floatpath${p}` ? 700 : 400 }}
+                                                onClick={() => dispatch({ type: 'SET_GROUP', group: state.activeGroup === `floatpath${p}` ? 'none' : `floatpath${p}` })}>
+                                                <span style={{ width: 8, height: 8, borderRadius: 2, background: MFP_COLORS[(p - 1) % MFP_COLORS.length], display: 'inline-block' }} />
+                                                P{p}
+                                            </span>
+                                        ));
+                                    })()}
+                                </div>
+                            )}
+                        </div>
                     </RG>
                     <RG label="FECHA DE CORTE">
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -253,6 +309,13 @@ export default function Ribbon() {
                                 <option value="inprogress">En Progreso</option>
                                 <option value="notstarted">No Iniciadas</option>
                                 <option value="completed">Completadas</option>
+                                {state.mfpConfig.enabled && (() => {
+                                    const paths = new Set<number>();
+                                    state.activities.forEach(a => { if (a._floatPath) paths.add(a._floatPath); });
+                                    return [...paths].sort((a, b) => a - b).map(p =>
+                                        <option key={`fp${p}`} value={`floatpath${p}`}>Float Path {p}</option>
+                                    );
+                                })()}
                                 {state.columns.filter(c => c.key.startsWith('txt')).map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
                             </select>
                         </div>
@@ -283,7 +346,7 @@ export default function Ribbon() {
 
                 {tab === 'datos' && <>
                     <RG label="EXPORTAR">
-                        <RB icon={<Download size={14} />} label="JSON" onClick={() => exportJSON(state.activities, state.projStart, state.projName, state.defCal, state.statusDate, state.resourcePool, state.customFilters, state.filtersMatchAll)} />
+                        <RB icon={<Download size={14} />} label="JSON" onClick={() => exportJSON(state.activities, state.projStart, state.projName, state.defCal, state.statusDate, state.resourcePool, state.customFilters, state.filtersMatchAll, state.mfpConfig)} />
                         <RB icon={<Download size={14} />} label="CSV" onClick={() => exportCSV(state.activities, state.projName, state.defCal)} />
                     </RG>
                     <RG label="IMPORTAR">
