@@ -21,6 +21,8 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
 
     const data = useMemo(() => {
         const isResUsage = state.currentView === 'resUsage';
+        const isTaskUsage = state.currentView === 'usage';
+        const isHoursMode = isResUsage || isTaskUsage;
         const effectiveId = forcedActivityId || selectedId;
         const isProjectLevel = !multiSelectIds && effectiveId === '__PROJECT__';
 
@@ -34,6 +36,27 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                 targetResNames = isProjectLevel ? state.resourcePool.map(r => r.name) : [effectiveId];
             }
             tasks = state.activities.filter(a => !a._isProjRow && a.type === 'task' && a.resources && a.resources.some(r => targetResNames.includes(r.name)));
+        } else if (isTaskUsage) {
+            // Task usage: same task selection as default gantt but work in hours
+            if (multiSelectIds) {
+                tasks = state.activities.filter(a => multiSelectIds.includes(a.id) && a.type === 'task');
+            } else if (effectiveId === '__PROJECT__') {
+                tasks = state.activities.filter(a => a.type === 'task' && !a._isProjRow);
+            } else {
+                const idx = state.activities.findIndex(a => a.id === effectiveId);
+                if (idx >= 0) {
+                    const node = state.activities[idx];
+                    if (node.type === 'task') {
+                        tasks = [node];
+                    } else if (node.type === 'summary') {
+                        for (let i = idx + 1; i < state.activities.length; i++) {
+                            const child = state.activities[i];
+                            if (child.lv <= node.lv) break;
+                            if (child.type === 'task') tasks.push(child);
+                        }
+                    }
+                }
+            }
         } else {
             if (multiSelectIds) {
                 tasks = state.activities.filter(a => multiSelectIds.includes(a.id) && a.type === 'task');
@@ -58,7 +81,7 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
             }
         }
 
-        if (tasks.length === 0) return { points: [], statusDateMs: 0, maxValue: 0, isResUsage };
+        if (tasks.length === 0) return { points: [], statusDateMs: 0, maxValue: 0, isHoursMode };
 
         let minMs = 8640000000000000;
         let maxMs = -8640000000000000;
@@ -78,6 +101,9 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                 const resWork = t.resources?.filter((r: any) => targetResNames.includes(r.name)).reduce((sum: number, r: any) => sum + (r.work || 0), 0) || 0;
                 w = resWork;
                 wBackup = resWork;
+            } else if (isTaskUsage) {
+                w = t.work || 0;
+                wBackup = t.work || 0;
             } else {
                 const cw = t.work || 0;
                 w = (t.weight != null && t.weight > 0) ? t.weight : (cw || t.dur || 1);
@@ -93,7 +119,7 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
             }
         });
 
-        if (totalWeight === 0 || minMs > maxMs) return { points: [], statusDateMs: 0, maxValue: 0, isResUsage };
+        if (totalWeight === 0 || minMs > maxMs) return { points: [], statusDateMs: 0, maxValue: 0, isHoursMode };
 
         const points: any[] = [];
         const minDate = new Date(minMs);
@@ -134,6 +160,8 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                 if (isResUsage) {
                     const resWork = t.resources?.filter((r: any) => targetResNames.includes(r.name)).reduce((sum: number, r: any) => sum + (r.work || 0), 0) || 0;
                     w = resWork; wBackup = resWork;
+                } else if (isTaskUsage) {
+                    w = t.work || 0; wBackup = t.work || 0;
                 } else {
                     const cw = t.work || 0;
                     w = (t.weight != null && t.weight > 0) ? t.weight : (cw || t.dur || 1);
@@ -173,7 +201,7 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                 earned += w * ratio;
                 fallbackEarned += wBackup * ratio;
             });
-            if (isResUsage) return earned;
+            if (isHoursMode) return earned;
             if (totalWeight > 0) return (earned / totalWeight) * 100;
             if (fallbackTotalWeight > 0) return (fallbackEarned / fallbackTotalWeight) * 100;
             return 0;
@@ -209,7 +237,7 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
             if (time <= sTime) {
                 const exactRecord = history.find(h => h.date === iso);
 
-                if (isResUsage) {
+                if (isHoursMode) {
                     let historyEarnedHours = 0;
                     if (exactRecord || time === sTime) {
                         tasks.forEach(t => {
@@ -225,8 +253,13 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                                     }
                                 }
                             }
-                            const resWork = t.resources?.filter((r: any) => targetResNames.includes(r.name)).reduce((sum: number, r: any) => sum + (r.work || 0), 0) || 0;
-                            historyEarnedHours += resWork * (actPct / 100);
+                            let taskWork: number;
+                            if (isResUsage) {
+                                taskWork = t.resources?.filter((r: any) => targetResNames.includes(r.name)).reduce((sum: number, r: any) => sum + (r.work || 0), 0) || 0;
+                            } else {
+                                taskWork = t.work || 0;
+                            }
+                            historyEarnedHours += taskWork * (actPct / 100);
                         });
                         actualPct = historyEarnedHours;
                     }
@@ -292,7 +325,7 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
             });
         });
 
-        return { points, statusDateMs: sTime, maxValue: totalWeight, isResUsage };
+        return { points, statusDateMs: sTime, maxValue: totalWeight, isHoursMode };
 
     }, [state.activities, state.progressHistory, state.statusDate, selectedId, multiSelectIds, forcedActivityId, state.currentView, state.resourcePool, state.defCal]);
 
@@ -314,7 +347,7 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                             background: state.lightMode ? '#fff' : '#1e293b', color: textColor, outline: 'none', maxWidth: '300px'
                         }}
                     >
-                        {data.isResUsage ? (
+                        {state.currentView === 'resUsage' ? (
                             <>
                                 <option value="__PROJECT__">Todos los Recursos</option>
                                 {state.resourcePool.map(r => (
@@ -350,8 +383,8 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                     statusDate={state.statusDate}
                     points={data.points}
                     statusDateMs={data.statusDateMs}
-                    maxValue={data.isResUsage ? data.maxValue : 100}
-                    isHours={data.isResUsage}
+                    maxValue={data.isHoursMode ? data.maxValue : 100}
+                    isHours={data.isHoursMode}
                 />
             ) : (
                 <div style={{ flex: 1, minHeight: 0 }}>
@@ -373,17 +406,17 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                                 textAnchor="end"
                                 height={60}
                             />
-                            <YAxis stroke={textColor} tick={{ fill: textColor, fontSize: 12 }} domain={[0, data.isResUsage ? data.maxValue : 100]} tickFormatter={(val: number) => data.isResUsage ? `${val.toLocaleString('es-CL', { maximumFractionDigits: 0 })}h` : `${val}%`} />
-                            <YAxis yAxisId="right" orientation="right" stroke={textColor} tick={{ fill: textColor, fontSize: 12 }} domain={[0, data.isResUsage ? data.maxValue : 100]} tickFormatter={(val: number) => data.isResUsage ? `${val.toLocaleString('es-CL', { maximumFractionDigits: 0 })}h` : `${val}%`} />
+                            <YAxis stroke={textColor} tick={{ fill: textColor, fontSize: 12 }} domain={[0, data.isHoursMode ? data.maxValue : 100]} tickFormatter={(val: number) => data.isHoursMode ? `${val.toLocaleString('es-CL', { maximumFractionDigits: 0 })}h` : `${val}%`} />
+                            <YAxis yAxisId="right" orientation="right" stroke={textColor} tick={{ fill: textColor, fontSize: 12 }} domain={[0, data.isHoursMode ? data.maxValue : 100]} tickFormatter={(val: number) => data.isHoursMode ? `${val.toLocaleString('es-CL', { maximumFractionDigits: 0 })}h` : `${val}%`} />
                             <Tooltip
                                 contentStyle={{ backgroundColor: state.lightMode ? '#fff' : '#1e293b', borderColor: gridColor, color: textColor }}
-                                formatter={(value: any, name: any) => [data.isResUsage ? `${value.toLocaleString('es-CL')} hrs` : `${value}%`, name]}
+                                formatter={(value: any, name: any) => [data.isHoursMode ? `${value.toLocaleString('es-CL')} hrs` : `${value}%`, name]}
                                 labelFormatter={(label: any) => new Date(label).toLocaleDateString()}
                             />
                             <Legend verticalAlign="top" height={36} />
                             <ReferenceLine x={data.statusDateMs} stroke="red" strokeDasharray="3 3" label={{ position: 'insideTopLeft', value: 'Fecha de Corte', fill: 'red', fontSize: 12 }} />
-                            <Line type="monotone" dataKey="planned" name={data.isResUsage ? "HH Programadas" : "Avance Programado"} stroke={plannedColor} strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 6 }} />
-                            <Line type="monotone" dataKey="actual" name={data.isResUsage ? "HH Reales" : "Avance Real"} stroke={actualColor} strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} connectNulls={true} />
+                            <Line type="monotone" dataKey="planned" name={data.isHoursMode ? "HH Programadas" : "Avance Programado"} stroke={plannedColor} strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 6 }} />
+                            <Line type="monotone" dataKey="actual" name={data.isHoursMode ? "HH Reales" : "Avance Real"} stroke={actualColor} strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} connectNulls={true} />
                         </LineChart>
                     </ResponsiveContainer>
                 </div>
@@ -391,36 +424,61 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
         </div>
     );
 }
-// ─── Smooth curve helper (monotone cubic bezier) ─────────────────
-function drawSmoothCurve(ctx: CanvasRenderingContext2D, pts: { x: number; y: number }[], minY?: number, maxY?: number) {
+// ─── Monotone cubic Hermite spline (Fritsch–Carlson) ─────────────
+// Same algorithm as Recharts type="monotone" / D3 curveMonotoneX
+function drawSmoothCurve(ctx: CanvasRenderingContext2D, pts: { x: number; y: number }[], _minY?: number, _maxY?: number) {
     if (pts.length < 2) { if (pts.length === 1) { ctx.beginPath(); ctx.arc(pts[0].x, pts[0].y, 2, 0, Math.PI * 2); ctx.fill(); } return; }
     ctx.beginPath();
     ctx.moveTo(pts[0].x, pts[0].y);
     if (pts.length === 2) {
         ctx.lineTo(pts[1].x, pts[1].y);
     } else {
-        const tension = 0.15; // Very subtle smoothing
-        for (let i = 0; i < pts.length - 1; i++) {
-            const p0 = pts[Math.max(0, i - 1)];
-            const p1 = pts[i];
-            const p2 = pts[i + 1];
-            const p3 = pts[Math.min(pts.length - 1, i + 2)];
-            let cp1y = p1.y + (p2.y - p0.y) * tension;
-            let cp2y = p2.y - (p3.y - p1.y) * tension;
-            // Monotonicity: clamp control points Y between segment endpoints
-            // This guarantees the curve never dips below the previous value
-            const segMinY = Math.min(p1.y, p2.y);
-            const segMaxY = Math.max(p1.y, p2.y);
-            cp1y = Math.max(segMinY, Math.min(segMaxY, cp1y));
-            cp2y = Math.max(segMinY, Math.min(segMaxY, cp2y));
-            // Also clamp to 0..100% range
-            if (minY !== undefined && maxY !== undefined) {
-                cp1y = Math.max(minY, Math.min(maxY, cp1y));
-                cp2y = Math.max(minY, Math.min(maxY, cp2y));
+        const n = pts.length;
+        // 1) Compute deltas and slopes
+        const dx: number[] = [];
+        const dy: number[] = [];
+        const m: number[] = [];  // tangent slopes at each point
+        for (let i = 0; i < n - 1; i++) {
+            dx.push(pts[i + 1].x - pts[i].x);
+            dy.push(pts[i + 1].y - pts[i].y);
+        }
+        const slope: number[] = dx.map((d, i) => d === 0 ? 0 : dy[i] / d);
+
+        // 2) Initialize tangents with average of adjacent slopes
+        m.push(slope[0]);
+        for (let i = 1; i < n - 1; i++) {
+            m.push((slope[i - 1] + slope[i]) / 2);
+        }
+        m.push(slope[n - 2]);
+
+        // 3) Fritsch–Carlson: ensure monotonicity
+        for (let i = 0; i < n - 1; i++) {
+            if (Math.abs(slope[i]) < 1e-12) {
+                // Flat segment → zero tangent at both endpoints
+                m[i] = 0;
+                m[i + 1] = 0;
+            } else {
+                const alpha = m[i] / slope[i];
+                const beta = m[i + 1] / slope[i];
+                // Restrict to a circle of radius 3 to prevent overshoot
+                const r = alpha * alpha + beta * beta;
+                if (r > 9) {
+                    const s = 3 / Math.sqrt(r);
+                    m[i] = s * alpha * slope[i];
+                    m[i + 1] = s * beta * slope[i];
+                }
             }
-            const cp1x = p1.x + (p2.x - p0.x) * tension;
-            const cp2x = p2.x - (p3.x - p1.x) * tension;
-            ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
+        }
+
+        // 4) Draw cubic Hermite segments
+        for (let i = 0; i < n - 1; i++) {
+            const h = dx[i];
+            if (h === 0) continue;
+            const cp1x = pts[i].x + h / 3;
+            const cp1y = pts[i].y + m[i] * h / 3;
+            const cp2x = pts[i + 1].x - h / 3;
+            const cp2y = pts[i + 1].y - m[i + 1] * h / 3;
+            ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, pts[i + 1].x, pts[i + 1].y);
         }
     }
     ctx.stroke();
@@ -706,49 +764,76 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
             return;
         }
 
-        // 2. Interpolate standard Y values using same tension logic as drawSmoothCurve
-        const interpolateY = (key: 'planned' | 'actual', p0: any, p1: any, p2: any, p3: any) => {
+        // 2. Interpolate Y using same Fritsch–Carlson monotone cubic as drawSmoothCurve
+        const interpolateY = (key: 'planned' | 'actual', _p0: any, p1: any, p2: any, _p3: any) => {
             if (p1[key] == null || p2[key] == null) return null;
-            const tension = 0.15;
 
-            // X coordinates 
-            const x1 = dayDiff(projStart, new Date(p1.dateMs)) * PX;
-            const x2 = dayDiff(projStart, new Date(p2.dateMs)) * PX;
+            // Build the full series of points for this key to compute proper tangents
+            const allPts: { x: number; y: number }[] = [];
+            const src = key === 'actual' ? points.filter((p: any) => p[key] != null) : points;
+            for (const p of src) {
+                allPts.push({ x: dayDiff(projStart, new Date(p.dateMs)) * PX, y: p[key] });
+            }
+            if (allPts.length < 2) return p1[key];
 
-            // Y values (raw dataset scale)
-            const y0 = p0[key] ?? p1[key];
-            const y1 = p1[key]!;
-            const y2 = p2[key]!;
-            const y3 = p3[key] ?? p2[key];
+            // Find the segment in allPts that encloses mx
+            let seg = 0;
+            for (let j = 0; j < allPts.length - 1; j++) {
+                if (allPts[j + 1].x >= mx) { seg = j; break; }
+                if (j === allPts.length - 2) seg = j;
+            }
+            const a = allPts[seg];
+            const b = allPts[seg + 1];
+            const h = b.x - a.x;
+            if (h === 0) return a.y;
 
-            let cp1y = y1 + (y2 - y0) * tension;
-            let cp2y = y2 - (y3 - y1) * tension;
+            // Compute tangent slopes (Fritsch–Carlson)
+            const n = allPts.length;
+            const dxArr: number[] = [];
+            const slopeArr: number[] = [];
+            for (let j = 0; j < n - 1; j++) {
+                const ddx = allPts[j + 1].x - allPts[j].x;
+                dxArr.push(ddx);
+                slopeArr.push(ddx === 0 ? 0 : (allPts[j + 1].y - allPts[j].y) / ddx);
+            }
+            const mArr: number[] = [slopeArr[0]];
+            for (let j = 1; j < n - 1; j++) mArr.push((slopeArr[j - 1] + slopeArr[j]) / 2);
+            mArr.push(slopeArr[n - 2]);
 
-            // Clamp control points as drawSmoothCurve does
-            const segMinY = Math.min(y1, y2);
-            const segMaxY = Math.max(y1, y2);
-            cp1y = Math.max(segMinY, Math.min(segMaxY, cp1y));
-            cp2y = Math.max(segMinY, Math.min(segMaxY, cp2y));
-            const yMaxData = maxValue && maxValue > 0 ? maxValue : 100;
-            cp1y = Math.max(0, Math.min(yMaxData, cp1y));
-            cp2y = Math.max(0, Math.min(yMaxData, cp2y));
+            for (let j = 0; j < n - 1; j++) {
+                if (Math.abs(slopeArr[j]) < 1e-12) {
+                    mArr[j] = 0; mArr[j + 1] = 0;
+                } else {
+                    const al = mArr[j] / slopeArr[j];
+                    const bt = mArr[j + 1] / slopeArr[j];
+                    const r = al * al + bt * bt;
+                    if (r > 9) {
+                        const s = 3 / Math.sqrt(r);
+                        mArr[j] = s * al * slopeArr[j];
+                        mArr[j + 1] = s * bt * slopeArr[j];
+                    }
+                }
+            }
 
-            // Approximate t from x
-            if (x2 === x1) return y1;
-            // Simple linear approximation of t for X since Bezier X is monotonic here
-            const t = (mx - x1) / (x2 - x1);
-
-            // Standard cubic bezier
+            // Cubic Hermite on this segment
+            const t = (mx - a.x) / h;
+            const cp1y = a.y + mArr[seg] * h / 3;
+            const cp2y = b.y - mArr[seg + 1] * h / 3;
             const omt = 1 - t;
-            const resY = (omt ** 3) * y1 + 3 * (omt ** 2) * t * cp1y + 3 * omt * (t ** 2) * cp2y + (t ** 3) * y2;
-            return resY;
+            return (omt ** 3) * a.y + 3 * (omt ** 2) * t * cp1y + 3 * omt * (t ** 2) * cp2y + (t ** 3) * b.y;
         };
 
         const p0 = points[Math.max(0, i0 - 1)];
         const p3 = points[Math.min(points.length - 1, i0 + 2)];
 
         const interpPlanned = interpolateY('planned', p0, p1, p2, p3);
-        const interpActual = interpolateY('actual', p0, p1, p2, p3);
+        let interpActual = interpolateY('actual', p0, p1, p2, p3);
+        // If interpolation returns null (e.g. mouse between a known and null point),
+        // fall back to the nearest non-null actual value
+        if (interpActual == null) {
+            if (p1.actual != null) interpActual = p1.actual;
+            else if (p2 && p2.actual != null) interpActual = p2.actual;
+        }
 
         const hoveredDate = new Date(projStart.getTime() + (mx / PX) * 86400000);
         const formatT = (v: number | null) => v == null ? '—' : (isHours ? v.toLocaleString('es-CL', { maximumFractionDigits: 0 }) + ' h' : v.toFixed(1) + '%');

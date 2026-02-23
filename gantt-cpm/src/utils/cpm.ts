@@ -726,24 +726,34 @@ export function getUsageDailyValues(
         return map;
     }
 
-    // ─── "Trabajo restante": remaining work distributed from statusDate to EF ───
+    // ─── "Trabajo restante": remaining work distributed from statusDate (or _remES) to EF ───
     if (mode === 'Trabajo restante') {
         const pct = Math.min(100, Math.max(0, a.pct || 0));
         const remainingWork = work * (1 - pct / 100);
         if (remainingWork <= 0) return map;
         const cal = a.cal || defCal;
 
-        const sDate = statusDate ? new Date(statusDate) : new Date();
-        sDate.setHours(0, 0, 0, 0);
-        const sDateEnd = new Date(sDate);
-        sDateEnd.setDate(sDateEnd.getDate() + 1);
+        let remStart: Date;
+        let endD: Date;
 
-        const actEF = a.EF;
-        const actES = a.ES;
-        if (!actEF || !actES) return map;
-        const startD = new Date(actES); startD.setHours(0, 0, 0, 0);
-        const endD = new Date(actEF); endD.setHours(0, 0, 0, 0);
-        const remStart = sDateEnd > startD ? sDateEnd : startD;
+        if (a._remES && a._remEF) {
+            // Split bar: remaining work goes from _remES to _remEF
+            remStart = new Date(a._remES); remStart.setHours(0, 0, 0, 0);
+            endD = new Date(a._remEF); endD.setHours(0, 0, 0, 0);
+        } else {
+            const sDate = statusDate ? new Date(statusDate) : new Date();
+            sDate.setHours(0, 0, 0, 0);
+            const sDateEnd = new Date(sDate);
+            sDateEnd.setDate(sDateEnd.getDate() + 1);
+
+            const actEF = a.EF;
+            const actES = a.ES;
+            if (!actEF || !actES) return map;
+            const startD = new Date(actES); startD.setHours(0, 0, 0, 0);
+            endD = new Date(actEF); endD.setHours(0, 0, 0, 0);
+            remStart = sDateEnd > startD ? sDateEnd : startD;
+        }
+
         if (endD <= remStart) return map;
 
         const remDates = buildWorkDays(remStart, endD, cal);

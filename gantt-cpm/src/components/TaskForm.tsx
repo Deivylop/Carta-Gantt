@@ -9,7 +9,7 @@ import SCurveChart from './SCurveChart';
 
 export default function TaskForm() {
     const { state, dispatch } = useGantt();
-    const { activities, selIdx, resourcePool, tableW, totalDays, pxPerDay } = state;
+    const { activities, selIdx, resourcePool, tableW, totalDays, pxPerDay, currentView } = state;
     const [tab, setTab] = useState<'pred' | 'res' | 'scurve'>('pred');
     const a = selIdx >= 0 ? activities[selIdx] : null;
 
@@ -278,7 +278,7 @@ export default function TaskForm() {
                             )}
                         </div>
                         {/* Gráfico Curva S (Lado Derecho) */}
-                        <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+                        <div style={{ flex: 1, position: 'relative', overflow: 'hidden', paddingLeft: (currentView === 'usage' || currentView === 'resUsage') ? 100 : 0 }}>
                             <SCurveChart
                                 hideHeader
                                 multiSelectIds={scurveMode === 'selected' ? scurveSelection : undefined}

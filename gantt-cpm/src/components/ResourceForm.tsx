@@ -4,7 +4,7 @@ import SCurveChart from './SCurveChart';
 
 export default function ResourceForm() {
     const { state } = useGantt();
-    const { resourcePool, tableW, totalDays, pxPerDay } = state;
+    const { resourcePool, tableW, totalDays, pxPerDay, currentView } = state;
 
     // Default to 'all' resources initially
     const [scurveMode, setScurveMode] = useState<'all' | 'selected'>('all');
@@ -54,7 +54,7 @@ export default function ResourceForm() {
                 </div>
 
                 {/* Right pane: S-Curve Chart */}
-                <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+                <div style={{ flex: 1, position: 'relative', overflow: 'hidden', paddingLeft: currentView === 'resUsage' ? 100 : 0 }}>
                     <SCurveChart
                         hideHeader
                         multiSelectIds={scurveMode === 'selected' && scurveSelection.length > 0 ? scurveSelection : undefined}
