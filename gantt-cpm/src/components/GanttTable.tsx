@@ -382,11 +382,7 @@ export default function GanttTable() {
                                         }
                                     }
 
-                                    // Center alignment for Dur, RemDur, Pct
-                                    if (['dur', 'remDur', 'pct'].includes(c.key)) {
-                                        style.textAlign = 'center';
-                                        style.justifyContent = 'center';
-                                    }
+
 
                                     if (isSummary || isProj) style.fontWeight = 700;
 

@@ -85,13 +85,15 @@ export default function ColumnPickerModal({ onClose }: Props) {
     const [selected, setSelected] = useState<string[]>(() =>
         state.columns.filter(c => c.visible && !INTERNAL_KEYS.has(c.key)).map(c => c.key)
     );
-    const [selHighlight, setSelHighlight] = useState<string | null>(null);
+    const [selHighlight, setSelHighlight] = useState<Set<string>>(new Set());
+    const [lastSelClick, setLastSelClick] = useState<string | null>(null);
 
     /* Expanded groups in left panel */
     const [expanded, setExpanded] = useState<Set<string>>(() => new Set(COLUMN_GROUPS.map(g => g.group)));
 
-    /* Selected item in left panel */
-    const [availHighlight, setAvailHighlight] = useState<string | null>(null);
+    /* Selected item in left panel (multi-select) */
+    const [availHighlight, setAvailHighlight] = useState<Set<string>>(new Set());
+    const [lastAvailClick, setLastAvailClick] = useState<string | null>(null);
 
     /* ── Views state ── */
     const [views, setViews] = useState<SavedView[]>(loadViews);
@@ -124,52 +126,128 @@ export default function ColumnPickerModal({ onClose }: Props) {
         });
     };
 
+    /* ── Multi-select click handlers ── */
+    const handleAvailClick = (key: string, e: React.MouseEvent) => {
+        // Build flat list of visible available keys (respecting expanded groups)
+        const flatAvail: string[] = [];
+        for (const g of availableKeys()) {
+            if (expanded.has(g.group)) flatAvail.push(...g.keys);
+        }
+
+        if (e.shiftKey && lastAvailClick) {
+            const idxA = flatAvail.indexOf(lastAvailClick);
+            const idxB = flatAvail.indexOf(key);
+            if (idxA >= 0 && idxB >= 0) {
+                const lo = Math.min(idxA, idxB);
+                const hi = Math.max(idxA, idxB);
+                const range = flatAvail.slice(lo, hi + 1);
+                setAvailHighlight(prev => {
+                    const next = new Set(prev);
+                    range.forEach(k => next.add(k));
+                    return next;
+                });
+            }
+        } else if (e.ctrlKey || e.metaKey) {
+            setAvailHighlight(prev => {
+                const next = new Set(prev);
+                if (next.has(key)) next.delete(key); else next.add(key);
+                return next;
+            });
+            setLastAvailClick(key);
+        } else {
+            setAvailHighlight(new Set([key]));
+            setLastAvailClick(key);
+        }
+    };
+
+    const handleSelClick = (key: string, e: React.MouseEvent) => {
+        if (e.shiftKey && lastSelClick) {
+            const idxA = selected.indexOf(lastSelClick);
+            const idxB = selected.indexOf(key);
+            if (idxA >= 0 && idxB >= 0) {
+                const lo = Math.min(idxA, idxB);
+                const hi = Math.max(idxA, idxB);
+                const range = selected.slice(lo, hi + 1);
+                setSelHighlight(prev => {
+                    const next = new Set(prev);
+                    range.forEach(k => next.add(k));
+                    return next;
+                });
+            }
+        } else if (e.ctrlKey || e.metaKey) {
+            setSelHighlight(prev => {
+                const next = new Set(prev);
+                if (next.has(key)) next.delete(key); else next.add(key);
+                return next;
+            });
+            setLastSelClick(key);
+        } else {
+            setSelHighlight(new Set([key]));
+            setLastSelClick(key);
+        }
+    };
+
     /* ── Arrow actions ── */
     const moveRight = () => {
-        if (!availHighlight) return;
-        if (!selected.includes(availHighlight)) {
-            setSelected(prev => [...prev, availHighlight]);
-        }
-        setAvailHighlight(null);
+        if (availHighlight.size === 0) return;
+        setSelected(prev => [...prev, ...Array.from(availHighlight).filter(k => !prev.includes(k))]);
+        setAvailHighlight(new Set());
+        setLastAvailClick(null);
     };
 
     const moveAllRight = () => {
-        const avail = availableKeys();
-        const allKeys = avail.flatMap(g => g.keys);
+        const allKeys = availableKeys().flatMap(g => g.keys);
         setSelected(prev => [...prev, ...allKeys.filter(k => !prev.includes(k))]);
-        setAvailHighlight(null);
+        setAvailHighlight(new Set());
+        setLastAvailClick(null);
     };
 
     const moveLeft = () => {
-        if (!selHighlight) return;
-        setSelected(prev => prev.filter(k => k !== selHighlight));
-        setSelHighlight(null);
+        if (selHighlight.size === 0) return;
+        setSelected(prev => prev.filter(k => !selHighlight.has(k)));
+        setSelHighlight(new Set());
+        setLastSelClick(null);
     };
 
     const moveAllLeft = () => {
         setSelected([]);
-        setSelHighlight(null);
+        setSelHighlight(new Set());
+        setLastSelClick(null);
     };
 
-    /* ── Up/Down ── */
+    /* ── Up/Down (multi-select aware) ── */
     const moveUp = () => {
-        if (!selHighlight) return;
+        if (selHighlight.size === 0) return;
         setSelected(prev => {
-            const idx = prev.indexOf(selHighlight);
-            if (idx <= 0) return prev;
             const next = [...prev];
-            [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+            // Get indices of selected items, sorted ascending
+            const indices = prev
+                .map((k, i) => selHighlight.has(k) ? i : -1)
+                .filter(i => i >= 0)
+                .sort((a, b) => a - b);
+            // Can't move up if first selected is already at top
+            if (indices[0] <= 0) return prev;
+            for (const idx of indices) {
+                [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+            }
             return next;
         });
     };
 
     const moveDown = () => {
-        if (!selHighlight) return;
+        if (selHighlight.size === 0) return;
         setSelected(prev => {
-            const idx = prev.indexOf(selHighlight);
-            if (idx < 0 || idx >= prev.length - 1) return prev;
             const next = [...prev];
-            [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+            // Get indices of selected items, sorted descending
+            const indices = prev
+                .map((k, i) => selHighlight.has(k) ? i : -1)
+                .filter(i => i >= 0)
+                .sort((a, b) => b - a);
+            // Can't move down if last selected is already at bottom
+            if (indices[0] >= prev.length - 1) return prev;
+            for (const idx of indices) {
+                [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+            }
             return next;
         });
     };
@@ -296,10 +374,13 @@ export default function ColumnPickerModal({ onClose }: Props) {
                                             </div>
                                             {expanded.has(g.group) && g.keys.map(k => (
                                                 <div key={k}
-                                                    className={`col-picker-item${availHighlight === k ? ' highlighted' : ''}`}
-                                                    onClick={() => setAvailHighlight(k)}
+                                                    className={`col-picker-item${availHighlight.has(k) ? ' highlighted' : ''}`}
+                                                    onClick={(e) => handleAvailClick(k, e)}
                                                     onDoubleClick={() => {
-                                                        if (!selected.includes(k)) setSelected(prev => [...prev, k]);
+                                                        // On double-click, move all highlighted (or just this one) to selected
+                                                        const toAdd = availHighlight.size > 0 ? Array.from(availHighlight) : [k];
+                                                        setSelected(prev => [...prev, ...toAdd.filter(x => !prev.includes(x))]);
+                                                        setAvailHighlight(new Set());
                                                     }}>
                                                     {getLabel(k)}
                                                 </div>
@@ -314,9 +395,9 @@ export default function ColumnPickerModal({ onClose }: Props) {
 
                             {/* Center arrows */}
                             <div className="col-picker-arrows">
-                                <button onClick={moveRight} disabled={!availHighlight} title="Agregar">▶</button>
+                                <button onClick={moveRight} disabled={availHighlight.size === 0} title="Agregar">▶</button>
                                 <button onClick={moveAllRight} title="Agregar todo">▶▶</button>
-                                <button onClick={moveLeft} disabled={!selHighlight} title="Quitar">◀</button>
+                                <button onClick={moveLeft} disabled={selHighlight.size === 0} title="Quitar">◀</button>
                                 <button onClick={moveAllLeft} title="Quitar todo">◀◀</button>
                             </div>
 
@@ -326,10 +407,13 @@ export default function ColumnPickerModal({ onClose }: Props) {
                                 <div className="col-picker-list">
                                     {selected.map(k => (
                                         <div key={k}
-                                            className={`col-picker-item${selHighlight === k ? ' highlighted' : ''}`}
-                                            onClick={() => setSelHighlight(k)}
+                                            className={`col-picker-item${selHighlight.has(k) ? ' highlighted' : ''}`}
+                                            onClick={(e) => handleSelClick(k, e)}
                                             onDoubleClick={() => {
-                                                setSelected(prev => prev.filter(x => x !== k));
+                                                // On double-click, remove all highlighted (or just this one)
+                                                const toRemove = selHighlight.size > 0 ? selHighlight : new Set([k]);
+                                                setSelected(prev => prev.filter(x => !toRemove.has(x)));
+                                                setSelHighlight(new Set());
                                             }}>
                                             {getLabel(k)}
                                         </div>
@@ -342,8 +426,8 @@ export default function ColumnPickerModal({ onClose }: Props) {
 
                             {/* Right-side buttons: up/down + action buttons */}
                             <div className="col-picker-side-btns">
-                                <button onClick={moveUp} disabled={!selHighlight} title="Subir">▲</button>
-                                <button onClick={moveDown} disabled={!selHighlight} title="Bajar">▼</button>
+                                <button onClick={moveUp} disabled={selHighlight.size === 0} title="Subir">▲</button>
+                                <button onClick={moveDown} disabled={selHighlight.size === 0} title="Bajar">▼</button>
                             </div>
                         </div>
 
