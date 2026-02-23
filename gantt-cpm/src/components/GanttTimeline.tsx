@@ -53,7 +53,9 @@ interface DragPreview {
 
 export default function GanttTimeline() {
     const { state, dispatch } = useGantt();
-    const { visRows, zoom, totalDays, timelineStart: projStart, statusDate, selIdx, lightMode, activities, defCal, pxPerDay, showProjRow: _showProjRow, showTodayLine, showStatusLine, showDependencies } = state;
+    const { visRows, zoom, totalDays, timelineStart: projStart, statusDate, _cpmStatusDate, selIdx, lightMode, activities, defCal, pxPerDay, showProjRow: _showProjRow, showTodayLine, showStatusLine, showDependencies } = state;
+    // For bar rendering, use the statusDate from last CPM calc (not the live one from the picker)
+    const barStatusDate = _cpmStatusDate || statusDate;
     const PX = pxPerDay;
     const hdrRef = useRef<HTMLCanvasElement>(null);
     const barRef = useRef<HTMLCanvasElement>(null);
@@ -104,10 +106,10 @@ export default function GanttTimeline() {
 
         const isSplit = !!(r._isSplit && r._remES && r._remEF && r._actualEnd);
         if (isSplit) {
-            // Check segment 1 (done work — extends to statusDate)
+            // Check segment 1 (done work — extends to barStatusDate)
             const seg1x = Math.max(0, dayDiff(projStart, r.ES) * PX);
-            const seg1EndX = statusDate
-                ? dayDiff(projStart, statusDate) * PX
+            const seg1EndX = barStatusDate
+                ? dayDiff(projStart, barStatusDate) * PX
                 : dayDiff(projStart, r._actualEnd!) * PX;
             const seg1w = Math.max(4, seg1EndX - seg1x);
             if (mx >= seg1x - 3 && mx <= seg1x + seg1w + 3) return { visIdx: vi, zone: 'move' };
@@ -133,7 +135,7 @@ export default function GanttTimeline() {
         if (mx >= bx + EDGE && mx < bx + bw - EDGE) return { visIdx: vi, zone: 'move' };
         if (mx >= bx - 3 && mx < bx + EDGE) return { visIdx: vi, zone: 'resize-r' };
         return null;
-    }, [visRows, projStart, PX, statusDate]);
+    }, [visRows, projStart, PX, barStatusDate]);
 
     const getHoveredActivity = useCallback((mx: number, my: number) => {
         const vi = Math.floor(my / ROW_H);
@@ -148,8 +150,8 @@ export default function GanttTimeline() {
         const isSplit = !!(r._isSplit && r._remES && r._remEF && r._actualEnd);
         if (isSplit) {
             const seg1x = Math.max(0, dayDiff(projStart, r.ES) * PX);
-            const seg1EndX = statusDate
-                ? dayDiff(projStart, statusDate) * PX
+            const seg1EndX = barStatusDate
+                ? dayDiff(projStart, barStatusDate) * PX
                 : dayDiff(projStart, r._actualEnd!) * PX;
             const seg2x = dayDiff(projStart, r._remES!) * PX;
             const seg2EndX = dayDiff(projStart, r._remEF!) * PX;
@@ -166,7 +168,7 @@ export default function GanttTimeline() {
 
         if (mx >= bx - 6 && mx <= bx + bw + 6) return r;
         return null;
-    }, [visRows, projStart, PX, statusDate]);
+    }, [visRows, projStart, PX, barStatusDate]);
 
     // Draw drag overlay (preview bar or link line)
     const drawDragOverlay = useCallback(() => {
@@ -334,10 +336,10 @@ export default function GanttTimeline() {
 
                 if (isSplit) {
                     // ═══ SPLIT BAR — two segments with dashed connector ═══
-                    // Segment 1: done work (ES → statusDate) — progress extends to the cut-off date
+                    // Segment 1: done work (ES → barStatusDate) — progress extends to the cut-off date
                     const seg1x = bx;
-                    const seg1EndX = statusDate
-                        ? dayDiff(projStart, statusDate) * PX
+                    const seg1EndX = barStatusDate
+                        ? dayDiff(projStart, barStatusDate) * PX
                         : dayDiff(projStart, r._actualEnd!) * PX;
                     const seg1w = Math.max(4, seg1EndX - seg1x);
                     // Segment 2: remaining work (_remES → _remEF)
@@ -411,8 +413,8 @@ export default function GanttTimeline() {
                         ctx.lineWidth = 1; rrect(ctx, bx, by, bw, bh, 3); ctx.stroke();
                     }
                     // Progress fill
-                    if (pct > 0 && statusDate && r.ES) {
-                        const sdX = dayDiff(projStart, statusDate) * PX;
+                    if (pct > 0 && barStatusDate && r.ES) {
+                        const sdX = dayDiff(projStart, barStatusDate) * PX;
                         const progressW = Math.min(Math.max(0, sdX - bx), bw);
                         if (progressW > 0) { ctx.fillStyle = lightMode ? '#22c55eaa' : '#22c55e99'; rrect(ctx, bx, by, progressW, bh, 3); ctx.fill(); }
                     } else if (pct > 0) {

@@ -54,6 +54,7 @@ export interface GanttState {
     projStart: Date;
     defCal: CalendarType;
     statusDate: Date;
+    _cpmStatusDate: Date | null; // statusDate used in last CPM calc (for rendering)
     activities: Activity[];
     resourcePool: PoolResource[];
     visRows: VisibleRow[];
@@ -470,7 +471,7 @@ function recalc(state: GanttState): GanttState {
     const pxPerDay = Math.max(0.5, Math.min(fitPx, 150));
     // Timeline rendering starts 30 days before project start
     const timelineStart = addDays(state.projStart, -30);
-    return { ...state, activities: result.activities, totalDays: result.totalDays, visRows, pxPerDay, timelineStart };
+    return { ...state, activities: result.activities, totalDays: result.totalDays, visRows, pxPerDay, timelineStart, _cpmStatusDate: state.statusDate };
 }
 
 /** Actualizar solo los datos sin recalcular CPM (para ediciones de avance, etc.) */
@@ -1219,6 +1220,7 @@ const initialState: GanttState = {
     projStart: now,
     defCal: 6,
     statusDate: now,
+    _cpmStatusDate: null,
     activities: [],
     resourcePool: [],
     visRows: [],
