@@ -78,6 +78,16 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
                 lv: -1,
             } as any);
         }
+        // Inject custom filters as a hidden activity
+        if (state.customFilters && state.customFilters.length > 0) {
+            acts.push({
+                ...newActivity('__FILTERS__', defCal),
+                name: '__CUSTOM_FILTERS__',
+                type: 'milestone',
+                notes: JSON.stringify({ customFilters: state.customFilters, filtersMatchAll: state.filtersMatchAll }),
+                lv: -1,
+            } as any);
+        }
         const localIdMap: Record<string, string> = {};
         if (acts.length) {
             const actRows = acts.map((a, i) => {
@@ -92,7 +102,8 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
                     TF: a.TF != null ? a.TF : null, crit: !!a.crit,
                     bldur: a.blDur != null ? a.blDur : null, bles: a.blES ? a.blES.toISOString() : null,
                     blef: a.blEF ? a.blEF.toISOString() : null,
-                    txt1: a.txt1 || '', txt2: a.txt2 || '', txt3: a.txt3 || '', txt4: a.txt4 || '',
+                    txt1: a.txt1 || '', txt2: a.txt2 || '', txt3: a.txt3 || '',
+                    txt4: a.actualStart ? ('__AS__' + a.actualStart) : (a.txt4 || ''),
                     txt5: (a.baselines && a.baselines.some((b: any) => b))
                         ? '__BL__' + JSON.stringify(a.baselines.map((bl: any) => bl ? { d: bl.dur, s: bl.ES ? bl.ES.toISOString() : null, e: bl.EF ? bl.EF.toISOString() : null, c: bl.cal, t: bl.savedAt, n: bl.name || '', desc: bl.description || '', p: bl.pct || 0, w: bl.work || 0, wt: bl.weight, sd: bl.statusDate || '' } : null))
                         : (a.txt5 || '')
@@ -184,6 +195,8 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
     const getPoolResource = (rid: number) => resourcePool.find(r => r.rid === rid);
 
     let progressHistory: any[] = [];
+    let customFilters: any[] = [];
+    let filtersMatchAll = true;
 
     // Build activities
     const activities = (actData as any[]).map(a => {
@@ -193,11 +206,20 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
         na.cal = a.cal as 5 | 6 | 7 || defCal; na.pct = parseFloat(a.pct) || 0;
         na.notes = a.notes || ''; na.res = a.res || ''; na.work = parseFloat(a.work) || 0;
         na.weight = a.weight != null ? parseFloat(a.weight) : null; na.lv = a.lv || 0;
-        na.constraint = (a.constraint_type as any) || 'MSO'; na.constraintDate = a.constraintdate || '';
+        na.constraint = (a.constraint_type as any) || ''; na.constraintDate = a.constraintdate || '';
         na.manual = !!a.manual;
         na.blDur = a.bldur != null ? parseFloat(a.bldur) : null;
         na.blES = a.bles ? new Date(a.bles) : null; na.blEF = a.blef ? new Date(a.blef) : null;
-        na.txt1 = a.txt1 || ''; na.txt2 = a.txt2 || ''; na.txt3 = a.txt3 || ''; na.txt4 = a.txt4 || '';
+        na.txt1 = a.txt1 || ''; na.txt2 = a.txt2 || ''; na.txt3 = a.txt3 || '';
+        // Restore actualStart from txt4 if encoded
+        const rawTxt4 = a.txt4 || '';
+        if (rawTxt4.startsWith('__AS__')) {
+            na.actualStart = rawTxt4.slice(6);
+            na.txt4 = '';
+        } else {
+            na.txt4 = rawTxt4;
+            na.actualStart = null;
+        }
         // Restore multiple baselines from txt5 if encoded
         const rawTxt5 = a.txt5 || '';
         if (rawTxt5.startsWith('__BL__')) {
@@ -222,6 +244,15 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
             try { progressHistory = JSON.parse(na.notes); } catch (e) { }
             return false;
         }
+        // Extract hidden custom filters if found
+        if (na.id === '__FILTERS__') {
+            try {
+                const filterData = JSON.parse(na.notes);
+                if (filterData.customFilters) customFilters = filterData.customFilters;
+                if (filterData.filtersMatchAll !== undefined) filtersMatchAll = filterData.filtersMatchAll;
+            } catch (e) { }
+            return false;
+        }
         return true;
     });
 
@@ -232,6 +263,8 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
         statusDate,
         resourcePool,
         activities,
-        progressHistory
+        progressHistory,
+        customFilters,
+        filtersMatchAll
     };
 }

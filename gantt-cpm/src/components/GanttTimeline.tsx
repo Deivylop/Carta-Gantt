@@ -53,7 +53,7 @@ interface DragPreview {
 
 export default function GanttTimeline() {
     const { state, dispatch } = useGantt();
-    const { visRows, zoom, totalDays, timelineStart: projStart, statusDate, selIdx, lightMode, activities, defCal, pxPerDay } = state;
+    const { visRows, zoom, totalDays, timelineStart: projStart, statusDate, selIdx, lightMode, activities, defCal, pxPerDay, showProjRow: _showProjRow, showTodayLine, showStatusLine, showDependencies } = state;
     const PX = pxPerDay;
     const hdrRef = useRef<HTMLCanvasElement>(null);
     const barRef = useRef<HTMLCanvasElement>(null);
@@ -71,6 +71,7 @@ export default function GanttTimeline() {
 
     // Continuous timescale zoom state
     const [headerDrag, setHeaderDrag] = useState<{ startX: number; startPX: number } | null>(null);
+    const [tip, setTip] = useState<{ x: number, y: number, html: string } | null>(null);
 
     // Measure container
     useEffect(() => {
@@ -90,8 +91,7 @@ export default function GanttTimeline() {
 
     // Hit test a bar for drag zones
     const hitTestBar = useCallback((mx: number, my: number): BarHit | null => {
-        const scrollTop = bodyRef.current?.scrollTop || 0;
-        const vi = Math.floor((my + scrollTop) / ROW_H);
+        const vi = Math.floor(my / ROW_H);
         if (vi < 0 || vi >= visRows.length) return null;
         const r = visRows[vi];
         if (r._isGroupHeader) return null;
@@ -102,7 +102,7 @@ export default function GanttTimeline() {
         const bh = ROW_H - 10;
         const barTop = vi * ROW_H + 5;
         const barBot = barTop + bh;
-        const absY = my + scrollTop;
+        const absY = my;
         if (absY < barTop || absY > barBot) return null;
         const EDGE = Math.min(7, Math.max(3, bw * 0.25));
         const LINK_ZONE = 12;
@@ -110,6 +110,23 @@ export default function GanttTimeline() {
         if (mx >= bx + bw - EDGE && mx <= bx + bw + 2) return { visIdx: vi, zone: 'resize-r' };
         if (mx >= bx + EDGE && mx < bx + bw - EDGE) return { visIdx: vi, zone: 'move' };
         if (mx >= bx - 3 && mx < bx + EDGE) return { visIdx: vi, zone: 'resize-r' };
+        return null;
+    }, [visRows, projStart, PX]);
+
+    const getHoveredActivity = useCallback((mx: number, my: number) => {
+        const vi = Math.floor(my / ROW_H);
+        if (vi < 0 || vi >= visRows.length) return null;
+        const r = visRows[vi];
+        if (r._isGroupHeader) return null;
+        if (!r.ES) return null;
+        const bx = Math.max(0, dayDiff(projStart, r.ES) * PX);
+        const efX = r.EF ? dayDiff(projStart, r.EF) * PX : bx;
+        let bw = Math.max(4, efX - bx);
+        if (r.type === 'milestone') bw = 12;
+        const barTop = vi * ROW_H;
+        const barBot = barTop + ROW_H;
+
+        if (my >= barTop && my <= barBot && mx >= bx - 6 && mx <= bx + bw + 6) return r;
         return null;
     }, [visRows, projStart, PX]);
 
@@ -198,8 +215,8 @@ export default function GanttTimeline() {
             }
         }
         const today = new Date(); const todayX = dayDiff(projStart, today) * PX;
-        if (todayX >= 0 && todayX <= W) { hCtx.fillStyle = '#f59e0b'; hCtx.fillRect(todayX, 0, 2, HDR_H); }
-        if (statusDate) {
+        if (showTodayLine && todayX >= 0 && todayX <= W) { hCtx.fillStyle = '#f59e0b'; hCtx.fillRect(todayX, 0, 2, HDR_H); }
+        if (showStatusLine && statusDate) {
             const sdx = dayDiff(projStart, statusDate) * PX;
             if (sdx >= 0 && sdx <= W) { hCtx.fillStyle = '#06b6d4'; hCtx.fillRect(sdx, 0, 2, HDR_H); }
         }
@@ -236,8 +253,8 @@ export default function GanttTimeline() {
         }
 
         // Today + Status Date lines
-        if (tx >= 0 && tx <= W) { ctx.fillStyle = t.todayLine; ctx.fillRect(tx, 0, 2, H); }
-        if (statusDate) {
+        if (showTodayLine && tx >= 0 && tx <= W) { ctx.fillStyle = t.todayLine; ctx.fillRect(tx, 0, 2, H); }
+        if (showStatusLine && statusDate) {
             const sx = dayDiff(projStart, statusDate) * PX;
             if (sx >= 0 && sx <= W) { ctx.fillStyle = t.statusLine; ctx.fillRect(sx, 0, 2, H); }
         }
@@ -333,64 +350,66 @@ export default function GanttTimeline() {
         const vrById: Record<string, number> = {};
         visRows.forEach((r, i) => { vrById[r.id] = i; });
 
-        visRows.forEach((r, sucVi) => {
-            if (!r.preds || !r.preds.length) return;
-            r.preds.forEach((p, predIdx) => {
-                const predVi = vrById[p.id];
-                if (predVi === undefined) return;
-                const pred = visRows[predVi];
-                if (!pred || !pred.ES || !r.ES) return;
-                if (pred.type === 'summary' || r.type === 'summary') return;
+        if (showDependencies) {
+            visRows.forEach((r, sucVi) => {
+                if (!r.preds || !r.preds.length) return;
+                r.preds.forEach((p, predIdx) => {
+                    const predVi = vrById[p.id];
+                    if (predVi === undefined) return;
+                    const pred = visRows[predVi];
+                    if (!pred || !pred.ES || !r.ES) return;
+                    if (pred.type === 'summary' || r.type === 'summary') return;
 
-                const isCrit = !!(pred.crit && r.crit);
-                ctx.strokeStyle = isCrit ? t.connCrit : t.connLine;
-                ctx.fillStyle = isCrit ? t.connCrit : t.connLine;
-                ctx.lineWidth = 1.2;
+                    const isCrit = !!(pred.crit && r.crit);
+                    ctx.strokeStyle = isCrit ? t.connCrit : t.connLine;
+                    ctx.fillStyle = isCrit ? t.connCrit : t.connLine;
+                    ctx.lineWidth = 1.2;
 
-                const predY = predVi * ROW_H + ROW_H / 2;
-                const sucY = sucVi * ROW_H + ROW_H / 2;
-                let sx: number, sy: number, ex: number, ey: number;
+                    const predY = predVi * ROW_H + ROW_H / 2;
+                    const sucY = sucVi * ROW_H + ROW_H / 2;
+                    let sx: number, sy: number, ex: number, ey: number;
 
-                if (p.type === 'FS') { sx = dayDiff(projStart, pred.EF!) * PX; sy = predY; ex = dayDiff(projStart, r.ES) * PX; ey = sucY; }
-                else if (p.type === 'SS') { sx = dayDiff(projStart, pred.ES!) * PX; sy = predY; ex = dayDiff(projStart, r.ES) * PX; ey = sucY; }
-                else if (p.type === 'FF') { sx = dayDiff(projStart, pred.EF!) * PX; sy = predY; ex = dayDiff(projStart, r.EF!) * PX; ey = sucY; }
-                else if (p.type === 'SF') { sx = dayDiff(projStart, pred.ES!) * PX; sy = predY; ex = dayDiff(projStart, r.EF!) * PX; ey = sucY; }
-                else { sx = dayDiff(projStart, pred.EF!) * PX; sy = predY; ex = dayDiff(projStart, r.ES) * PX; ey = sucY; }
+                    if (p.type === 'FS') { sx = dayDiff(projStart, pred.EF!) * PX; sy = predY; ex = dayDiff(projStart, r.ES) * PX; ey = sucY; }
+                    else if (p.type === 'SS') { sx = dayDiff(projStart, pred.ES!) * PX; sy = predY; ex = dayDiff(projStart, r.ES) * PX; ey = sucY; }
+                    else if (p.type === 'FF') { sx = dayDiff(projStart, pred.EF!) * PX; sy = predY; ex = dayDiff(projStart, r.EF!) * PX; ey = sucY; }
+                    else if (p.type === 'SF') { sx = dayDiff(projStart, pred.ES!) * PX; sy = predY; ex = dayDiff(projStart, r.EF!) * PX; ey = sucY; }
+                    else { sx = dayDiff(projStart, pred.EF!) * PX; sy = predY; ex = dayDiff(projStart, r.ES) * PX; ey = sucY; }
 
-                const segs: any[] = [];
-                ctx.beginPath();
-                if (p.type === 'FS' || p.type === 'SF') {
-                    if (ex > sx + 12) {
-                        const bendX = sx + 6;
-                        ctx.moveTo(sx, sy); ctx.lineTo(bendX, sy); ctx.lineTo(bendX, ey); ctx.lineTo(ex, ey);
-                        segs.push({ x1: sx, y1: sy, x2: bendX, y2: sy }, { x1: bendX, y1: sy, x2: bendX, y2: ey }, { x1: bendX, y1: ey, x2: ex, y2: ey });
+                    const segs: any[] = [];
+                    ctx.beginPath();
+                    if (p.type === 'FS' || p.type === 'SF') {
+                        if (ex > sx + 12) {
+                            const bendX = sx + 6;
+                            ctx.moveTo(sx, sy); ctx.lineTo(bendX, sy); ctx.lineTo(bendX, ey); ctx.lineTo(ex, ey);
+                            segs.push({ x1: sx, y1: sy, x2: bendX, y2: sy }, { x1: bendX, y1: sy, x2: bendX, y2: ey }, { x1: bendX, y1: ey, x2: ex, y2: ey });
+                        } else {
+                            const detourY = ey > sy ? Math.max(ey, sy) + (ROW_H / 2 + 2) : Math.min(ey, sy) - (ROW_H / 2 + 2);
+                            ctx.moveTo(sx, sy); ctx.lineTo(sx + 8, sy); ctx.lineTo(sx + 8, detourY); ctx.lineTo(ex - 8, detourY); ctx.lineTo(ex - 8, ey); ctx.lineTo(ex, ey);
+                            segs.push({ x1: sx, y1: sy, x2: sx + 8, y2: sy }, { x1: sx + 8, y1: sy, x2: sx + 8, y2: detourY }, { x1: sx + 8, y1: detourY, x2: ex - 8, y2: detourY }, { x1: ex - 8, y1: detourY, x2: ex - 8, y2: ey }, { x1: ex - 8, y1: ey, x2: ex, y2: ey });
+                        }
+                    } else if (p.type === 'SS') {
+                        const leftX = Math.min(sx, ex) - 10;
+                        ctx.moveTo(sx, sy); ctx.lineTo(leftX, sy); ctx.lineTo(leftX, ey); ctx.lineTo(ex, ey);
+                        segs.push({ x1: sx, y1: sy, x2: leftX, y2: sy }, { x1: leftX, y1: sy, x2: leftX, y2: ey }, { x1: leftX, y1: ey, x2: ex, y2: ey });
+                    } else if (p.type === 'FF') {
+                        const rightX = Math.max(sx, ex) + 10;
+                        ctx.moveTo(sx, sy); ctx.lineTo(rightX, sy); ctx.lineTo(rightX, ey); ctx.lineTo(ex, ey);
+                        segs.push({ x1: sx, y1: sy, x2: rightX, y2: sy }, { x1: rightX, y1: sy, x2: rightX, y2: ey }, { x1: rightX, y1: ey, x2: ex, y2: ey });
                     } else {
-                        const detourY = ey > sy ? Math.max(ey, sy) + (ROW_H / 2 + 2) : Math.min(ey, sy) - (ROW_H / 2 + 2);
-                        ctx.moveTo(sx, sy); ctx.lineTo(sx + 8, sy); ctx.lineTo(sx + 8, detourY); ctx.lineTo(ex - 8, detourY); ctx.lineTo(ex - 8, ey); ctx.lineTo(ex, ey);
-                        segs.push({ x1: sx, y1: sy, x2: sx + 8, y2: sy }, { x1: sx + 8, y1: sy, x2: sx + 8, y2: detourY }, { x1: sx + 8, y1: detourY, x2: ex - 8, y2: detourY }, { x1: ex - 8, y1: detourY, x2: ex - 8, y2: ey }, { x1: ex - 8, y1: ey, x2: ex, y2: ey });
+                        ctx.moveTo(sx, sy); ctx.lineTo(sx + 6, sy); ctx.lineTo(sx + 6, ey); ctx.lineTo(ex, ey);
+                        segs.push({ x1: sx, y1: sy, x2: sx + 6, y2: sy }, { x1: sx + 6, y1: sy, x2: sx + 6, y2: ey }, { x1: sx + 6, y1: ey, x2: ex, y2: ey });
                     }
-                } else if (p.type === 'SS') {
-                    const leftX = Math.min(sx, ex) - 10;
-                    ctx.moveTo(sx, sy); ctx.lineTo(leftX, sy); ctx.lineTo(leftX, ey); ctx.lineTo(ex, ey);
-                    segs.push({ x1: sx, y1: sy, x2: leftX, y2: sy }, { x1: leftX, y1: sy, x2: leftX, y2: ey }, { x1: leftX, y1: ey, x2: ex, y2: ey });
-                } else if (p.type === 'FF') {
-                    const rightX = Math.max(sx, ex) + 10;
-                    ctx.moveTo(sx, sy); ctx.lineTo(rightX, sy); ctx.lineTo(rightX, ey); ctx.lineTo(ex, ey);
-                    segs.push({ x1: sx, y1: sy, x2: rightX, y2: sy }, { x1: rightX, y1: sy, x2: rightX, y2: ey }, { x1: rightX, y1: ey, x2: ex, y2: ey });
-                } else {
-                    ctx.moveTo(sx, sy); ctx.lineTo(sx + 6, sy); ctx.lineTo(sx + 6, ey); ctx.lineTo(ex, ey);
-                    segs.push({ x1: sx, y1: sy, x2: sx + 6, y2: sy }, { x1: sx + 6, y1: sy, x2: sx + 6, y2: ey }, { x1: sx + 6, y1: ey, x2: ex, y2: ey });
-                }
-                ctx.stroke();
-                connLinesRef.current.push({ sucId: r.id, predId: p.id, predIdx, type: p.type, lag: p.lag || 0, segments: segs });
+                    ctx.stroke();
+                    connLinesRef.current.push({ sucId: r.id, predId: p.id, predIdx, type: p.type, lag: p.lag || 0, segments: segs });
 
-                // Arrowhead
-                const aLen = 5, aW = 3;
-                const isLeft = (p.type === 'SS' || p.type === 'FS');
-                if (isLeft) { ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(ex - aLen, ey - aW); ctx.lineTo(ex - aLen, ey + aW); ctx.closePath(); ctx.fill(); }
-                else { ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(ex + aLen, ey - aW); ctx.lineTo(ex + aLen, ey + aW); ctx.closePath(); ctx.fill(); }
+                    // Arrowhead
+                    const aLen = 5, aW = 3;
+                    const isLeft = (p.type === 'SS' || p.type === 'FS');
+                    if (isLeft) { ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(ex - aLen, ey - aW); ctx.lineTo(ex - aLen, ey + aW); ctx.closePath(); ctx.fill(); }
+                    else { ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(ex + aLen, ey - aW); ctx.lineTo(ex + aLen, ey + aW); ctx.closePath(); ctx.fill(); }
+                });
             });
-        });
+        }
 
         // Selection highlight
         if (selIdx >= 0) {
@@ -400,7 +419,7 @@ export default function GanttTimeline() {
 
         // Draw drag overlay if active
         if (dragPreviewRef.current) drawDragOverlay();
-    }, [visRows, zoom, totalDays, projStart, statusDate, selIdx, lightMode, activities, W, H, t, PX, defCal, drawDragOverlay, state.activeBaselineIdx]);
+    }, [visRows, zoom, totalDays, projStart, statusDate, selIdx, lightMode, activities, W, H, t, PX, defCal, drawDragOverlay, state.activeBaselineIdx, showTodayLine, showStatusLine, showDependencies]);
 
     useEffect(() => { draw(); }, [draw]);
 
@@ -452,9 +471,7 @@ export default function GanttTimeline() {
         if (e.button !== 0) return;
         const canvas = barRef.current; if (!canvas) return;
         const rect = canvas.getBoundingClientRect();
-        const body = bodyRef.current;
-        const scrollLeft = body?.scrollLeft || 0;
-        const mx = e.clientX - rect.left + scrollLeft;
+        const mx = e.clientX - rect.left;
         const my = e.clientY - rect.top;
         const hit = hitTestBar(mx, my);
         if (!hit) return;
@@ -479,23 +496,19 @@ export default function GanttTimeline() {
             };
         } else if (hit.zone === 'link') {
             const efX = r.EF ? dayDiff(projStart, r.EF) * PX : 0;
-            const scrollTop = body?.scrollTop || 0;
             dragRef.current = {
                 mode: 'link', idx: r._idx, visIdx: hit.visIdx, startMX: mx,
                 origES: new Date(r.ES!), origDur: r.dur || 0, origEF: r.EF ? new Date(r.EF) : null,
                 linkFromIdx: r._idx
             };
-            dragPreviewRef.current = { sx: efX, sy: hit.visIdx * ROW_H + ROW_H / 2, ex: mx, ey: my + scrollTop };
+            dragPreviewRef.current = { sx: efX, sy: hit.visIdx * ROW_H + ROW_H / 2, ex: mx, ey: my };
         }
     }, [visRows, activities, projStart, PX, dispatch, hitTestBar]);
 
     const handleMouseMove = useCallback((e: React.MouseEvent) => {
         const canvas = barRef.current; if (!canvas) return;
         const rect = canvas.getBoundingClientRect();
-        const body = bodyRef.current;
-        const scrollLeft = body?.scrollLeft || 0;
-        const scrollTop = body?.scrollTop || 0;
-        const mx = e.clientX - rect.left + scrollLeft;
+        const mx = e.clientX - rect.left;
         const my = e.clientY - rect.top;
 
         if (dragRef.current) {
@@ -524,7 +537,7 @@ export default function GanttTimeline() {
                 dragPreviewRef.current = { x: bx, y: drag.visIdx * ROW_H + 5, w: newBw, h: ROW_H - 10, mode: 'resize', durLabel: newDur + 'd' };
                 draw();
             } else if (drag.mode === 'link') {
-                dragPreviewRef.current = { ...dragPreviewRef.current, ex: mx, ey: my + scrollTop };
+                dragPreviewRef.current = { ...dragPreviewRef.current, ex: mx, ey: my };
                 draw();
             }
             canvas.style.cursor = drag.mode === 'link' ? 'crosshair' : drag.mode === 'resize' ? 'ew-resize' : 'grabbing';
@@ -540,16 +553,31 @@ export default function GanttTimeline() {
         } else {
             canvas.style.cursor = 'default';
         }
-    }, [visRows, activities, projStart, PX, defCal, hitTestBar, draw]);
+
+        // Hover tooltip
+        const hoveredRow = getHoveredActivity(mx, my);
+        if (hoveredRow && !dragRef.current) {
+            const a = activities[hoveredRow._idx];
+            if (a) {
+                const preds = (a.preds || []).map((p: any) => `${p.id} ${p.type}${p.lag > 0 ? '+' + p.lag : p.lag < 0 ? p.lag : ''}`).join(', ') || '';
+                const html = `<b style="color:#f9fafb">${a.outlineNum || ''} ${a.id}</b><br>
+              <span style="color:#94a3b8">${a.name}</span><br>
+              Inicio: <b>${fmtDate(a.ES!)}</b> &nbsp; Fin: <b>${a.EF ? fmtDate(addDays(a.EF, -1)) : ''}</b><br>
+              Dur: <b style="color:#7dd3fc">${a.type === 'milestone' ? 'Hito' : (a.dur || 0) + 'd'}</b> &nbsp; Avance: <b style="color:#6ee7b7">${a.pct || 0}%</b><br>
+              TF: <b style="color:${a.crit ? '#ef4444' : '#22c55e'}">${a.crit ? 'CRÍTICA' : a.TF + 'd'}</b><br>
+              <span style="color:#6b7280">Pred: ${preds}</span>`;
+                setTip({ x: e.clientX + 14, y: e.clientY - 10, html });
+            }
+        } else {
+            setTip(null);
+        }
+    }, [visRows, activities, projStart, PX, defCal, hitTestBar, draw, getHoveredActivity]);
 
     const handleMouseUp = useCallback((e: React.MouseEvent) => {
         if (!dragRef.current) return;
         const canvas = barRef.current; if (!canvas) return;
         const rect = canvas.getBoundingClientRect();
-        const body = bodyRef.current;
-        const scrollLeft = body?.scrollLeft || 0;
-        const scrollTop = body?.scrollTop || 0;
-        const mx = e.clientX - rect.left + scrollLeft;
+        const mx = e.clientX - rect.left;
         const my = e.clientY - rect.top;
         const drag = dragRef.current;
         let changed = false;
@@ -577,7 +605,7 @@ export default function GanttTimeline() {
                 changed = true;
             }
         } else if (drag.mode === 'link' && didDragRef.current) {
-            const vi = Math.floor((my + scrollTop) / ROW_H);
+            const vi = Math.floor(my / ROW_H);
             if (vi >= 0 && vi < visRows.length) {
                 const target = visRows[vi];
                 const fromA = activities[drag.linkFromIdx!];
@@ -603,6 +631,7 @@ export default function GanttTimeline() {
     }, [visRows, activities, projStart, PX, defCal, dispatch, draw]);
 
     const handleMouseLeave = useCallback(() => {
+        setTip(null);
         if (dragRef.current) {
             dragRef.current = null;
             dragPreviewRef.current = null;
@@ -617,18 +646,15 @@ export default function GanttTimeline() {
         if (suppressClickRef.current) { suppressClickRef.current = false; return; }
         const canvas = barRef.current; if (!canvas) return;
         const rect = canvas.getBoundingClientRect();
-        const body = bodyRef.current;
-        const scrollLeft = body?.scrollLeft || 0;
-        const scrollTop = body?.scrollTop || 0;
-        const mx = e.clientX - rect.left + scrollLeft;
+        const mx = e.clientX - rect.left;
         const my = e.clientY - rect.top;
-        const i = Math.floor((my + scrollTop) / ROW_H);
+        const i = Math.floor(my / ROW_H);
 
         // Check connection line hit
         for (let cl = connLinesRef.current.length - 1; cl >= 0; cl--) {
             const conn = connLinesRef.current[cl];
             for (const seg of conn.segments) {
-                const dist = distToSegment(mx, my + scrollTop, seg.x1, seg.y1, seg.x2, seg.y2);
+                const dist = distToSegment(mx, my, seg.x1, seg.y1, seg.x2, seg.y2);
                 if (dist < 6) {
                     const sucIdx = activities.findIndex((a: any) => a.id === conn.sucId);
                     dispatch({
@@ -648,10 +674,8 @@ export default function GanttTimeline() {
     const handleDblClick = useCallback((e: React.MouseEvent) => {
         const canvas = barRef.current; if (!canvas) return;
         const rect = canvas.getBoundingClientRect();
-        const body = bodyRef.current;
-        const scrollTop = body?.scrollTop || 0;
         const my = e.clientY - rect.top;
-        const i = Math.floor((my + scrollTop) / ROW_H);
+        const i = Math.floor(my / ROW_H);
         if (i >= 0 && i < visRows.length && !visRows[i]._isGroupHeader) {
             dispatch({ type: 'SET_SELECTION', index: visRows[i]._idx });
             dispatch({ type: 'OPEN_ACT_MODAL' });
@@ -687,6 +711,8 @@ export default function GanttTimeline() {
                     </div>
                 )}
             </div>
+            {/* Tooltip */}
+            {tip && <div className="gantt-tip" style={{ display: 'block', left: tip.x, top: tip.y }} dangerouslySetInnerHTML={{ __html: tip.html }} />}
         </div>
     );
 }

@@ -8,7 +8,7 @@ import { fmtDate, addDays, isoDate, newActivity, parseDate } from '../utils/cpm'
 import { predsToStr, getWeightPct, strToPreds, autoId, syncResFromString } from '../utils/helpers';
 import ColumnPickerModal from './ColumnPickerModal';
 
-const EditableNumberCell = ({ rawValue, displayValue, onUpdate, onFocus, step }: { rawValue: string, displayValue: string, onUpdate: (val: string) => void, onFocus: () => void, step?: number }) => {
+const EditableNumberCell = ({ rawValue, displayValue, onUpdate, onFocus, step, min, max }: { rawValue: string, displayValue: string, onUpdate: (val: string) => void, onFocus: () => void, step?: number, min?: number, max?: number }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [val, setVal] = useState(rawValue);
 
@@ -22,7 +22,59 @@ const EditableNumberCell = ({ rawValue, displayValue, onUpdate, onFocus, step }:
                 <input
                     type="number"
                     step={step}
+                    min={min}
+                    max={max}
                     style={{ background: 'transparent', outline: 'none', border: '1px solid #3b82f6', color: 'inherit', padding: 0, margin: 0, width: '100%', height: '100%', fontSize: 'inherit', fontFamily: 'inherit', boxSizing: 'border-box', textAlign: 'inherit' }}
+                    autoFocus
+                    value={val}
+                    onChange={e => setVal(e.target.value)}
+                    onBlur={() => { setIsEditing(false); onUpdate(val); }}
+                    onKeyDown={e => {
+                        if (e.key === 'Enter') e.currentTarget.blur();
+                        if (e.key === 'Escape') setIsEditing(false);
+                    }}
+                    onFocus={onFocus}
+                />
+            </div>
+        );
+    }
+
+    return (
+        <span
+            style={{ cursor: 'text', display: 'flex', alignItems: 'center', justifyContent: 'inherit', width: '100%', height: '100%' }}
+            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setIsEditing(true); onFocus(); }}
+            onDoubleClick={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+        >
+            {displayValue}
+        </span>
+    );
+};
+
+const EditableDateCell = ({ dateValue, displayValue, onUpdate, onFocus }: { dateValue: Date | null | undefined, displayValue: string, onUpdate: (val: string) => void, onFocus: () => void }) => {
+    const [isEditing, setIsEditing] = useState(false);
+
+    // Convert Date to YYYY-MM-DD for input
+    const toIsoDate = (d: Date | null | undefined) => {
+        if (!d) return '';
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    };
+
+    const [val, setVal] = useState(toIsoDate(dateValue));
+
+    useEffect(() => {
+        setVal(toIsoDate(dateValue));
+    }, [dateValue]);
+
+    if (isEditing) {
+        return (
+            <div style={{ width: '100%', height: '100%', display: 'flex' }} onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
+                <input
+                    type="date"
+                    style={{ background: 'transparent', outline: 'none', border: 'none', color: 'inherit', padding: 0, margin: 0, width: '100%', height: '100%', fontSize: 'inherit', fontFamily: 'inherit', boxSizing: 'border-box' }}
                     autoFocus
                     value={val}
                     onChange={e => setVal(e.target.value)}
@@ -53,7 +105,6 @@ export default function GanttTable() {
     const { state, dispatch } = useGantt();
     const { visRows, columns, colWidths, selIdx, activities, lightMode, defCal } = state;
     const bodyRef = useRef<HTMLDivElement>(null);
-    const [tip, setTip] = useState<{ x: number; y: number; html: string } | null>(null);
     const [colResize, setColResize] = useState<{ idx: number; startX: number; startW: number } | null>(null);
     const [colPickerOpen, setColPickerOpen] = useState(false);
 
@@ -213,17 +264,7 @@ export default function GanttTable() {
         }
     }, []);
 
-    const showTooltip = useCallback((e: React.MouseEvent, a: any) => {
-        if (!a.ES) return;
-        const preds = (a.preds || []).map((p: any) => `${p.id} ${p.type}${p.lag > 0 ? '+' + p.lag : p.lag < 0 ? p.lag : ''}`).join(', ') || '';
-        const html = `<b style="color:#f9fafb">${a.outlineNum || ''} ${a.id}</b><br>
-      <span style="color:#94a3b8">${a.name}</span><br>
-      Inicio: <b>${fmtDate(a.ES)}</b> &nbsp; Fin: <b>${a.EF ? fmtDate(addDays(a.EF, -1)) : ''}</b><br>
-      Dur: <b style="color:#7dd3fc">${a.type === 'milestone' ? 'Hito' : (a.dur || 0) + 'd'}</b> &nbsp; Avance: <b style="color:#6ee7b7">${a.pct || 0}%</b><br>
-      TF: <b style="color:${a.crit ? '#ef4444' : '#22c55e'}">${a.crit ? 'CRÍTICA' : a.TF + 'd'}</b><br>
-      <span style="color:#6b7280">Pred: ${preds}</span>`;
-        setTip({ x: e.clientX + 14, y: e.clientY - 10, html });
-    }, []);
+    // Tooltip moved to GanttTimeline
 
     const getTFColor = (a: any): string | undefined => {
         if (a.TF === 0) return '#ef4444';
@@ -293,9 +334,7 @@ export default function GanttTable() {
                                 ...(hasResources ? { fontWeight: 600 } : {})
                             }}
                                 onClick={() => dispatch({ type: 'SET_SELECTION', index: vr._idx })}
-                                onDoubleClick={() => { dispatch({ type: 'SET_SELECTION', index: vr._idx }); dispatch({ type: 'OPEN_ACT_MODAL' }); }}
-                                onMouseEnter={e => showTooltip(e, a)}
-                                onMouseLeave={() => setTip(null)}>
+                                onDoubleClick={() => { dispatch({ type: 'SET_SELECTION', index: vr._idx }); dispatch({ type: 'OPEN_ACT_MODAL' }); }}>
                                 {visCols.map((c) => {
                                     const ci = columns.indexOf(c);
                                     const val = getCellValue(a, c, vi);
@@ -388,6 +427,21 @@ export default function GanttTable() {
                                                         onUpdate={(newVal) => handleBlur(vr._idx, c.key, newVal)}
                                                         onFocus={() => dispatch({ type: 'SET_SELECTION', index: vr._idx })}
                                                         step={c.key === 'pct' ? 5 : undefined}
+                                                        min={c.key === 'pct' ? 0 : undefined}
+                                                        max={c.key === 'pct' ? 100 : undefined}
+                                                    />
+                                                </div>
+                                            );
+                                        }
+
+                                        if (['startDate', 'endDate'].includes(c.key)) {
+                                            return (
+                                                <div key={c.key} className={`tcell ${c.cls}`} style={style}>
+                                                    <EditableDateCell
+                                                        dateValue={c.key === 'startDate' ? a.ES : a.EF}
+                                                        displayValue={val}
+                                                        onUpdate={(newVal) => handleBlur(vr._idx, c.key, newVal)}
+                                                        onFocus={() => dispatch({ type: 'SET_SELECTION', index: vr._idx })}
                                                     />
                                                 </div>
                                             );
@@ -430,8 +484,7 @@ export default function GanttTable() {
                 </div>
             </div>
 
-            {/* Tooltip */}
-            {tip && <div className="gantt-tip" style={{ display: 'block', left: tip.x, top: tip.y }} dangerouslySetInnerHTML={{ __html: tip.html }} />}
+            {/* Tooltip moved */}
 
             {/* Column picker modal (P6-style) */}
             {colPickerOpen && <ColumnPickerModal onClose={() => setColPickerOpen(false)} />}

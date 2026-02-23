@@ -87,6 +87,7 @@ export interface Activity {
     constraint: ConstraintType;
     constraintDate: string; // ISO date string
     manual: boolean;      // manually scheduled
+    actualStart: string | null; // Actual Start date (ISO) – set when progress > 0
 
     // ── CPM Calculated Fields ──
     ES: Date | null;      // Early Start
@@ -216,4 +217,22 @@ export interface ProgressHistoryEntry {
     actualPct: number;  // 0-100%
     details?: Record<string, number>; // activity_id -> actualPct (legacy)
     snapshots?: Record<string, ProgressActivitySnapshot>; // activity_id -> full snapshot
+}
+
+// ─── Custom Filters ─────────────────────────────────────────────
+export type FilterOperator = 'equals' | 'not_equals' | 'contains' | 'not_contains' | 'greater_than' | 'less_than' | 'greater_than_or_equal' | 'less_than_or_equal' | 'is_empty' | 'is_not_empty';
+
+export interface CustomFilterCondition {
+    id: string;
+    field: string; // ref to standard or user-defined column key (e.g. 'name', 'ES', 'txt1', 'pct')
+    operator: FilterOperator;
+    value: string;
+}
+
+export interface CustomFilter {
+    id: string;
+    name: string;
+    matchAll: boolean; // true = ALL conditions must match (AND), false = ANY condition (OR)
+    conditions: CustomFilterCondition[];
+    active: boolean; // whether the filter is checked/applied
 }

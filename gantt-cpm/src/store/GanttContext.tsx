@@ -3,8 +3,8 @@
 // All state management matching HTML globals + actions
 // ═══════════════════════════════════════════════════════════════════
 import React, { createContext, useContext, useReducer, type ReactNode } from 'react';
-import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, VisibleRow, ProgressHistoryEntry, BaselineEntry, CustomCalendar } from '../types/gantt';
-import { calcCPM, newActivity, isoDate, parseDate, addDays } from '../utils/cpm';
+import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, VisibleRow, ProgressHistoryEntry, BaselineEntry, CustomCalendar, CustomFilter } from '../types/gantt';
+import { calcCPM, newActivity, isoDate, parseDate, addDays, calWorkDays } from '../utils/cpm';
 import { autoId, computeOutlineNumbers, syncResFromString, deriveResString, distributeWork, strToPreds } from '../utils/helpers';
 
 // ─── Column Definitions ─────────────────────────────────────────
@@ -18,7 +18,7 @@ export const DEFAULT_COLS: ColumnDef[] = [
     { key: 'dur', label: 'Duración', w: 70, edit: true, cls: 'tcell-dur', visible: true },
     { key: 'remDur', label: 'Dur. Resta', w: 70, edit: true, cls: 'tcell-dur', visible: true },
     { key: 'startDate', label: 'Comienzo', w: 90, edit: true, cls: 'tcell-date', visible: true },
-    { key: 'endDate', label: 'Fin', w: 90, edit: false, cls: 'tcell-date', visible: true },
+    { key: 'endDate', label: 'Fin', w: 90, edit: true, cls: 'tcell-date', visible: true },
     { key: 'predStr', label: 'Predecesoras', w: 100, edit: true, cls: 'tcell-pred', visible: true },
     { key: 'pct', label: '% Avance', w: 60, edit: true, cls: 'tcell-pct', visible: true },
     { key: 'plannedPct', label: '% Prog.', w: 65, edit: false, cls: 'tcell-pct', visible: true },
@@ -60,6 +60,9 @@ export interface GanttState {
     timelineStart: Date;  // rendering origin (projStart - buffer)
     lightMode: boolean;
     showProjRow: boolean;
+    showTodayLine: boolean;
+    showStatusLine: boolean;
+    showDependencies: boolean;
     // View state
     currentView: 'gantt' | 'resources' | 'scurve' | 'usage' | 'resUsage';
     collapsed: Set<string>;
@@ -84,6 +87,12 @@ export interface GanttState {
     blModalOpen: boolean;      // baseline manager modal
     customCalendars: CustomCalendar[];
     calModalOpen: boolean;     // calendar manager modal
+    activeCheckerFilter: string | null;
+    checkerThresholds: { longLags: number; largeMargins: number; longDurations: number };
+    checkModalOpen: boolean;
+    customFilters: CustomFilter[];
+    filtersMatchAll: boolean; // true = AND all selected, false = OR any selected
+    filtersModalOpen: boolean;
 }
 
 // ─── Actions ────────────────────────────────────────────────────
@@ -97,6 +106,9 @@ export type Action =
     | { type: 'SET_ZOOM'; zoom: ZoomLevel }
     | { type: 'SET_PX_PER_DAY'; px: number }
     | { type: 'TOGGLE_THEME' }
+    | { type: 'TOGGLE_TODAY_LINE' }
+    | { type: 'TOGGLE_STATUS_LINE' }
+    | { type: 'TOGGLE_DEPENDENCIES' }
     | { type: 'SET_VIEW'; view: 'gantt' | 'resources' | 'scurve' | 'usage' | 'resUsage' }
     | { type: 'SET_TABLE_W', width: number }
     | { type: 'TOGGLE_USAGE_MODE'; mode: string }
@@ -107,7 +119,7 @@ export type Action =
     | { type: 'EXPAND_ALL' }
     | { type: 'COLLAPSE_TO_LEVEL'; level: number }
     | { type: 'SET_GROUP'; group: string }
-    | { type: 'SET_PROJECT_CONFIG'; config: Partial<{ projName: string; projStart: Date; defCal: CalendarType; statusDate: Date }> }
+    | { type: 'SET_PROJECT_CONFIG'; config: Partial<{ projName: string; projStart: Date; defCal: CalendarType; statusDate: Date; customFilters: CustomFilter[]; filtersMatchAll: boolean }> }
     | { type: 'RECALC_CPM' }
     | { type: 'SET_RESOURCES'; resources: PoolResource[] }
     | { type: 'UNDO' }
@@ -152,7 +164,15 @@ export type Action =
     | { type: 'OPEN_CAL_MODAL' }
     | { type: 'CLOSE_CAL_MODAL' }
     | { type: 'SAVE_CALENDAR'; calendar: CustomCalendar }
-    | { type: 'DELETE_CALENDAR'; id: string };
+    | { type: 'DELETE_CALENDAR'; id: string }
+    | { type: 'SET_CHECKER_FILTER'; filter: string | null }
+    | { type: 'SET_CHECKER_THRESHOLDS'; thresholds: { longLags: number; largeMargins: number; longDurations: number } }
+    | { type: 'OPEN_CHECK_MODAL' }
+    | { type: 'CLOSE_CHECK_MODAL' }
+    | { type: 'SET_CUSTOM_FILTERS'; filters: CustomFilter[] }
+    | { type: 'SET_FILTERS_MATCH_ALL'; matchAll: boolean }
+    | { type: 'OPEN_FILTERS_MODAL' }
+    | { type: 'CLOSE_FILTERS_MODAL' };
 
 // ─── Grouping / Filtering ─────────────────────────────────────────
 function applyGroupFilter(rows: VisibleRow[], activities: Activity[], activeGroup: string, columns: ColumnDef[]): VisibleRow[] {
@@ -184,10 +204,172 @@ function applyGroupFilter(rows: VisibleRow[], activities: Activity[], activeGrou
     return rows;
 }
 
-function buildVisRows(activities: Activity[], collapsed: Set<string>, activeGroup: string, columns: ColumnDef[], currentView: string = 'gantt', expResources: Set<string> = new Set(), usageModes: string[] = ['Trabajo']): VisibleRow[] {
+function buildVisRows(
+    activities: Activity[],
+    collapsed: Set<string>,
+    activeGroup: string,
+    columns: ColumnDef[],
+    currentView: string = 'gantt',
+    expResources: Set<string> = new Set(),
+    usageModes: string[] = ['Trabajo'],
+    activeCheckerFilter: string | null = null,
+    checkerThresholds: { longLags: number; largeMargins: number; longDurations: number } = { longLags: 20, largeMargins: 20, longDurations: 20 },
+    statusDate: Date = new Date(),
+    customFilters: CustomFilter[] = [],
+    filtersMatchAll: boolean = true
+): VisibleRow[] {
     const rows: VisibleRow[] = [];
     let skipLv = -999;
+
+    let filteredSet = new Set<string>();
+    let hasSystemFilter = !!activeCheckerFilter;
+
+    // --- Checker Filter ---
+    const { longLags, largeMargins, longDurations } = checkerThresholds;
+
+    // Pre-calculate successors for "Malla Abierta"
+    let hasSuccessor = new Set<string>();
+    if (activeCheckerFilter === 'Malla Abierta') {
+        activities.forEach(act => {
+            if (act.preds) act.preds.forEach(p => hasSuccessor.add(p.id));
+        });
+    }
+
+    activities.forEach(a => {
+        if (a._isProjRow) { filteredSet.add(a.id); return; }
+        let pass = false;
+        switch (activeCheckerFilter) {
+            case 'Malla Abierta':
+                pass = a.type === 'task' && (a.pct || 0) < 100 && !hasSuccessor.has(a.id);
+                break;
+            case 'Sin Predecesora':
+                pass = a.type === 'task' && (a.pct || 0) < 100 && (!a.preds || a.preds.length === 0);
+                break;
+            case 'Fechas no Válidas':
+                if (a.type === 'task') {
+                    if ((a.pct || 0) === 0 && a.ES && a.ES < statusDate) pass = true;
+                    if ((a.pct || 0) > 0 && (a.pct || 0) < 100 && a.EF && a.EF < statusDate) pass = true;
+                }
+                break;
+            case 'Tipo de Relación':
+                pass = a.type === 'task' && !!(a.preds && a.preds.some(p => p.type !== 'FS'));
+                break;
+            case 'Demoras Negativas':
+                pass = a.type === 'task' && !!(a.preds && a.preds.some(p => p.lag < 0));
+                break;
+            case 'Demoras Prolongadas':
+                pass = a.type === 'task' && !!(a.preds && a.preds.some(p => p.lag >= longLags));
+                break;
+            case 'Duraciones Prolongadas':
+                pass = a.type === 'task' && a.dur > longDurations;
+                break;
+            case 'Márgenes Grandes':
+                pass = a.type === 'task' && (a.TF || 0) > largeMargins;
+                break;
+            case 'Restricciones Obligatorias':
+                pass = a.type === 'task' && ['MFO', 'MSO', 'SNLT', 'FNLT'].includes(a.constraint || '');
+                break;
+            case 'Restricciones Flexibles':
+                pass = a.type === 'task' && ['ASAP', 'ALAP', 'SNET', 'FNET'].includes(a.constraint || '');
+                break;
+        }
+        if (pass) filteredSet.add(a.id);
+    });
+
+    // --- Custom Filters ---
+    const activeCustomFilters = customFilters.filter(f => f.active);
+    if (activeCustomFilters.length > 0) {
+        hasSystemFilter = true;
+        // Si ya hay un CheckerFilter, solo procesamos los que ya pasaron
+        const baseActivities = activeCheckerFilter ? activities.filter(a => filteredSet.has(a.id) || a._isProjRow) : activities;
+
+        let customFilteredSet = new Set<string>();
+
+        baseActivities.forEach(a => {
+            if (a._isProjRow) { customFilteredSet.add(a.id); return; }
+
+            let passCurrentFilterSet = false;
+            let filterPasses: boolean[] = [];
+
+            for (const filter of activeCustomFilters) {
+                let conditionPasses: boolean[] = [];
+                for (const cond of filter.conditions) {
+                    let val = (a as any)[cond.field];
+                    let sVal = String(val || '').trim().toLowerCase();
+                    let tVal = cond.value.trim().toLowerCase();
+                    let passCond = false;
+
+                    switch (cond.operator) {
+                        case 'equals': passCond = sVal === tVal; break;
+                        case 'not_equals': passCond = sVal !== tVal; break;
+                        case 'contains': passCond = sVal.includes(tVal); break;
+                        case 'not_contains': passCond = !sVal.includes(tVal); break;
+                        case 'is_empty': passCond = sVal === ''; break;
+                        case 'is_not_empty': passCond = sVal !== ''; break;
+                        case 'greater_than':
+                        case 'greater_than_or_equal':
+                        case 'less_than':
+                        case 'less_than_or_equal':
+                            let nVal = parseFloat(sVal);
+                            let nTVal = parseFloat(tVal);
+                            if (!isNaN(nVal) && !isNaN(nTVal)) {
+                                if (cond.operator === 'greater_than') passCond = nVal > nTVal;
+                                if (cond.operator === 'greater_than_or_equal') passCond = nVal >= nTVal;
+                                if (cond.operator === 'less_than') passCond = nVal < nTVal;
+                                if (cond.operator === 'less_than_or_equal') passCond = nVal <= nTVal;
+                            } else {
+                                // Date fallback
+                                let dVal = parseDate(val);
+                                let dTVal = parseDate(cond.value);
+                                if (dVal && dTVal) {
+                                    if (cond.operator === 'greater_than') passCond = dVal.getTime() > dTVal.getTime();
+                                    if (cond.operator === 'greater_than_or_equal') passCond = dVal.getTime() >= dTVal.getTime();
+                                    if (cond.operator === 'less_than') passCond = dVal.getTime() < dTVal.getTime();
+                                    if (cond.operator === 'less_than_or_equal') passCond = dVal.getTime() <= dTVal.getTime();
+                                }
+                            }
+                            break;
+                    }
+                    conditionPasses.push(passCond);
+                }
+
+                const filterPass = filter.matchAll
+                    ? conditionPasses.every(p => p)
+                    : (conditionPasses.length === 0 ? true : conditionPasses.some(p => p));
+
+                filterPasses.push(filterPass);
+            }
+
+            if (filterPasses.length > 0) {
+                passCurrentFilterSet = filtersMatchAll
+                    ? filterPasses.every(p => p)
+                    : filterPasses.some(p => p);
+            } else {
+                passCurrentFilterSet = true;
+            }
+
+            if (passCurrentFilterSet) customFilteredSet.add(a.id);
+        });
+
+        filteredSet = customFilteredSet;
+    }
+
+    if (hasSystemFilter) {
+        // Add parents of filtered items so hierarchy is maintained
+        let currentPath: Activity[] = [];
+        for (let i = 0; i < activities.length; i++) {
+            const a = activities[i];
+            currentPath[a.lv] = a;
+            if (filteredSet.has(a.id)) {
+                for (let l = 0; l < a.lv; l++) {
+                    if (currentPath[l]) filteredSet.add(currentPath[l].id);
+                }
+            }
+        }
+    }
+
     activities.forEach((a, i) => {
+        if (hasSystemFilter && !filteredSet.has(a.id)) return;
         if (skipLv > -999) {
             if (a.lv > skipLv) return;
             else skipLv = -999;
@@ -220,6 +402,7 @@ function buildVisRows(activities: Activity[], collapsed: Set<string>, activeGrou
             });
         }
     });
+
     return applyGroupFilter(rows, activities, activeGroup, columns);
 }
 
@@ -243,7 +426,7 @@ function recalc(state: GanttState): GanttState {
     let acts = ensureProjRow([...state.activities], state.showProjRow, state.projName, state.defCal);
     const result = calcCPM(acts, state.projStart, state.defCal, state.statusDate, state.projName, state.activeBaselineIdx, state.customCalendars);
     computeOutlineNumbers(result.activities);
-    const visRows = buildVisRows(result.activities, state.collapsed, state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes);
+    const visRows = buildVisRows(result.activities, state.collapsed, state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes, state.activeCheckerFilter, state.checkerThresholds, state.statusDate, state.customFilters, state.filtersMatchAll);
     // Auto-fit: pxPerDay based on PROJECT span (not totalDays) so project fills viewport
     // but totalDays extends beyond for scrollable buffer
     const timelineW = Math.max(400, (typeof window !== 'undefined' ? window.innerWidth : 1200) - state.tableW - 10);
@@ -258,7 +441,7 @@ function recalc(state: GanttState): GanttState {
 function refreshVisRows(state: GanttState): GanttState {
     let acts = ensureProjRow([...state.activities], state.showProjRow, state.projName, state.defCal);
     computeOutlineNumbers(acts);
-    const visRows = buildVisRows(acts, state.collapsed, state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes);
+    const visRows = buildVisRows(acts, state.collapsed, state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes, state.activeCheckerFilter, state.checkerThresholds, state.statusDate, state.customFilters, state.filtersMatchAll);
     return { ...state, activities: acts, visRows };
 }
 
@@ -288,7 +471,22 @@ function reducer(state: GanttState, action: Action): GanttState {
 
         case 'UPDATE_ACTIVITY': {
             const acts = [...state.activities];
-            acts[action.index] = { ...acts[action.index], ...action.updates };
+            const orig = acts[action.index];
+            const updated = { ...orig, ...action.updates };
+            // Track actualStart: when pct goes from 0 to >0, record the current start date
+            const oldPct = orig.pct || 0;
+            const newPct = updated.pct || 0;
+            if (oldPct === 0 && newPct > 0 && !updated.actualStart) {
+                if (orig.ES) {
+                    updated.actualStart = isoDate(orig.ES);
+                } else if (orig.constraintDate) {
+                    updated.actualStart = orig.constraintDate;
+                }
+            }
+            if (newPct === 0) {
+                updated.actualStart = null;
+            }
+            acts[action.index] = updated;
             return recalc({ ...state, activities: acts });
         }
 
@@ -325,8 +523,22 @@ function reducer(state: GanttState, action: Action): GanttState {
             }
             else if (key === 'startDate') {
                 const d = parseDate(val);
-                if (d) { a.constraint = 'MSO'; a.constraintDate = isoDate(d); a.manual = true; }
+                if (d) {
+                    a.constraint = 'MSO'; a.constraintDate = isoDate(d); a.manual = true;
+                    // Si tiene avance, actualizar también el Actual Start
+                    if ((a.pct || 0) > 0) a.actualStart = isoDate(d);
+                }
                 else { a.constraint = ''; a.constraintDate = ''; a.manual = false; }
+            }
+            else if (key === 'endDate') {
+                const d = parseDate(val);
+                if (d) {
+                    // Update duration based on new end date
+                    if (a.ES) {
+                        const newDur = calWorkDays(a.ES, d, a.cal || state.defCal);
+                        a.dur = Math.max(0, newDur);
+                    }
+                }
             }
             else if (key === 'res') {
                 a.res = val;
@@ -342,12 +554,24 @@ function reducer(state: GanttState, action: Action): GanttState {
                 if (!isNaN(n) && n > 0) a.weight = n; else a.weight = null;
             }
             else if (key === 'pct') {
+                const oldPct = a.pct || 0;
                 const newPct = Math.min(100, Math.max(0, parseInt(val) || 0));
                 a.pct = newPct;
+                // Cuando pasa de 0 a >0, guardar la fecha de inicio real
+                if (oldPct === 0 && newPct > 0 && !a.actualStart) {
+                    // Guardar la fecha de comienzo actual (ES o constraintDate) como Actual Start
+                    if (a.ES) {
+                        a.actualStart = isoDate(a.ES);
+                    } else if (a.constraintDate) {
+                        a.actualStart = a.constraintDate;
+                    }
+                }
+                // Si vuelve a 0, limpiar actualStart
+                if (newPct === 0) {
+                    a.actualStart = null;
+                }
                 // Recalcular duración restante basado en el nuevo avance
                 a.remDur = Math.round((a.dur || 0) * (100 - newPct) / 100);
-                // Si no tiene restricción MSO, fijar la fecha de inicio para que no se mueva
-                if (!a.constraint && a.ES) { a.constraint = 'MSO'; a.constraintDate = isoDate(a.ES); a.manual = true; }
                 // Solo guardar — NO recalcular CPM. El usuario debe presionar "Calcular CPM"
                 acts[action.index] = a;
                 return refreshVisRows({ ...state, activities: acts });
@@ -381,6 +605,15 @@ function reducer(state: GanttState, action: Action): GanttState {
 
         case 'TOGGLE_THEME':
             return { ...state, lightMode: !state.lightMode };
+
+        case 'TOGGLE_TODAY_LINE':
+            return { ...state, showTodayLine: !state.showTodayLine };
+
+        case 'TOGGLE_STATUS_LINE':
+            return { ...state, showStatusLine: !state.showStatusLine };
+
+        case 'TOGGLE_DEPENDENCIES':
+            return { ...state, showDependencies: !state.showDependencies };
 
         case 'SET_VIEW': {
             const visRows = buildVisRows(state.activities, state.collapsed, state.activeGroup, state.columns, action.view, state.expResources, state.usageModes);
@@ -781,6 +1014,7 @@ function reducer(state: GanttState, action: Action): GanttState {
                     manual: a.manual,
                     constraint: a.constraint,
                     constraintDate: a.constraintDate,
+                    actualStart: a.actualStart,
                 };
             });
             const newEntry: ProgressHistoryEntry = { date: todayISO, actualPct, details, snapshots };
@@ -815,6 +1049,7 @@ function reducer(state: GanttState, action: Action): GanttState {
                         manual: snap.manual ?? a.manual,
                         constraint: snap.constraint ?? a.constraint,
                         constraintDate: snap.constraintDate ?? a.constraintDate,
+                        actualStart: snap.actualStart !== undefined ? snap.actualStart : a.actualStart,
                     };
                 }
                 // Legacy: only pct from details
@@ -832,6 +1067,30 @@ function reducer(state: GanttState, action: Action): GanttState {
             return { ...state, progressHistory: history };
         }
 
+        case 'SET_CHECKER_FILTER':
+            return recalc({ ...state, activeCheckerFilter: action.filter });
+
+        case 'SET_CHECKER_THRESHOLDS':
+            return recalc({ ...state, checkerThresholds: action.thresholds });
+
+        case 'OPEN_CHECK_MODAL':
+            return { ...state, checkModalOpen: true };
+
+        case 'CLOSE_CHECK_MODAL':
+            return { ...state, checkModalOpen: false };
+
+        case 'SET_CUSTOM_FILTERS':
+            return recalc({ ...state, customFilters: action.filters });
+
+        case 'SET_FILTERS_MATCH_ALL':
+            return recalc({ ...state, filtersMatchAll: action.matchAll });
+
+        case 'OPEN_FILTERS_MODAL':
+            return { ...state, filtersModalOpen: true };
+
+        case 'CLOSE_FILTERS_MODAL':
+            return { ...state, filtersModalOpen: false };
+
         default:
             return state;
     }
@@ -845,7 +1104,7 @@ let _savedCalendars: CustomCalendar[] = [];
 try {
     const raw = localStorage.getItem('gantt-cpm-custom-calendars');
     if (raw) {
-        _savedCalendars = (JSON.parse(raw) as any[]).map((c: any) => ({
+        _savedCalendars = (JSON.parse(raw!) as any[]).map((c: any) => ({
             ...c,
             // Migrate old single-number hoursPerDay to per-day array
             hoursPerDay: Array.isArray(c.hoursPerDay)
@@ -854,6 +1113,7 @@ try {
         }));
     }
 } catch { }
+
 
 const initialState: GanttState = {
     projName: 'Mi Proyecto',
@@ -869,6 +1129,9 @@ const initialState: GanttState = {
     timelineStart: now,
     lightMode: false,
     showProjRow: true,
+    showTodayLine: true,
+    showStatusLine: true,
+    showDependencies: true,
     currentView: 'gantt',
     collapsed: new Set(),
     expResources: new Set(),
@@ -892,6 +1155,12 @@ const initialState: GanttState = {
     blModalOpen: false,
     customCalendars: _savedCalendars,
     calModalOpen: false,
+    activeCheckerFilter: null,
+    checkerThresholds: { longLags: 20, largeMargins: 20, longDurations: 20 },
+    checkModalOpen: false,
+    customFilters: [],
+    filtersMatchAll: true,
+    filtersModalOpen: false,
 };
 
 // ─── Context ────────────────────────────────────────────────────

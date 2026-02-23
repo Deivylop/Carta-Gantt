@@ -165,6 +165,7 @@ export function newActivity(id?: string, defCal: CalendarType = 6): Activity {
         constraint: '',
         constraintDate: '',
         manual: false,
+        actualStart: null,
         ES: null, EF: null, LS: null, LF: null, TF: null,
         crit: false,
         blDur: null, blES: null, blEF: null, blCal: null,
@@ -217,10 +218,16 @@ export function calcCPM(
         let es = new Date(projStart);
         let forced = false;
 
-        if ((a.manual || a.constraint === 'MSO') && a.constraintDate) {
+        // Si la actividad tiene avance y Actual Start, usarlo como fecha fija
+        if ((a.pct || 0) > 0 && a.actualStart) {
+            const as_ = parseDate(a.actualStart);
+            if (as_) { es = new Date(as_); forced = true; }
+        }
+
+        if (!forced && (a.manual || a.constraint === 'MSO') && a.constraintDate) {
             const cd = parseDate(a.constraintDate);
             if (cd) { es = new Date(cd); forced = true; }
-        } else if (a.constraint === 'SNET') {
+        } else if (!forced && a.constraint === 'SNET') {
             const cd = parseDate(a.constraintDate);
             if (cd) es = new Date(Math.max(es.getTime(), cd.getTime()));
         }
@@ -327,11 +334,17 @@ export function calcCPM(
 
             if (pct > 0 && pct < 100 && a.type !== 'milestone') {
                 // Actividad con avance parcial:
-                // - ES se mantiene intacto (fecha original del usuario)
+                // - ES se mantiene en la fecha de inicio real (actualStart)
                 // - Solo el trabajo restante se programa hacia adelante desde newES (fecha de corte o pred)
                 a._remStart = newES;
                 const newEF = addWorkDays(newES, a._remDur!, a.cal || defCal);
-                a._retES = a.ES;   // No tocar ES
+                // Mantener ES en la fecha de inicio real (actualStart si existe, si no el ES del forward pass)
+                if (a.actualStart) {
+                    const asDate = parseDate(a.actualStart);
+                    if (asDate) a.ES = asDate;
+                }
+                // a.ES no cambia — se respeta la fecha original de inicio real
+                a._retES = a.ES;
                 a._retEF = newEF;
                 a.EF = newEF;
                 // La duración original NO cambia — el usuario la definió
@@ -350,14 +363,7 @@ export function calcCPM(
 
         activities.forEach(a => getRetES(a));
 
-        // Ajustar duración de acuerdo a Start y End para tareas con avance
-        activities.forEach(a => {
-            if (a.type !== 'summary' && a.type !== 'milestone' && !a._isProjRow && (a.pct || 0) > 0) {
-                if (a.ES && a.EF) {
-                    a.dur = calWorkDays(a.ES, a.EF, a.cal || defCal);
-                }
-            }
-        });
+        // NO recalcular la duración — la duración la define el usuario.
     }
 
     // ═══ Summary Tasks: compute ES/EF from children ═══
@@ -506,7 +512,6 @@ export function calcCPM(
     const totalDays = Math.max(projectDays, dayDiff(projStart, projEnd) + 30 + 60);
 
     activities.forEach(a => { a.LF = new Date(projEnd); });
-    console.log(`[BP] projEnd=${projEnd.toISOString().slice(0, 10)} projStart=${projStart.toISOString().slice(0, 10)}`);
     const sorted = [...activities].sort((a, b) => (b.EF || projEnd).getTime() - (a.EF || projEnd).getTime());
 
     // Función auxiliar: duración efectiva en días calendario (ES→EF) para el backward pass
@@ -528,19 +533,11 @@ export function calcCPM(
                 else if (p.type === 'FF') newLF = addWorkDays(a.LF!, -lag, pred.cal || defCal);
                 else newLF = addWorkDays(a.LS!, -lag, pred.cal || defCal);
                 if (!pred.LF || newLF < pred.LF) {
-                    console.log(`[BP-sort] ${a.id}→${pred.id} type=${p.type}: newLF=${newLF.toISOString().slice(0, 10)} prevLF=${pred.LF?.toISOString().slice(0, 10)}`);
                     pred.LF = new Date(newLF);
                 }
             });
         }
     });
-
-    // Count how many LF updates were made in sorted loop
-    let lfUpdateCount = 0;
-    activities.forEach(a => {
-        if (a.LF && a.LF.getTime() !== projEnd.getTime()) lfUpdateCount++;
-    });
-    console.warn(`[BP] After sorted loop: ${lfUpdateCount} activities have LF != projEnd out of ${activities.length}`);
 
     activities.forEach(a => {
         if (!a.LF) a.LF = new Date(projEnd);
@@ -548,9 +545,6 @@ export function calcCPM(
         const tf = dayDiff(a.ES || projStart, a.LS || projStart);
         a.TF = Math.max(0, tf);
         a.crit = a.TF <= 1;
-        if (a.type !== 'summary' && !a._isProjRow) {
-            console.log(`[BP] ${a.id} ES=${a.ES?.toISOString().slice(0, 10)} EF=${a.EF?.toISOString().slice(0, 10)} LF=${a.LF?.toISOString().slice(0, 10)} LS=${a.LS?.toISOString().slice(0, 10)} effCal=${effCalDays(a)} TF=${a.TF} crit=${a.crit} preds=${JSON.stringify(a.preds?.map(p => p.id + ':' + p.type))}`);
-        }
         if (a.remDur === null || a.remDur === undefined) {
             a.remDur = Math.round((a.dur || 0) * (100 - (a.pct || 0)) / 100);
         }

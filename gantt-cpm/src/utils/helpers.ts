@@ -1,7 +1,8 @@
+
 // ═══════════════════════════════════════════════════════════════════
 // Import / Export utilities – JSON and CSV
 // ═══════════════════════════════════════════════════════════════════
-import type { Activity, PoolResource, CalendarType } from '../types/gantt';
+import type { Activity, CalendarType, PoolResource, ActivityResource, CustomFilter } from '../types/gantt';
 import { newActivity, isoDate, parseDate } from './cpm';
 
 // ─── Predecessor Formatting ─────────────────────────────────────
@@ -98,16 +99,19 @@ export function syncResFromString(a: Activity, pool: PoolResource[]): void {
 // ─── Export JSON ────────────────────────────────────────────────
 export function exportJSON(
     activities: Activity[], projStart: Date, projName: string,
-    defCal: CalendarType, statusDate: Date, resourcePool: PoolResource[]
+    defCal: CalendarType, statusDate: Date, resourcePool: PoolResource[],
+    customFilters: CustomFilter[] = [], filtersMatchAll: boolean = true
 ): void {
     const data = {
         projStart: isoDate(projStart), projName, defCal,
         statusDate: isoDate(statusDate),
+        customFilters, filtersMatchAll,
         resourcePool: JSON.parse(JSON.stringify(resourcePool)),
         activities: activities.filter(a => !a._isProjRow).map(a => ({
             id: a.id, name: a.name, type: a.type, dur: a.dur, remDur: a.remDur, cal: a.cal,
             pct: a.pct, preds: a.preds, lv: a.lv, constraint: a.constraint,
-            constraintDate: a.constraintDate, manual: a.manual, res: a.res, work: a.work || 0,
+            constraintDate: a.constraintDate, manual: a.manual, actualStart: a.actualStart || null,
+            res: a.res, work: a.work || 0,
             weight: a.weight, resources: a.resources || [], notes: a.notes,
             blDur: a.blDur, blES: a.blES ? isoDate(a.blES) : null, blEF: a.blEF ? isoDate(a.blEF) : null,
             baselines: (a.baselines || []).map(bl => bl ? { dur: bl.dur, ES: bl.ES ? isoDate(bl.ES) : null, EF: bl.EF ? isoDate(bl.EF) : null, cal: bl.cal, savedAt: bl.savedAt, name: bl.name || '', description: bl.description || '', pct: bl.pct || 0, work: bl.work || 0, weight: bl.weight, statusDate: bl.statusDate || '' } : null),
@@ -125,13 +129,15 @@ export function exportJSON(
 export function importJSONData(
     text: string,
     defCalDefault: CalendarType
-): { projStart: Date; projName: string; defCal: CalendarType; statusDate: Date; activities: Activity[]; resourcePool: PoolResource[] } | null {
+): { projStart: Date; projName: string; defCal: CalendarType; statusDate: Date; activities: Activity[]; resourcePool: PoolResource[]; customFilters: CustomFilter[]; filtersMatchAll: boolean } | null {
     try {
         const d = JSON.parse(text);
         const projStart = d.projStart ? (parseDate(d.projStart) || new Date()) : new Date();
         const projName = d.projName || 'Mi Proyecto';
         const defCal = d.defCal || defCalDefault;
         const statusDate = d.statusDate ? (parseDate(d.statusDate) || new Date()) : new Date();
+        const customFilters = d.customFilters || [];
+        const filtersMatchAll = d.filtersMatchAll !== undefined ? d.filtersMatchAll : true;
         const resourcePool = Array.isArray(d.resourcePool) ? d.resourcePool : [];
         if (resourcePool.length) {
             _rsNextId = resourcePool.reduce((mx: number, r: PoolResource) => Math.max(mx, r.rid || 0), 0) + 1;
@@ -154,7 +160,7 @@ export function importJSONData(
         activities.forEach((a: Activity) => {
             if (a.resources && a.resources.length) deriveResString(a, resourcePool);
         });
-        return { projStart, projName, defCal, statusDate, activities, resourcePool };
+        return { projStart, projName, defCal, statusDate, activities, resourcePool, customFilters, filtersMatchAll };
     } catch (err) {
         alert('Error JSON: ' + (err as Error).message);
         return null;

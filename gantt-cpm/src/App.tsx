@@ -16,6 +16,8 @@ import SupabaseModal from './components/modals/SupabaseModal';
 import SaveProgressModal from './components/modals/SaveProgressModal';
 import BaselineModal from './components/modals/BaselineModal';
 import CalendarModal from './components/modals/CalendarModal';
+import CheckThresholdsModal from './components/modals/CheckThresholdsModal';
+import FilterModal from './components/modals/FilterModal';
 import SCurveChart from './components/SCurveChart';
 import TaskUsageGrid from './components/TaskUsageGrid';
 import ResourceUsageTable from './components/ResourceUsageTable';
@@ -62,7 +64,7 @@ function AppInner() {
       if (pid) {
         try {
           const data = await loadFromSupabase(pid);
-          if (data.projName) dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: data.projName, projStart: data.projStart, defCal: data.defCal, statusDate: data.statusDate || undefined } });
+          if (data.projName) dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: data.projName, projStart: data.projStart, defCal: data.defCal, statusDate: data.statusDate || undefined, customFilters: data.customFilters || [], filtersMatchAll: data.filtersMatchAll !== undefined ? data.filtersMatchAll : true } });
           if (data.resourcePool) dispatch({ type: 'SET_RESOURCES', resources: data.resourcePool });
           if (data.activities && data.activities.length) dispatch({ type: 'SET_ACTIVITIES', activities: data.activities });
           if (data.progressHistory) dispatch({ type: 'SET_PROGRESS_HISTORY', history: data.progressHistory });
@@ -100,7 +102,7 @@ function AppInner() {
       if (!pid) return;
       try {
         const data = await loadFromSupabase(pid);
-        dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: data.projName, projStart: data.projStart, defCal: data.defCal, statusDate: data.statusDate || undefined } });
+        dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: data.projName, projStart: data.projStart, defCal: data.defCal, statusDate: data.statusDate || undefined, customFilters: data.customFilters || [], filtersMatchAll: data.filtersMatchAll !== undefined ? data.filtersMatchAll : true } });
         dispatch({ type: 'SET_RESOURCES', resources: data.resourcePool || [] });
         dispatch({ type: 'SET_ACTIVITIES', activities: data.activities || [] });
         dispatch({ type: 'SET_PROGRESS_HISTORY', history: data.progressHistory || [] });
@@ -312,6 +314,8 @@ function AppInner() {
       <SaveProgressModal />
       <BaselineModal />
       <CalendarModal />
+      <CheckThresholdsModal />
+      <FilterModal />
     </div>
   );
 }

@@ -7,10 +7,9 @@ import { newActivity, isoDate, parseDate } from '../utils/cpm';
 import { autoId, exportJSON, exportCSV, importJSONData, importCSVData } from '../utils/helpers';
 import {
     Plus, Trash2, ArrowRight, ClipboardPaste, Scissors, Settings, Calculator, BarChart3, Sun, Moon, Clock,
-    TrendingUp, LineChart, FileText, Diamond, ArrowLeft, ArrowUp, ArrowDown, Info, Undo2, Cloud, Database, Upload, Download, LayoutTemplate, Users, CalendarDays
+    TrendingUp, LineChart, FileText, Diamond, ArrowLeft, ArrowUp, ArrowDown, Info, Undo2, Cloud, Database, Upload, Download, LayoutTemplate, Users, CalendarDays, Filter
 } from 'lucide-react';
-import type { ZoomLevel }
-    from '../types/gantt';
+import type { ZoomLevel } from '../types/gantt';
 
 export default function Ribbon() {
     const { state, dispatch } = useGantt();
@@ -174,7 +173,7 @@ export default function Ribbon() {
                         <RG label="USO (MÉTRICAS)">
                             <div style={{ fontSize: 9, lineHeight: 1.3, color: 'var(--text-secondary)', textAlign: 'center', padding: '2px 4px' }}>
                                 <div style={{ fontWeight: 600, marginBottom: 2 }}>{state.usageModes.length} campo{state.usageModes.length !== 1 ? 's' : ''}</div>
-                                <div style={{ fontSize: 8, opacity: 0.7 }}>Clic derecho en<br/>"Detalles" para<br/>configurar</div>
+                                <div style={{ fontSize: 8, opacity: 0.7 }}>Clic derecho en<br />"Detalles" para<br />configurar</div>
                             </div>
                         </RG>
                     )}
@@ -191,6 +190,34 @@ export default function Ribbon() {
                     </RG>
                     <RG label="TEMA">
                         <RB icon={state.lightMode ? <Moon size={14} /> : <Sun size={14} />} label={state.lightMode ? '☾ Oscuro' : '☀ Claro'} onClick={() => dispatch({ type: 'TOGGLE_THEME' })} />
+                    </RG>
+                    <RG label="MOSTRAR">
+                        <RB icon={<Clock size={14} />} label="Línea Hoy" active={state.showTodayLine} onClick={() => dispatch({ type: 'TOGGLE_TODAY_LINE' })} />
+                        <RB icon={<Clock size={14} />} label="Línea Corte" active={state.showStatusLine} onClick={() => dispatch({ type: 'TOGGLE_STATUS_LINE' })} />
+                        <RB icon={<ArrowRight size={14} />} label="Relaciones" active={state.showDependencies} onClick={() => dispatch({ type: 'TOGGLE_DEPENDENCIES' })} />
+                    </RG>
+                    <RG label="FILTROS">
+                        <RB icon={<Filter size={16} />} label="Filtros" active={state.filtersModalOpen || state.customFilters.some(f => f.active)} onClick={() => dispatch({ type: 'OPEN_FILTERS_MODAL' })} />
+                    </RG>
+                    <RG label="COMPROBACIÓN">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <select className="form-input" style={{ fontSize: 10, padding: '2px 4px', width: 140 }}
+                                value={state.activeCheckerFilter || ''}
+                                onChange={e => dispatch({ type: 'SET_CHECKER_FILTER', filter: e.target.value || null })}>
+                                <option value="">(Sin filtro)</option>
+                                <option value="Malla Abierta">Malla Abierta</option>
+                                <option value="Sin Predecesora">Sin Predecesora</option>
+                                <option value="Fechas no Válidas">Fechas no Válidas</option>
+                                <option value="Tipo de Relación">Tipo de Relación</option>
+                                <option value="Demoras Negativas">Demoras Negativas</option>
+                                <option value="Demoras Prolongadas">Demoras Prolongadas</option>
+                                <option value="Duraciones Prolongadas">Duraciones Prolongadas</option>
+                                <option value="Márgenes Grandes">Márgenes Grandes</option>
+                                <option value="Restricciones Obligatorias">Restricciones Oblig.</option>
+                                <option value="Restricciones Flexibles">Restricc. Flexibles</option>
+                            </select>
+                            <RB icon={<Settings size={14} />} onClick={() => dispatch({ type: 'OPEN_CHECK_MODAL' })} />
+                        </div>
                     </RG>
                     <RG label="AGRUPAR">
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -232,7 +259,7 @@ export default function Ribbon() {
 
                 {tab === 'datos' && <>
                     <RG label="EXPORTAR">
-                        <RB icon={<Download size={14} />} label="JSON" onClick={() => exportJSON(state.activities, state.projStart, state.projName, state.defCal, state.statusDate, state.resourcePool)} />
+                        <RB icon={<Download size={14} />} label="JSON" onClick={() => exportJSON(state.activities, state.projStart, state.projName, state.defCal, state.statusDate, state.resourcePool, state.customFilters, state.filtersMatchAll)} />
                         <RB icon={<Download size={14} />} label="CSV" onClick={() => exportCSV(state.activities, state.projName, state.defCal)} />
                     </RG>
                     <RG label="IMPORTAR">
