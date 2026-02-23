@@ -128,58 +128,66 @@ export default function Ribbon() {
                         <RB icon={<Calculator size={16} />} label="Calcular CPM" onClick={() => dispatch({ type: 'RECALC_CPM' })} />
                     </RG>
                     <RG label="RUTAS DE ACCESO">
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-start', minWidth: 160 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <label style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-                                    <input type="checkbox" checked={state.mfpConfig.enabled}
-                                        onChange={() => dispatch({ type: 'TOGGLE_MFP' })} />
-                                    <span style={{ fontWeight: 600 }}>MFP</span>
-                                </label>
-                                <select className="form-input" style={{ fontSize: 9, padding: '1px 3px', width: 80 }}
-                                    value={state.mfpConfig.mode}
-                                    disabled={!state.mfpConfig.enabled}
-                                    onChange={e => dispatch({ type: 'SET_MFP_CONFIG', config: { mode: e.target.value as any } })}>
-                                    <option value="totalFloat">Total Float</option>
-                                    <option value="freeFloat">Free Float</option>
-                                </select>
-                            </div>
+                        <button className={`rbtn ${state.mfpConfig.enabled ? 'active' : ''}`}
+                            style={{ minWidth: 60, padding: '4px 10px' }}
+                            onClick={() => dispatch({ type: 'TOGGLE_MFP' })}>
+                            <span style={{ fontSize: 13 }}>🔀</span>
+                            <span>MFP {state.mfpConfig.enabled ? 'ON' : 'OFF'}</span>
+                        </button>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'stretch', minWidth: 130 }}>
+                            <select className="form-input" style={{ fontSize: 10, padding: '3px 6px' }}
+                                value={state.mfpConfig.mode}
+                                disabled={!state.mfpConfig.enabled}
+                                onChange={e => dispatch({ type: 'SET_MFP_CONFIG', config: { mode: e.target.value as any } })}>
+                                <option value="totalFloat">Holgura Total</option>
+                                <option value="freeFloat">Holgura Libre</option>
+                            </select>
+                            <select className="form-input" style={{ fontSize: 10, padding: '3px 6px' }}
+                                value={state.mfpConfig.endActivityId || ''}
+                                disabled={!state.mfpConfig.enabled}
+                                onChange={e => dispatch({ type: 'SET_MFP_CONFIG', config: { endActivityId: e.target.value || null } })}>
+                                <option value="">Fin: Auto (max EF)</option>
+                                {state.activities.filter(a => a.type !== 'summary' && !a._isProjRow).map(a =>
+                                    <option key={a.id} value={a.id}>Fin: {a.id} – {a.name?.substring(0, 18)}</option>
+                                )}
+                            </select>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>Fin:</span>
-                                <select className="form-input" style={{ fontSize: 9, padding: '1px 3px', width: 120 }}
-                                    value={state.mfpConfig.endActivityId || ''}
-                                    disabled={!state.mfpConfig.enabled}
-                                    onChange={e => dispatch({ type: 'SET_MFP_CONFIG', config: { endActivityId: e.target.value || null } })}>
-                                    <option value="">(Auto – max EF)</option>
-                                    {state.activities.filter(a => a.type !== 'summary' && !a._isProjRow).map(a =>
-                                        <option key={a.id} value={a.id}>{a.id} – {a.name?.substring(0, 20)}</option>
-                                    )}
-                                </select>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>Paths:</span>
-                                <input type="number" className="form-input" style={{ fontSize: 9, padding: '1px 3px', width: 40 }}
+                                <span style={{ fontSize: 9, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Max:</span>
+                                <input type="number" className="form-input" style={{ fontSize: 10, padding: '3px 6px', width: 44, textAlign: 'center' }}
                                     min={1} max={50}
                                     value={state.mfpConfig.maxPaths}
                                     disabled={!state.mfpConfig.enabled}
                                     onChange={e => dispatch({ type: 'SET_MFP_CONFIG', config: { maxPaths: Math.max(1, parseInt(e.target.value) || 10) } })} />
                             </div>
-                            {state.mfpConfig.enabled && (
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2, maxWidth: 170 }}>
-                                    {(() => {
-                                        const MFP_COLORS = ['#FF0000','#FF6600','#FFCC00','#00AA00','#0066FF','#9933FF','#FF66CC','#00CCCC','#996633','#666666'];
-                                        const paths = new Set<number>();
-                                        state.activities.forEach(a => { if (a._floatPath) paths.add(a._floatPath); });
-                                        const sorted = [...paths].sort((a, b) => a - b);
-                                        return sorted.map(p => (
-                                            <span key={p} style={{ fontSize: 8, display: 'inline-flex', alignItems: 'center', gap: 2, cursor: 'pointer', opacity: state.activeGroup === `floatpath${p}` ? 1 : 0.7, fontWeight: state.activeGroup === `floatpath${p}` ? 700 : 400 }}
+                            {state.mfpConfig.enabled && (() => {
+                                const MFP_COLORS = ['#FF0000','#FF6600','#FFCC00','#00AA00','#0066FF','#9933FF','#FF66CC','#00CCCC','#996633','#666666'];
+                                const paths = new Set<number>();
+                                state.activities.forEach(a => { if (a._floatPath) paths.add(a._floatPath); });
+                                const sorted = [...paths].sort((a, b) => a - b);
+                                if (sorted.length === 0) return <span style={{ fontSize: 8, color: '#ef4444' }}>Sin paths</span>;
+                                return (
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, justifyContent: 'center', maxWidth: 80 }}>
+                                        {sorted.map(p => (
+                                            <span key={p}
+                                                title={`Filtrar Float Path ${p}`}
+                                                style={{
+                                                    fontSize: 9, fontWeight: 700, cursor: 'pointer',
+                                                    display: 'inline-flex', alignItems: 'center', gap: 2,
+                                                    padding: '1px 5px', borderRadius: 3,
+                                                    background: state.activeGroup === `floatpath${p}` ? MFP_COLORS[(p - 1) % MFP_COLORS.length] : 'transparent',
+                                                    color: state.activeGroup === `floatpath${p}` ? '#fff' : MFP_COLORS[(p - 1) % MFP_COLORS.length],
+                                                    border: `1px solid ${MFP_COLORS[(p - 1) % MFP_COLORS.length]}`,
+                                                    transition: 'all 0.15s',
+                                                }}
                                                 onClick={() => dispatch({ type: 'SET_GROUP', group: state.activeGroup === `floatpath${p}` ? 'none' : `floatpath${p}` })}>
-                                                <span style={{ width: 8, height: 8, borderRadius: 2, background: MFP_COLORS[(p - 1) % MFP_COLORS.length], display: 'inline-block' }} />
-                                                P{p}
+                                                {p}
                                             </span>
-                                        ));
-                                    })()}
-                                </div>
-                            )}
+                                        ))}
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </RG>
                     <RG label="FECHA DE CORTE">
