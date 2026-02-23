@@ -83,6 +83,7 @@ export interface GanttState {
     usageZoom: 'day' | 'week' | 'month';
     undoStack: string[];
     clipboard: Activity | null;
+    clipboardMulti: Activity[];
     // Modal state
     actModalOpen: boolean;
     projModalOpen: boolean;
@@ -144,6 +145,7 @@ export type Action =
     | { type: 'INDENT'; dir: number }
     | { type: 'MOVE_ROW'; dir: number }
     | { type: 'CUT_ACTIVITY' }
+    | { type: 'COPY_ACTIVITY' }
     | { type: 'PASTE_ACTIVITY' }
     | { type: 'SAVE_BASELINE'; index?: number; name?: string; description?: string }
     | { type: 'SET_ACTIVE_BASELINE'; index: number }
@@ -526,14 +528,25 @@ function reducer(state: GanttState, action: Action): GanttState {
         }
 
         case 'DELETE_ACTIVITY': {
-            if (state.activities[action.index]?._isProjRow) return state;
+            // Support multi-selection: delete all selected rows
+            const indices = state.selIndices.size > 1
+                ? Array.from(state.selIndices).sort((a, b) => b - a) // descending to splice safely
+                : [action.index];
             const acts = [...state.activities];
-            const delId = acts[action.index].id;
-            acts.splice(action.index, 1);
+            const delIds = new Set<string>();
+            for (const i of indices) {
+                if (acts[i]?._isProjRow) continue;
+                delIds.add(acts[i].id);
+            }
+            // Remove from highest index to lowest
+            for (const i of indices) {
+                if (acts[i]?._isProjRow) continue;
+                acts.splice(i, 1);
+            }
             // Remove references in predecessors
-            acts.forEach(a => { if (a.preds) a.preds = a.preds.filter(p => p.id !== delId); });
+            acts.forEach(a => { if (a.preds) a.preds = a.preds.filter(p => !delIds.has(p.id)); });
             const newSel = Math.min(state.selIdx, acts.length - 1);
-            return recalc({ ...state, activities: acts, selIdx: newSel });
+            return recalc({ ...state, activities: acts, selIdx: newSel, selIndices: new Set([newSel]) });
         }
 
         case 'UPDATE_ACTIVITY': {
@@ -866,73 +879,154 @@ function reducer(state: GanttState, action: Action): GanttState {
             return recalc({ ...state, showProjRow: action.show });
 
         case 'INDENT': {
-            if (state.selIdx < 0 || state.activities[state.selIdx]?._isProjRow) return state;
+            // Support multi-selection: indent all selected rows
+            const indices = state.selIndices.size > 1
+                ? Array.from(state.selIndices).sort((a, b) => a - b) // ascending order
+                : (state.selIdx >= 0 ? [state.selIdx] : []);
+            if (indices.length === 0) return state;
             const acts = [...state.activities];
-            const a = { ...acts[state.selIdx] };
-            const oldLv = a.lv;
-            let maxLv = 5;
-            if (action.dir > 0 && state.selIdx > 0) {
-                maxLv = acts[state.selIdx - 1].lv + 1;
-            }
-            const newLv = Math.max(0, Math.min(maxLv, oldLv + action.dir));
-            if (newLv === oldLv) return state;
-            a.lv = newLv;
-            // Auto-promote parent to summary
-            if (action.dir > 0 && newLv > oldLv && state.selIdx > 0) {
-                for (let j = state.selIdx - 1; j >= 0; j--) {
-                    if (acts[j].lv < newLv) {
-                        acts[j] = { ...acts[j], type: 'summary' };
-                        break;
-                    }
+            let changed = false;
+            for (const si of indices) {
+                if (acts[si]?._isProjRow) continue;
+                const a = { ...acts[si] };
+                const oldLv = a.lv;
+                let maxLv = 5;
+                if (action.dir > 0 && si > 0) {
+                    maxLv = acts[si - 1].lv + 1;
                 }
-            }
-            // Auto-demote if no children remain
-            if (action.dir < 0 && newLv < oldLv) {
-                for (let j = state.selIdx - 1; j >= 0; j--) {
-                    if (acts[j].lv < oldLv) {
-                        let hasChildren = false;
-                        for (let k = j + 1; k < acts.length; k++) {
-                            if (acts[k].lv <= acts[j].lv) break;
-                            if (acts[k].lv > acts[j].lv) { hasChildren = true; break; }
+                const newLv = Math.max(0, Math.min(maxLv, oldLv + action.dir));
+                if (newLv === oldLv) continue;
+                a.lv = newLv;
+                changed = true;
+                // Auto-promote parent to summary
+                if (action.dir > 0 && newLv > oldLv && si > 0) {
+                    for (let j = si - 1; j >= 0; j--) {
+                        if (acts[j].lv < newLv) {
+                            acts[j] = { ...acts[j], type: 'summary' };
+                            break;
                         }
-                        if (!hasChildren && acts[j].type === 'summary') acts[j] = { ...acts[j], type: 'task' };
-                        break;
                     }
                 }
+                // Auto-demote if no children remain
+                if (action.dir < 0 && newLv < oldLv) {
+                    for (let j = si - 1; j >= 0; j--) {
+                        if (acts[j].lv < oldLv) {
+                            let hasChildren = false;
+                            for (let k = j + 1; k < acts.length; k++) {
+                                if (acts[k].lv <= acts[j].lv) break;
+                                if (acts[k].lv > acts[j].lv) { hasChildren = true; break; }
+                            }
+                            if (!hasChildren && acts[j].type === 'summary') acts[j] = { ...acts[j], type: 'task' };
+                            break;
+                        }
+                    }
+                }
+                acts[si] = a;
             }
-            acts[state.selIdx] = a;
+            if (!changed) return state;
             return recalc({ ...state, activities: acts });
         }
 
         case 'MOVE_ROW': {
-            if (state.selIdx < 0) return state;
-            const newIdx = state.selIdx + action.dir;
-            if (newIdx < 0 || newIdx >= state.activities.length) return state;
-            if (state.activities[state.selIdx]._isProjRow || state.activities[newIdx]._isProjRow) return state;
+            // Support multi-selection: move all selected rows as a block
+            const indices = state.selIndices.size > 1
+                ? Array.from(state.selIndices).sort((a, b) => a - b)
+                : (state.selIdx >= 0 ? [state.selIdx] : []);
+            if (indices.length === 0) return state;
             const acts = [...state.activities];
-            const temp = acts[state.selIdx];
-            acts[state.selIdx] = acts[newIdx];
-            acts[newIdx] = temp;
-            return recalc({ ...state, activities: acts, selIdx: newIdx });
+            if (action.dir < 0) {
+                // Move up: first selected can't go above 0 or into proj row
+                const first = indices[0];
+                if (first <= 0 || acts[first - 1]._isProjRow) return state;
+                for (const si of indices) {
+                    if (acts[si]._isProjRow) return state;
+                }
+                // Swap each upward in order
+                for (const si of indices) {
+                    const temp = acts[si - 1];
+                    acts[si - 1] = acts[si];
+                    acts[si] = temp;
+                }
+                const newIndices = new Set(indices.map(i => i - 1));
+                const newSel = state.selIdx - 1;
+                return recalc({ ...state, activities: acts, selIdx: newSel, selIndices: newIndices });
+            } else {
+                // Move down: last selected can't go past end or into proj row
+                const last = indices[indices.length - 1];
+                if (last >= acts.length - 1 || acts[last + 1]._isProjRow) return state;
+                for (const si of indices) {
+                    if (acts[si]._isProjRow) return state;
+                }
+                // Swap each downward in reverse order
+                for (let j = indices.length - 1; j >= 0; j--) {
+                    const si = indices[j];
+                    const temp = acts[si + 1];
+                    acts[si + 1] = acts[si];
+                    acts[si] = temp;
+                }
+                const newIndices = new Set(indices.map(i => i + 1));
+                const newSel = state.selIdx + 1;
+                return recalc({ ...state, activities: acts, selIdx: newSel, selIndices: newIndices });
+            }
         }
 
         case 'CUT_ACTIVITY': {
-            if (state.selIdx < 0 || state.activities[state.selIdx]._isProjRow) return state;
+            // Support multi-selection: cut all selected rows
+            const indices = state.selIndices.size > 1
+                ? Array.from(state.selIndices).sort((a, b) => b - a) // descending for safe splice
+                : (state.selIdx >= 0 ? [state.selIdx] : []);
+            if (indices.length === 0) return state;
             const acts = [...state.activities];
-            const cut = { ...acts[state.selIdx] };
-            const delId = cut.id;
-            acts.splice(state.selIdx, 1);
-            acts.forEach(a => { if (a.preds) a.preds = a.preds.filter(p => p.id !== delId); });
-            return recalc({ ...state, activities: acts, clipboard: cut, selIdx: Math.min(state.selIdx, acts.length - 1) });
+            const cutItems: Activity[] = [];
+            const delIds = new Set<string>();
+            // Collect items to cut (ascending for clipboard order)
+            for (const i of [...indices].reverse()) {
+                if (acts[i]?._isProjRow) continue;
+                cutItems.push({ ...acts[i] });
+                delIds.add(acts[i].id);
+            }
+            if (cutItems.length === 0) return state;
+            // Remove from highest to lowest
+            for (const i of indices) {
+                if (acts[i]?._isProjRow) continue;
+                acts.splice(i, 1);
+            }
+            acts.forEach(a => { if (a.preds) a.preds = a.preds.filter(p => !delIds.has(p.id)); });
+            const newSel = Math.min(state.selIdx, acts.length - 1);
+            // Store first cut item in clipboard (for single paste), store all in clipboardMulti
+            return recalc({ ...state, activities: acts, clipboard: cutItems[0], clipboardMulti: cutItems, selIdx: newSel, selIndices: new Set([newSel]) });
+        }
+
+        case 'COPY_ACTIVITY': {
+            // Copy selected rows to clipboard without removing them
+            const indices = state.selIndices.size > 1
+                ? Array.from(state.selIndices).sort((a, b) => a - b)
+                : (state.selIdx >= 0 ? [state.selIdx] : []);
+            if (indices.length === 0) return state;
+            const copyItems: Activity[] = [];
+            for (const i of indices) {
+                const a = state.activities[i];
+                if (a && !a._isProjRow) copyItems.push({ ...a });
+            }
+            if (copyItems.length === 0) return state;
+            return { ...state, clipboard: copyItems[0], clipboardMulti: copyItems };
         }
 
         case 'PASTE_ACTIVITY': {
-            if (!state.clipboard) return state;
+            const items = state.clipboardMulti && state.clipboardMulti.length > 0
+                ? state.clipboardMulti
+                : state.clipboard ? [state.clipboard] : [];
+            if (items.length === 0) return state;
             const acts = [...state.activities];
-            const pasted = { ...state.clipboard, id: autoId(acts) };
             const idx = state.selIdx >= 0 ? state.selIdx + 1 : acts.length;
-            acts.splice(idx, 0, pasted);
-            return recalc({ ...state, activities: acts, selIdx: idx });
+            const pasted: Activity[] = [];
+            for (const item of items) {
+                const newItem = { ...item, id: autoId([...acts, ...pasted]) };
+                pasted.push(newItem);
+            }
+            acts.splice(idx, 0, ...pasted);
+            const lastIdx = idx + pasted.length - 1;
+            return recalc({ ...state, activities: acts, selIdx: lastIdx, selIndices: new Set(pasted.map((_, i) => idx + i)) });
         }
 
         case 'SAVE_BASELINE': {
@@ -1313,6 +1407,7 @@ const initialState: GanttState = {
     usageZoom: 'week',
     undoStack: [],
     clipboard: null,
+    clipboardMulti: [],
     actModalOpen: false,
     projModalOpen: false,
     linkModalOpen: false,

@@ -184,6 +184,8 @@ function AppInner() {
       e.preventDefault(); dispatch({ type: 'UNDO' });
     } else if (e.ctrlKey && e.key === 'x') {
       e.preventDefault(); dispatch({ type: 'CUT_ACTIVITY' });
+    } else if (e.ctrlKey && e.key === 'c') {
+      e.preventDefault(); dispatch({ type: 'COPY_ACTIVITY' });
     } else if (e.ctrlKey && e.key === 'v') {
       e.preventDefault(); dispatch({ type: 'PASTE_ACTIVITY' });
     } else if (e.ctrlKey && e.key === 'ArrowUp') {

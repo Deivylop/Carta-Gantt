@@ -7,6 +7,7 @@ import { useGantt } from '../store/GanttContext';
 import { fmtDate, addDays, isoDate, newActivity, parseDate } from '../utils/cpm';
 import { predsToStr, getWeightPct, strToPreds, autoId, syncResFromString } from '../utils/helpers';
 import ColumnPickerModal from './ColumnPickerModal';
+import RowContextMenu from './RowContextMenu';
 
 const EditableNumberCell = ({ rawValue, displayValue, onUpdate, onFocus, step, min, max }: { rawValue: string, displayValue: string, onUpdate: (val: string) => void, onFocus: () => void, step?: number, min?: number, max?: number }) => {
     const [isEditing, setIsEditing] = useState(false);
@@ -42,9 +43,12 @@ const EditableNumberCell = ({ rawValue, displayValue, onUpdate, onFocus, step, m
     return (
         <span
             style={{ cursor: 'text', display: 'flex', alignItems: 'center', justifyContent: 'inherit', width: '100%', height: '100%' }}
-            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setIsEditing(true); onFocus(); }}
+            onMouseDown={(e) => {
+                if (e.ctrlKey || e.metaKey || e.shiftKey) return; // let row handle multi-select
+                e.preventDefault(); e.stopPropagation(); setIsEditing(true); onFocus();
+            }}
             onDoubleClick={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey) e.stopPropagation(); }}
         >
             {displayValue}
         </span>
@@ -92,9 +96,12 @@ const EditableDateCell = ({ dateValue, displayValue, onUpdate, onFocus }: { date
     return (
         <span
             style={{ cursor: 'text', display: 'flex', alignItems: 'center', justifyContent: 'inherit', width: '100%', height: '100%' }}
-            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setIsEditing(true); onFocus(); }}
+            onMouseDown={(e) => {
+                if (e.ctrlKey || e.metaKey || e.shiftKey) return; // let row handle multi-select
+                e.preventDefault(); e.stopPropagation(); setIsEditing(true); onFocus();
+            }}
             onDoubleClick={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey) e.stopPropagation(); }}
         >
             {displayValue}
         </span>
@@ -107,6 +114,7 @@ export default function GanttTable() {
     const bodyRef = useRef<HTMLDivElement>(null);
     const [colResize, setColResize] = useState<{ idx: number; startX: number; startW: number } | null>(null);
     const [colPickerOpen, setColPickerOpen] = useState(false);
+    const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
 
     const visCols = columns.filter(c => c.visible);
     const totalW = visCols.reduce((s, c) => s + colWidths[columns.indexOf(c)], 0);
@@ -367,6 +375,7 @@ export default function GanttTable() {
                                 ...chainStyle
                             }}
                                 onClick={(e) => dispatch({ type: 'SET_SELECTION', index: vr._idx, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })}
+                                onContextMenu={(e) => { e.preventDefault(); dispatch({ type: 'SET_SELECTION', index: vr._idx }); setCtxMenu({ x: e.clientX, y: e.clientY }); }}
                                 onDoubleClick={() => { dispatch({ type: 'SET_SELECTION', index: vr._idx }); dispatch({ type: 'OPEN_ACT_MODAL' }); }}>
                                 {visCols.map((c) => {
                                     const ci = columns.indexOf(c);
@@ -479,9 +488,14 @@ export default function GanttTable() {
                                         return (
                                             <div key={c.key} className={`tcell ${c.cls}`}
                                                 style={style}
-                                                contentEditable
+                                                contentEditable={!false}
                                                 suppressContentEditableWarning
                                                 spellCheck={false}
+                                                onMouseDown={e => {
+                                                    if (e.ctrlKey || e.metaKey || e.shiftKey) {
+                                                        e.preventDefault(); // prevent focus/edit, let row handle multi-select
+                                                    }
+                                                }}
                                                 onFocus={() => dispatch({ type: 'SET_SELECTION', index: vr._idx })}
                                                 onBlur={e => handleBlur(vr._idx, c.key, e.currentTarget.textContent || '')}
                                                 onKeyDown={handleKeyDown}
@@ -517,6 +531,9 @@ export default function GanttTable() {
 
             {/* Column picker modal (P6-style) */}
             {colPickerOpen && <ColumnPickerModal onClose={() => setColPickerOpen(false)} />}
+
+            {/* Row right-click context menu */}
+            {ctxMenu && <RowContextMenu x={ctxMenu.x} y={ctxMenu.y} onClose={() => setCtxMenu(null)} onOpenColumns={() => setColPickerOpen(true)} />}
         </div>
     );
 }
