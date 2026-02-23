@@ -4,7 +4,7 @@
 // ═══════════════════════════════════════════════════════════════════
 import React, { createContext, useContext, useReducer, type ReactNode } from 'react';
 import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, VisibleRow, ProgressHistoryEntry, BaselineEntry, CustomCalendar, CustomFilter, MFPConfig } from '../types/gantt';
-import { calcCPM, calcMultipleFloatPaths, newActivity, isoDate, parseDate, addDays, calWorkDays, fmtDate } from '../utils/cpm';
+import { calcCPM, calcMultipleFloatPaths, traceChain, newActivity, isoDate, parseDate, addDays, calWorkDays, fmtDate } from '../utils/cpm';
 import { autoId, computeOutlineNumbers, syncResFromString, deriveResString, distributeWork, strToPreds, predsToStr } from '../utils/helpers';
 
 // ─── Column Definitions ─────────────────────────────────────────
@@ -102,6 +102,9 @@ export interface GanttState {
     filtersModalOpen: boolean;
     // Multiple Float Paths
     mfpConfig: MFPConfig;
+    // Chain Trace (Trace Logic)
+    chainTrace: { actId: string; dir: 'fwd' | 'bwd' | 'both' } | null;
+    chainIds: Set<string>;  // computed set of activity IDs in the traced chain
 }
 
 // ─── Actions ────────────────────────────────────────────────────
@@ -183,7 +186,9 @@ export type Action =
     | { type: 'OPEN_FILTERS_MODAL' }
     | { type: 'CLOSE_FILTERS_MODAL' }
     | { type: 'SET_MFP_CONFIG'; config: Partial<MFPConfig> }
-    | { type: 'TOGGLE_MFP' };
+    | { type: 'TOGGLE_MFP' }
+    | { type: 'SET_CHAIN_TRACE'; dir: 'fwd' | 'bwd' | 'both' }
+    | { type: 'CLEAR_CHAIN_TRACE' };
 
 // ─── Grouping / Filtering ─────────────────────────────────────────
 function applyGroupFilter(rows: VisibleRow[], activities: Activity[], activeGroup: string, columns: ColumnDef[]): VisibleRow[] {
@@ -1225,6 +1230,16 @@ function reducer(state: GanttState, action: Action): GanttState {
             return recalc({ ...state, mfpConfig: newMfp });
         }
 
+        case 'SET_CHAIN_TRACE': {
+            const selAct = state.selIdx >= 0 ? state.activities[state.selIdx] : null;
+            if (!selAct || selAct._isProjRow || selAct.type === 'summary') return state;
+            const ids = traceChain(state.activities, selAct.id, action.dir);
+            return { ...state, chainTrace: { actId: selAct.id, dir: action.dir }, chainIds: ids };
+        }
+
+        case 'CLEAR_CHAIN_TRACE':
+            return { ...state, chainTrace: null, chainIds: new Set<string>() };
+
         default:
             return state;
     }
@@ -1297,6 +1312,8 @@ const initialState: GanttState = {
     filtersMatchAll: true,
     filtersModalOpen: false,
     mfpConfig: { enabled: false, endActivityId: null, mode: 'totalFloat', maxPaths: 10 },
+    chainTrace: null,
+    chainIds: new Set<string>(),
 };
 
 // ─── Context ────────────────────────────────────────────────────

@@ -600,6 +600,76 @@ export function calcCPM(
     return { activities, totalDays, projectDays };
 }
 
+// ─── Trace Logic (Chain Tracing) ────────────────────────────────
+
+/**
+ * Trace the logical chain from a given activity.
+ * - 'bwd': trace all predecessors recursively (backward chain)
+ * - 'fwd': trace all successors recursively (forward chain)
+ * - 'both': trace in both directions
+ *
+ * Returns a Set of activity IDs that belong to the chain.
+ */
+export function traceChain(
+    activities: Activity[],
+    startId: string,
+    direction: 'fwd' | 'bwd' | 'both'
+): Set<string> {
+    const result = new Set<string>();
+    const byId: Record<string, Activity> = {};
+    activities.forEach(a => { byId[a.id] = a; });
+
+    if (!byId[startId]) return result;
+    result.add(startId);
+
+    // Build successor map for forward tracing
+    const succMap = new Map<string, string[]>();
+    for (const a of activities) {
+        if (!a.preds) continue;
+        for (const p of a.preds) {
+            if (!succMap.has(p.id)) succMap.set(p.id, []);
+            succMap.get(p.id)!.push(a.id);
+        }
+    }
+
+    // Backward trace (predecessors)
+    if (direction === 'bwd' || direction === 'both') {
+        const queue = [startId];
+        const visited = new Set<string>([startId]);
+        while (queue.length > 0) {
+            const curId = queue.shift()!;
+            const cur = byId[curId];
+            if (!cur || !cur.preds) continue;
+            for (const p of cur.preds) {
+                if (!visited.has(p.id) && byId[p.id]) {
+                    visited.add(p.id);
+                    result.add(p.id);
+                    queue.push(p.id);
+                }
+            }
+        }
+    }
+
+    // Forward trace (successors)
+    if (direction === 'fwd' || direction === 'both') {
+        const queue = [startId];
+        const visited = new Set<string>([startId]);
+        while (queue.length > 0) {
+            const curId = queue.shift()!;
+            const succs = succMap.get(curId) || [];
+            for (const sId of succs) {
+                if (!visited.has(sId) && byId[sId]) {
+                    visited.add(sId);
+                    result.add(sId);
+                    queue.push(sId);
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
 // ─── Multiple Float Paths (Access Critical Path) ────────────────
 
 /**

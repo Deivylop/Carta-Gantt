@@ -53,7 +53,7 @@ interface DragPreview {
 
 export default function GanttTimeline() {
     const { state, dispatch } = useGantt();
-    const { visRows, zoom, totalDays, timelineStart: projStart, statusDate, _cpmStatusDate, selIdx, lightMode, activities, defCal, pxPerDay, showProjRow: _showProjRow, showTodayLine, showStatusLine, showDependencies, mfpConfig } = state;
+    const { visRows, zoom, totalDays, timelineStart: projStart, statusDate, _cpmStatusDate, selIdx, lightMode, activities, defCal, pxPerDay, showProjRow: _showProjRow, showTodayLine, showStatusLine, showDependencies, mfpConfig, chainIds, chainTrace } = state;
     // For bar rendering, use the statusDate from last CPM calc (not the live one from the picker)
     const barStatusDate = _cpmStatusDate || statusDate;
     const PX = pxPerDay;
@@ -300,6 +300,7 @@ export default function GanttTimeline() {
         }
 
         // Draw bars
+        const chainActive = chainTrace != null && chainIds.size > 0;
         visRows.forEach((r, i) => {
             if (!r.ES) return;
             const y = i * ROW_H;
@@ -307,6 +308,9 @@ export default function GanttTimeline() {
             const efX = r.EF ? dayDiff(projStart, r.EF) * PX : bx;
             const bw = Math.max(r.type === 'milestone' ? 0 : 4, efX - bx);
             const by = y + 5, bh = ROW_H - 10;
+            const inChain = chainActive && chainIds.has(r.id);
+            const dimmed = chainActive && !inChain && !r._isProjRow;
+            if (dimmed) ctx.globalAlpha = 0.18;
             const color = (() => {
                 if (mfpConfig.enabled && r._floatPath != null) {
                     const MFP_COLORS = ['#FF0000','#FF6600','#FFCC00','#00AA00','#0066FF','#9933FF','#FF66CC','#00CCCC','#996633','#666666'];
@@ -314,6 +318,17 @@ export default function GanttTimeline() {
                 }
                 return r.crit ? '#ef4444' : (r.lv <= 1 ? '#6366f1' : '#3b82f6');
             })();
+
+            // Chain trace: highlight origin activity with glow
+            const isChainOrigin = chainTrace != null && r.id === chainTrace.actId;
+            if (inChain && !dimmed && r.type !== 'milestone' && r.type !== 'summary') {
+                ctx.save();
+                if (isChainOrigin) { ctx.shadowColor = '#facc15'; ctx.shadowBlur = 10; }
+                else { ctx.shadowColor = '#60a5fa'; ctx.shadowBlur = 6; }
+                ctx.fillStyle = isChainOrigin ? '#facc15' : color;
+                ctx.fillRect(bx, by, bw, bh);
+                ctx.restore();
+            }
 
             if (r.type === 'milestone') {
                 const mx = bx, my = y + ROW_H / 2, sz = 7;
@@ -460,6 +475,7 @@ export default function GanttTimeline() {
                 ctx.strokeStyle = t.blDiamond; ctx.lineWidth = 1;
                 ctx.beginPath(); ctx.rect(-3, -3, 6, 6); ctx.stroke(); ctx.restore();
             }
+            if (dimmed) ctx.globalAlpha = 1;
         });
 
         // ─── Connection Lines (dependency arrows) ───────────

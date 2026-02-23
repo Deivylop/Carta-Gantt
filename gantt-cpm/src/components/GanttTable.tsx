@@ -103,7 +103,7 @@ const EditableDateCell = ({ dateValue, displayValue, onUpdate, onFocus }: { date
 
 export default function GanttTable() {
     const { state, dispatch } = useGantt();
-    const { visRows, columns, colWidths, selIdx, activities, lightMode, defCal } = state;
+    const { visRows, columns, colWidths, selIdx, activities, lightMode, defCal, chainIds, chainTrace } = state;
     const bodyRef = useRef<HTMLDivElement>(null);
     const [colResize, setColResize] = useState<{ idx: number; startX: number; startW: number } | null>(null);
     const [colPickerOpen, setColPickerOpen] = useState(false);
@@ -340,6 +340,16 @@ export default function GanttTable() {
                         const hasResources = isUsageView && !isResRow && actualAct?.resources && actualAct.resources.length > 0;
                         const rowCls = `trow ${isProj ? 'trow-proj' : `trow-lv${Math.min(a.lv, 2)}`} ${!isProj && isSummary ? 'trow-summary' : ''} ${selIdx === vr._idx ? 'sel' : ''} ${isResRow ? 'trow-resource-assign' : ''}`;
 
+                        // Chain trace highlighting
+                        const chainActive = chainTrace != null && chainIds.size > 0;
+                        const inChain = chainActive && chainIds.has(a.id);
+                        const isChainOrigin = chainTrace != null && a.id === chainTrace.actId;
+                        const chainStyle: React.CSSProperties = chainActive && !isProj
+                            ? inChain
+                                ? { background: isChainOrigin ? (lightMode ? '#fef9c3' : '#422006') : (lightMode ? '#eff6ff' : '#172554'), opacity: 1 }
+                                : { opacity: 0.35 }
+                            : {};
+
                         // In usage view, non-summary rows expand to fit multiple metric lines
                         const needsTallRow = isUsageView && !isProj && !isSummary && usageModes.length > 1;
                         const rowHeight = needsTallRow ? usageRowH : undefined;
@@ -353,7 +363,8 @@ export default function GanttTable() {
                                     opacity: 0.85,
                                     background: lightMode ? '#f0f9ff' : '#0c1929',
                                 } : {}),
-                                ...(hasResources ? { fontWeight: 600 } : {})
+                                ...(hasResources ? { fontWeight: 600 } : {}),
+                                ...chainStyle
                             }}
                                 onClick={() => dispatch({ type: 'SET_SELECTION', index: vr._idx })}
                                 onDoubleClick={() => { dispatch({ type: 'SET_SELECTION', index: vr._idx }); dispatch({ type: 'OPEN_ACT_MODAL' }); }}>

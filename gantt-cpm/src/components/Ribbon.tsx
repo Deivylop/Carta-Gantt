@@ -190,6 +190,57 @@ export default function Ribbon() {
                             })()}
                         </div>
                     </RG>
+                    <RG label="RASTREAR LÓGICA">
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'center' }}>
+                            <div style={{ display: 'flex', gap: 3 }}>
+                                <button className={`rbtn ${state.chainTrace?.dir === 'bwd' ? 'active' : ''}`}
+                                    style={{ padding: '3px 8px', minWidth: 0, fontSize: 9 }}
+                                    title="Cadena hacia atrás (predecesoras)"
+                                    onClick={() => {
+                                        if (state.chainTrace?.dir === 'bwd') dispatch({ type: 'CLEAR_CHAIN_TRACE' });
+                                        else dispatch({ type: 'SET_CHAIN_TRACE', dir: 'bwd' });
+                                    }}>
+                                    <ArrowLeft size={13} />
+                                    <span>Atrás</span>
+                                </button>
+                                <button className={`rbtn ${state.chainTrace?.dir === 'both' ? 'active' : ''}`}
+                                    style={{ padding: '3px 8px', minWidth: 0, fontSize: 9 }}
+                                    title="Cadena completa (ambas direcciones)"
+                                    onClick={() => {
+                                        if (state.chainTrace?.dir === 'both') dispatch({ type: 'CLEAR_CHAIN_TRACE' });
+                                        else dispatch({ type: 'SET_CHAIN_TRACE', dir: 'both' });
+                                    }}>
+                                    <ArrowRight size={13} />
+                                    <span>Ambas</span>
+                                </button>
+                                <button className={`rbtn ${state.chainTrace?.dir === 'fwd' ? 'active' : ''}`}
+                                    style={{ padding: '3px 8px', minWidth: 0, fontSize: 9 }}
+                                    title="Cadena hacia adelante (sucesoras)"
+                                    onClick={() => {
+                                        if (state.chainTrace?.dir === 'fwd') dispatch({ type: 'CLEAR_CHAIN_TRACE' });
+                                        else dispatch({ type: 'SET_CHAIN_TRACE', dir: 'fwd' });
+                                    }}>
+                                    <ArrowRight size={13} />
+                                    <span>Adelante</span>
+                                </button>
+                            </div>
+                            {state.chainTrace && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    <span style={{ fontSize: 8, color: '#60a5fa', fontWeight: 600, lineHeight: 1.1 }}>
+                                        {state.chainTrace.actId} · {state.chainIds.size} act.
+                                    </span>
+                                    <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: 11, padding: 0, lineHeight: 1 }}
+                                        title="Limpiar rastreo"
+                                        onClick={() => dispatch({ type: 'CLEAR_CHAIN_TRACE' })}>✕</button>
+                                </div>
+                            )}
+                            {!state.chainTrace && (
+                                <span style={{ fontSize: 8, color: 'var(--text-muted)', lineHeight: 1.1, textAlign: 'center', maxWidth: 130 }}>
+                                    Selecciona una actividad y presiona un botón
+                                </span>
+                            )}
+                        </div>
+                    </RG>
                     <RG label="FECHA DE CORTE">
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10 }}>
