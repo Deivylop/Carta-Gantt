@@ -254,6 +254,13 @@ function recalc(state: GanttState): GanttState {
     return { ...state, activities: result.activities, totalDays: result.totalDays, visRows, pxPerDay, timelineStart };
 }
 
+/** Actualizar solo los datos sin recalcular CPM (para ediciones de avance, etc.) */
+function refreshVisRows(state: GanttState): GanttState {
+    let acts = ensureProjRow([...state.activities], state.showProjRow, state.projName, state.defCal);
+    computeOutlineNumbers(acts);
+    const visRows = buildVisRows(acts, state.collapsed, state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes);
+    return { ...state, activities: acts, visRows };
+}
 
 // ─── Reducer ────────────────────────────────────────────────────
 function reducer(state: GanttState, action: Action): GanttState {
@@ -301,7 +308,18 @@ function reducer(state: GanttState, action: Action): GanttState {
                 const n = parseInt(val); if (!isNaN(n)) { a.dur = Math.max(0, n); if (n === 0) a.type = 'milestone'; else if (a.type === 'milestone') a.type = 'task'; }
                 a.remDur = null;
             }
-            else if (key === 'remDur') { const n = parseInt(val); if (!isNaN(n)) a.remDur = Math.max(0, n); }
+            else if (key === 'remDur') {
+                const n = parseInt(val);
+                if (!isNaN(n)) {
+                    a.remDur = Math.max(0, n);
+                    if ((a.pct || 0) === 0) {
+                        a.dur = a.remDur;
+                    }
+                }
+                // Solo guardar — NO recalcular CPM
+                acts[action.index] = a;
+                return refreshVisRows({ ...state, activities: acts });
+            }
             else if (key === 'predStr') {
                 a.preds = strToPreds(val);
             }
@@ -324,11 +342,15 @@ function reducer(state: GanttState, action: Action): GanttState {
                 if (!isNaN(n) && n > 0) a.weight = n; else a.weight = null;
             }
             else if (key === 'pct') {
-                a.pct = Math.min(100, Math.max(0, parseInt(val) || 0));
-                if (a.remDur === null || a.remDur === undefined) {
-                    a.remDur = Math.round((a.dur || 0) * (100 - a.pct) / 100);
-                }
+                const newPct = Math.min(100, Math.max(0, parseInt(val) || 0));
+                a.pct = newPct;
+                // Recalcular duración restante basado en el nuevo avance
+                a.remDur = Math.round((a.dur || 0) * (100 - newPct) / 100);
+                // Si no tiene restricción MSO, fijar la fecha de inicio para que no se mueva
                 if (!a.constraint && a.ES) { a.constraint = 'MSO'; a.constraintDate = isoDate(a.ES); a.manual = true; }
+                // Solo guardar — NO recalcular CPM. El usuario debe presionar "Calcular CPM"
+                acts[action.index] = a;
+                return refreshVisRows({ ...state, activities: acts });
             }
             else if (key === 'cal') {
                 const calVal = parseInt(val);
@@ -822,7 +844,15 @@ const now = new Date(); now.setHours(0, 0, 0, 0);
 let _savedCalendars: CustomCalendar[] = [];
 try {
     const raw = localStorage.getItem('gantt-cpm-custom-calendars');
-    if (raw) _savedCalendars = JSON.parse(raw);
+    if (raw) {
+        _savedCalendars = (JSON.parse(raw) as any[]).map((c: any) => ({
+            ...c,
+            // Migrate old single-number hoursPerDay to per-day array
+            hoursPerDay: Array.isArray(c.hoursPerDay)
+                ? c.hoursPerDay
+                : c.workDays.map((wd: boolean) => wd ? (c.hoursPerDay || 8) : 0),
+        }));
+    }
 } catch { }
 
 const initialState: GanttState = {

@@ -19,16 +19,16 @@ function newCalendar(id?: string): CustomCalendar {
         id: id || `cal_${Date.now()}`,
         name: 'Nuevo Calendario',
         workDays: [false, true, true, true, true, true, false],
-        hoursPerDay: 8,
+        hoursPerDay: [0, 8, 8, 8, 8, 8, 0],
         exceptions: [],
     };
 }
 
 /** Built-in calendars (read-only, cannot delete) */
 const BUILT_IN: CustomCalendar[] = [
-    { id: '__5d', name: '5 días (Lun-Vie)', workDays: [false, true, true, true, true, true, false], hoursPerDay: 8, exceptions: [] },
-    { id: '__6d', name: '6 días (Lun-Sáb)', workDays: [false, true, true, true, true, true, true], hoursPerDay: 8, exceptions: [] },
-    { id: '__7d', name: '7 días (Todos)', workDays: [true, true, true, true, true, true, true], hoursPerDay: 8, exceptions: [] },
+    { id: '__5d', name: '5 días (Lun-Vie)', workDays: [false, true, true, true, true, true, false], hoursPerDay: [0, 8, 8, 8, 8, 8, 0], exceptions: [] },
+    { id: '__6d', name: '6 días (Lun-Sáb)', workDays: [false, true, true, true, true, true, true], hoursPerDay: [0, 8, 8, 8, 8, 8, 8], exceptions: [] },
+    { id: '__7d', name: '7 días (Todos)', workDays: [true, true, true, true, true, true, true], hoursPerDay: [8, 8, 8, 8, 8, 8, 8], exceptions: [] },
 ];
 
 export default function CalendarModal() {
@@ -44,7 +44,7 @@ export default function CalendarModal() {
 
     const selectCal = useCallback((cal: CustomCalendar) => {
         setSelId(cal.id);
-        setDraft({ ...cal, workDays: [...cal.workDays] as any, exceptions: [...cal.exceptions] });
+        setDraft({ ...cal, workDays: [...cal.workDays] as any, hoursPerDay: [...cal.hoursPerDay] as any, exceptions: [...cal.exceptions] });
     }, []);
 
     const handleAdd = () => {
@@ -55,7 +55,7 @@ export default function CalendarModal() {
 
     const handleDuplicate = () => {
         if (!draft) return;
-        const dup: CustomCalendar = { ...draft, id: `cal_${Date.now()}`, name: draft.name + ' (copia)', workDays: [...draft.workDays] as any, exceptions: [...draft.exceptions] };
+        const dup: CustomCalendar = { ...draft, id: `cal_${Date.now()}`, name: draft.name + ' (copia)', workDays: [...draft.workDays] as any, hoursPerDay: [...draft.hoursPerDay] as any, exceptions: [...draft.exceptions] };
         dispatch({ type: 'SAVE_CALENDAR', calendar: dup });
         selectCal(dup);
     };
@@ -76,8 +76,12 @@ export default function CalendarModal() {
     const toggleWorkDay = (idx: number) => {
         if (!draft || isBuiltIn(draft.id)) return;
         const wd = [...draft.workDays] as [boolean, boolean, boolean, boolean, boolean, boolean, boolean];
+        const hpd = [...draft.hoursPerDay] as [number, number, number, number, number, number, number];
         wd[idx] = !wd[idx];
-        setDraft({ ...draft, workDays: wd });
+        // When enabling a day, default to 8h; when disabling, set to 0
+        if (wd[idx] && hpd[idx] === 0) hpd[idx] = 8;
+        if (!wd[idx]) hpd[idx] = 0;
+        setDraft({ ...draft, workDays: wd, hoursPerDay: hpd });
     };
 
     const toggleException = (dateISO: string) => {
@@ -126,9 +130,9 @@ export default function CalendarModal() {
                 style={{ ...resizeStyle, maxHeight: '92vh', maxWidth: '95vw', display: 'flex', flexDirection: 'column', padding: 0 }}>
 
                 {/* Header */}
-                <div className="modal-header" style={{ padding: '12px 18px', borderBottom: `1px solid ${borderColor}` }}>
+                <div className="modal-header" style={{ padding: '12px 18px', borderBottom: `1px solid ${borderColor}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <h2 style={{ margin: 0, fontSize: 15 }}>📅 Calendarios del Proyecto</h2>
-                    <button className="modal-close" onClick={close}>✕</button>
+                    <button className="modal-close" onClick={close} style={{ marginLeft: 'auto' }}>✕</button>
                 </div>
 
                 {/* Body = left list + right editor */}
@@ -192,7 +196,7 @@ export default function CalendarModal() {
                         ) : (
                             <div style={{ flex: 1, overflowY: 'auto', padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-                                {/* Name & hours */}
+                                {/* Name */}
                                 <div style={{ background: bgPanel, padding: 12, borderRadius: 6, display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 200 }}>
                                         <label style={{ fontSize: 11, fontWeight: 600 }}>Nombre:</label>
@@ -200,35 +204,43 @@ export default function CalendarModal() {
                                             value={draft.name} disabled={readOnly}
                                             onChange={e => setDraft({ ...draft, name: e.target.value })} />
                                     </div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                        <label style={{ fontSize: 11, fontWeight: 600 }}>Horas/día:</label>
-                                        <input className="form-input" type="number" min={1} max={24} step={0.5}
-                                            style={{ fontSize: 11, padding: '4px 8px', width: 60 }}
-                                            value={draft.hoursPerDay} disabled={readOnly}
-                                            onChange={e => setDraft({ ...draft, hoursPerDay: parseFloat(e.target.value) || 8 })} />
-                                    </div>
                                     {readOnly && (
                                         <span style={{ fontSize: 10, color: '#f59e0b', fontStyle: 'italic' }}>🔒 Solo lectura</span>
                                     )}
                                 </div>
 
-                                {/* Work day toggles */}
+                                {/* Work day toggles + per-day hours */}
                                 <div>
-                                    <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 8 }}>Días hábiles de la semana:</div>
+                                    <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 8 }}>Días hábiles y horas por día:</div>
                                     <div style={{ display: 'flex', gap: 6 }}>
                                         {DAY_NAMES.map((name, i) => (
-                                            <button key={i} onClick={() => toggleWorkDay(i)} disabled={readOnly}
-                                                style={{
-                                                    flex: 1, height: 34, borderRadius: 5, fontSize: 11, fontWeight: 600,
-                                                    border: 'none', cursor: readOnly ? 'default' : 'pointer',
-                                                    background: draft.workDays[i] ? '#22c55e' : '#ef4444',
-                                                    color: '#fff', opacity: readOnly ? 0.6 : 1,
-                                                    transition: 'background 0.15s, transform 0.1s',
-                                                }}>
-                                                {name}
-                                            </button>
+                                            <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                                                <button onClick={() => toggleWorkDay(i)} disabled={readOnly}
+                                                    style={{
+                                                        width: '100%', height: 34, borderRadius: 5, fontSize: 11, fontWeight: 600,
+                                                        border: 'none', cursor: readOnly ? 'default' : 'pointer',
+                                                        background: draft.workDays[i] ? '#22c55e' : '#ef4444',
+                                                        color: '#fff', opacity: readOnly ? 0.6 : 1,
+                                                        transition: 'background 0.15s, transform 0.1s',
+                                                    }}>
+                                                    {name}
+                                                </button>
+                                                <input className="form-input" type="number" min={0} max={24} step={0.5}
+                                                    style={{ fontSize: 10, padding: '2px 4px', width: '100%', textAlign: 'center' }}
+                                                    value={draft.hoursPerDay[i]} disabled={readOnly}
+                                                    title={`Horas de trabajo - ${name}`}
+                                                    onChange={e => {
+                                                        const hpd = [...draft.hoursPerDay] as [number, number, number, number, number, number, number];
+                                                        hpd[i] = Math.max(0, Math.min(24, parseFloat(e.target.value) || 0));
+                                                        // Auto-sync workDays: >0 hours = work day
+                                                        const wd = [...draft.workDays] as [boolean, boolean, boolean, boolean, boolean, boolean, boolean];
+                                                        wd[i] = hpd[i] > 0;
+                                                        setDraft({ ...draft, hoursPerDay: hpd, workDays: wd });
+                                                    }} />
+                                            </div>
                                         ))}
                                     </div>
+                                    <div style={{ fontSize: 9, color: mutedColor, marginTop: 4 }}>Horas por día (0 = no hábil)</div>
                                 </div>
 
                                 {/* Monthly calendar */}

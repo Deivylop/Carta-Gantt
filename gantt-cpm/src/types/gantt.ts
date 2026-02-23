@@ -21,8 +21,8 @@ export interface CustomCalendar {
     name: string;             // display name (e.g. 'Estándar', 'Montec')
     /** Which days of week are work days. Index 0=Sun, 1=Mon … 6=Sat */
     workDays: [boolean, boolean, boolean, boolean, boolean, boolean, boolean];
-    /** Hours of work per day (default 8) */
-    hoursPerDay: number;
+    /** Hours of work per day for each weekday. Index 0=Sun, 1=Mon … 6=Sat */
+    hoursPerDay: [number, number, number, number, number, number, number];
     /** Specific non-work dates (ISO strings 'YYYY-MM-DD') */
     exceptions: string[];
     /** Whether this is the default project calendar */

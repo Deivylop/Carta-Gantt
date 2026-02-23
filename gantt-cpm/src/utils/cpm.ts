@@ -22,7 +22,11 @@ function isWorkDayForCal(d: Date, cal: CalendarType): boolean {
         const iso = d.toISOString().slice(0, 10);
         // Check exceptions first (non-work days override)
         if (cc.exceptions.includes(iso)) return false;
-        return cc.workDays[d.getDay()];
+        const dow = d.getDay();
+        // Use per-day hours: a day with >0 hours is a work day
+        const hpd = cc.hoursPerDay;
+        if (Array.isArray(hpd)) return hpd[dow] > 0 && cc.workDays[dow];
+        return cc.workDays[dow];
     }
     // Built-in calendars
     const wd = d.getDay();
@@ -158,9 +162,9 @@ export function newActivity(id?: string, defCal: CalendarType = 6): Activity {
         weight: null,
         resources: [],
         lv: 0,
-        constraint: 'MSO',
-        constraintDate: isoDate(new Date()),
-        manual: true,
+        constraint: '',
+        constraintDate: '',
+        manual: false,
         ES: null, EF: null, LS: null, LF: null, TF: null,
         crit: false,
         blDur: null, blES: null, blEF: null, blCal: null,
@@ -256,7 +260,7 @@ export function calcCPM(
     if (statusDate) {
         const sd = new Date(statusDate);
 
-        // Step 1: Compute retained dates for individual activities
+        // Paso 1: Calcular duraciones realizadas/restantes para actividades con avance
         activities.forEach(a => {
             if (a.type === 'summary' || a.type === 'milestone') return;
             const pct = a.pct || 0;
@@ -277,20 +281,28 @@ export function calcCPM(
             }
         });
 
-        // Step 2: Recalculate forward pass respecting relationships
+        // Paso 2: Recalcular paso adelante respetando relaciones y restricciones
         activities.forEach(a => { a._retES = null; a._retEF = null; });
 
         const getRetES = (a: Activity): Date | null => {
             if (a._retES !== undefined && a._retES !== null) return a._retES;
-            const pct = a.pct || 0; // Define pct here
+            const pct = a.pct || 0;
             if (a.type === 'summary' || pct >= 100) {
                 a._retES = a.ES; a._retEF = a.EF;
                 return a._retES;
             }
 
-            let newES = new Date(a.type === 'milestone' ? a.ES! : sd);
-            if (pct > 0) newES = new Date(sd);
+            // Reprogramación: todas las actividades sin avance completo
+            // se programan desde la fecha de corte hacia adelante
+            let newES: Date;
+            if (a.type === 'milestone') {
+                newES = new Date(a.ES!);
+            } else {
+                // Tanto con avance parcial como sin avance: programar desde fecha de corte
+                newES = new Date(sd);
+            }
 
+            // Considerar predecesoras (pueden empujar más adelante)
             if (a.preds && a.preds.length) {
                 a.preds.forEach(p => {
                     const pred = byId[p.id]; if (!pred) return;
@@ -314,12 +326,17 @@ export function calcCPM(
             }
 
             if (pct > 0 && pct < 100 && a.type !== 'milestone') {
+                // Actividad con avance parcial:
+                // - ES se mantiene intacto (fecha original del usuario)
+                // - Solo el trabajo restante se programa hacia adelante desde newES (fecha de corte o pred)
                 a._remStart = newES;
                 const newEF = addWorkDays(newES, a._remDur!, a.cal || defCal);
-                a._retES = a.ES;
+                a._retES = a.ES;   // No tocar ES
                 a._retEF = newEF;
                 a.EF = newEF;
+                // La duración original NO cambia — el usuario la definió
             } else {
+                // Sin avance: mover si newES es posterior al ES actual
                 if (newES > a.ES!) {
                     a.ES = newES;
                     const effDur = a.type === 'milestone' ? 0 : (a.remDur != null ? a.remDur : (a.dur || 0));
@@ -333,11 +350,12 @@ export function calcCPM(
 
         activities.forEach(a => getRetES(a));
 
-        // Recalculate duration as work days between ES and EF
+        // Ajustar duración de acuerdo a Start y End para tareas con avance
         activities.forEach(a => {
-            if (a.type === 'summary' || a.type === 'milestone') return;
-            if (a.ES && a.EF) {
-                a.dur = calWorkDays(a.ES, a.EF, a.cal || defCal);
+            if (a.type !== 'summary' && a.type !== 'milestone' && !a._isProjRow && (a.pct || 0) > 0) {
+                if (a.ES && a.EF) {
+                    a.dur = calWorkDays(a.ES, a.EF, a.cal || defCal);
+                }
             }
         });
     }
@@ -488,29 +506,51 @@ export function calcCPM(
     const totalDays = Math.max(projectDays, dayDiff(projStart, projEnd) + 30 + 60);
 
     activities.forEach(a => { a.LF = new Date(projEnd); });
+    console.log(`[BP] projEnd=${projEnd.toISOString().slice(0, 10)} projStart=${projStart.toISOString().slice(0, 10)}`);
     const sorted = [...activities].sort((a, b) => (b.EF || projEnd).getTime() - (a.EF || projEnd).getTime());
 
+    // Función auxiliar: duración efectiva en días calendario (ES→EF) para el backward pass
+    const effCalDays = (a: Activity): number => {
+        if (a.type === 'milestone') return 0;
+        // Usar la distancia real ES→EF (que refleja la reprogramación)
+        if (a.ES && a.EF) return Math.max(0, dayDiff(a.ES, a.EF));
+        return Math.round((a.dur || 0) * calFactor(a.cal || defCal));
+    };
+
     sorted.forEach(a => {
-        a.LS = addDays(a.LF!, -Math.round((a.type === 'milestone' ? 0 : (a.dur || 0)) * calFactor(a.cal || defCal)));
+        a.LS = addDays(a.LF!, -effCalDays(a));
         if (a.preds) {
             a.preds.forEach(p => {
                 const pred = byId[p.id]; if (!pred) return;
                 let newLF: Date; const lag = p.lag || 0;
                 if (p.type === 'FS') newLF = addWorkDays(a.LS!, -lag, pred.cal || defCal);
-                else if (p.type === 'SS') newLF = addDays(addWorkDays(a.LS!, -lag, pred.cal || defCal), Math.round((pred.type === 'milestone' ? 0 : (pred.dur || 0)) * calFactor(pred.cal || defCal)));
+                else if (p.type === 'SS') newLF = addDays(addWorkDays(a.LS!, -lag, pred.cal || defCal), effCalDays(pred));
                 else if (p.type === 'FF') newLF = addWorkDays(a.LF!, -lag, pred.cal || defCal);
                 else newLF = addWorkDays(a.LS!, -lag, pred.cal || defCal);
-                if (!pred.LF || newLF < pred.LF) pred.LF = new Date(newLF);
+                if (!pred.LF || newLF < pred.LF) {
+                    console.log(`[BP-sort] ${a.id}→${pred.id} type=${p.type}: newLF=${newLF.toISOString().slice(0, 10)} prevLF=${pred.LF?.toISOString().slice(0, 10)}`);
+                    pred.LF = new Date(newLF);
+                }
             });
         }
     });
 
+    // Count how many LF updates were made in sorted loop
+    let lfUpdateCount = 0;
+    activities.forEach(a => {
+        if (a.LF && a.LF.getTime() !== projEnd.getTime()) lfUpdateCount++;
+    });
+    console.warn(`[BP] After sorted loop: ${lfUpdateCount} activities have LF != projEnd out of ${activities.length}`);
+
     activities.forEach(a => {
         if (!a.LF) a.LF = new Date(projEnd);
-        a.LS = addDays(a.LF, -Math.round((a.type === 'milestone' ? 0 : (a.dur || 0)) * calFactor(a.cal || defCal)));
+        a.LS = addDays(a.LF, -effCalDays(a));
         const tf = dayDiff(a.ES || projStart, a.LS || projStart);
         a.TF = Math.max(0, tf);
         a.crit = a.TF <= 1;
+        if (a.type !== 'summary' && !a._isProjRow) {
+            console.log(`[BP] ${a.id} ES=${a.ES?.toISOString().slice(0, 10)} EF=${a.EF?.toISOString().slice(0, 10)} LF=${a.LF?.toISOString().slice(0, 10)} LS=${a.LS?.toISOString().slice(0, 10)} effCal=${effCalDays(a)} TF=${a.TF} crit=${a.crit} preds=${JSON.stringify(a.preds?.map(p => p.id + ':' + p.type))}`);
+        }
         if (a.remDur === null || a.remDur === undefined) {
             a.remDur = Math.round((a.dur || 0) * (100 - (a.pct || 0)) / 100);
         }
