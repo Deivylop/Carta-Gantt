@@ -413,8 +413,16 @@ export function calcCPM(
         });
     }
 
-    // ═══ Summary Tasks: compute ES/EF from children ═══
-    for (let i = 0; i < activities.length; i++) {
+    // ═══ Summary Tasks: compute ES/EF from children (bottom-up) ═══
+    // Process in reverse so nested summaries are resolved before their parents
+    // Note: task EF is "exclusive" (day after last work day) while milestone EF = ES (inclusive).
+    // Normalize milestone EF to exclusive (+1 day) so summary EF is consistent.
+    const childEF = (ch: Activity): Date | null => {
+        if (!ch.EF) return null;
+        if (ch.type === 'milestone') return addDays(ch.EF, 1);
+        return ch.EF;
+    };
+    for (let i = activities.length - 1; i >= 0; i--) {
         const a = activities[i];
         if (a.type !== 'summary') continue;
         let minES: Date | null = null, maxEF: Date | null = null;
@@ -423,14 +431,16 @@ export function calcCPM(
             for (let j = 1; j < activities.length; j++) {
                 const ch = activities[j];
                 if (ch.ES && (!minES || ch.ES < minES)) minES = new Date(ch.ES);
-                if (ch.EF && (!maxEF || ch.EF > maxEF)) maxEF = new Date(ch.EF);
+                const ef = childEF(ch);
+                if (ef && (!maxEF || ef > maxEF)) maxEF = new Date(ef);
             }
         } else {
             for (let j = i + 1; j < activities.length; j++) {
                 if (activities[j].lv <= a.lv) break;
                 const ch = activities[j];
                 if (ch.ES && (!minES || ch.ES < minES)) minES = new Date(ch.ES);
-                if (ch.EF && (!maxEF || ch.EF > maxEF)) maxEF = new Date(ch.EF);
+                const ef = childEF(ch);
+                if (ef && (!maxEF || ef > maxEF)) maxEF = new Date(ef);
             }
         }
         if (minES) a.ES = minES;
@@ -551,7 +561,10 @@ export function calcCPM(
     // ═══ BACKWARD PASS ═══
     let projEnd = new Date(projStart);
     activities.forEach(a => {
-        if (a.EF && a.EF > projEnd) projEnd = new Date(a.EF);
+        if (a.type === 'summary') return; // summaries derive EF from tasks, skip to avoid rounding drift
+        // Normalize milestone EF to exclusive (+1 day) to match task convention
+        const ef = a.EF ? (a.type === 'milestone' ? addDays(a.EF, 1) : a.EF) : null;
+        if (ef && ef > projEnd) projEnd = new Date(ef);
     });
     // projectDays = actual project span (for auto-fit zoom)
     // totalDays = project + buffer months (for scrollable timeline)
