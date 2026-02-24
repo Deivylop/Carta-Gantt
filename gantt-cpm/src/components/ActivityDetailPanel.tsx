@@ -198,6 +198,13 @@ export default function ActivityDetailPanel() {
         dispatch({ type: 'ADD_RESOURCE_TO_ACT', actIdx: selIdx, rid, name, units: '100%', work: 0 });
         setAcOpen(false); setAcFilter('');
     };
+    const addResourceByName = (name: string) => {
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        dispatch({ type: 'PUSH_UNDO' });
+        dispatch({ type: 'ADD_RESOURCE_BY_NAME', actIdx: selIdx, name: trimmed });
+        setAcOpen(false); setAcFilter('');
+    };
 
     const nextAct = () => { if (selIdx < activities.length - 1) dispatch({ type: 'SET_SELECTION', index: selIdx + 1 }); };
     const prevAct = () => { if (selIdx > 0) dispatch({ type: 'SET_SELECTION', index: selIdx - 1 }); };
@@ -247,6 +254,7 @@ export default function ActivityDetailPanel() {
                         acFilter={acFilter} acRef={acRef} setAcOpen={setAcOpen}
                         setAcTarget={setAcTarget} setAcFilter={setAcFilter}
                         acItems={acItems} addResourceToAct={addResourceToAct}
+                        addResourceByName={addResourceByName}
                     />
                 )}
                 {tab === 'predecesores' && (
@@ -504,7 +512,7 @@ function TabEstado({ a, form, F, dirty, applyEstado }: {
 /* ════════════════════════════════════════════════════════════════
    TAB: Recursos
    ════════════════════════════════════════════════════════════════ */
-function TabRecursos({ a, selIdx, dispatch, resourcePool, acOpen, acTarget, acFilter, acRef, setAcOpen, setAcTarget, setAcFilter, acItems, addResourceToAct }: any) {
+function TabRecursos({ a, selIdx, dispatch, resourcePool, acOpen, acTarget, acFilter, acRef, setAcOpen, setAcTarget, setAcFilter, acItems, addResourceToAct, addResourceByName }: any) {
     return (
         <div className="adp-table-tab">
             <table className="adp-tbl">
@@ -530,13 +538,30 @@ function TabRecursos({ a, selIdx, dispatch, resourcePool, acOpen, acTarget, acFi
                 </tbody>
             </table>
             <div className="adp-add-row" ref={acRef} style={{ position: 'relative' }}>
-                <input className="adp-input" placeholder="+ Agregar recurso..."
+                <input className="adp-input" placeholder="+ Agregar recurso (seleccionar o escribir nombre nuevo)..."
+                    style={{ width: '100%' }}
                     value={acTarget === 'res' ? acFilter : ''}
                     onFocus={() => { setAcTarget('res'); setAcFilter(''); setAcOpen(true); }}
-                    onChange={(e: any) => { setAcFilter(e.target.value); setAcOpen(true); }} />
+                    onChange={(e: any) => { setAcFilter(e.target.value); setAcOpen(true); }}
+                    onKeyDown={(e: any) => {
+                        if (e.key === 'Enter' && acFilter.trim()) {
+                            e.preventDefault();
+                            // If there's an exact match in pool, use it; otherwise create new
+                            const match = resourcePool.find((r: any) => r.name.toLowerCase() === acFilter.trim().toLowerCase());
+                            if (match) addResourceToAct(match.rid, match.name);
+                            else addResourceByName(acFilter.trim());
+                        }
+                    }} />
                 {acOpen && acTarget === 'res' && (
                     <div className="adp-ac-list">
-                        {acItems().length === 0 && <div className="adp-ac-empty">Sin coincidencias</div>}
+                        {/* Show "Create new" option when no exact match */}
+                        {acFilter.trim() && !resourcePool.some((r: any) => r.name.toLowerCase() === acFilter.trim().toLowerCase()) && (
+                            <div className="adp-ac-item adp-ac-create" onMouseDown={(e: any) => { e.preventDefault(); addResourceByName(acFilter.trim()); }}>
+                                <span className="adp-ac-id">+</span>
+                                <span className="adp-ac-nm">Crear recurso "<b>{acFilter.trim()}</b>"</span>
+                            </div>
+                        )}
+                        {acItems().length === 0 && !acFilter.trim() && <div className="adp-ac-empty">Sin recursos en el pool</div>}
                         {(acItems() as any[]).slice(0, 20).map((r: any) => (
                             <div key={r.rid || r.name} className="adp-ac-item" onMouseDown={(e: any) => { e.preventDefault(); addResourceToAct(r.rid, r.name); }}>
                                 <span className="adp-ac-id">{r.rid}</span>

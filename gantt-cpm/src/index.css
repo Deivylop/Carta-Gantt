@@ -1982,6 +1982,8 @@ textarea.form-input {
 .adp-ac-id { color: #818cf8; font-weight: 600; min-width: 60px; }
 .adp-ac-nm { color: var(--text-primary, #e5e7eb); }
 .adp-ac-empty { padding: 8px; color: var(--text-muted, #6b7280); font-size: 11px; }
+.adp-ac-create { color: #34d399; border-bottom: 1px solid var(--border-primary, #1f2937); }
+.adp-ac-create .adp-ac-id { color: #34d399; font-size: 14px; }
 
 .adp-summary {
   padding: 6px 8px;

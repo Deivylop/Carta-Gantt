@@ -89,6 +89,13 @@ export default function TaskForm() {
         dispatch({ type: 'ADD_RESOURCE_TO_ACT', actIdx: selIdx, rid, name, units: '100%', work: 0 });
         setAcOpen(false); setAcFilter('');
     };
+    const addResourceByName = (name: string) => {
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        dispatch({ type: 'PUSH_UNDO' });
+        dispatch({ type: 'ADD_RESOURCE_BY_NAME', actIdx: selIdx, name: trimmed });
+        setAcOpen(false); setAcFilter('');
+    };
 
     const handleFieldCommit = (key: string, val: string) => {
         dispatch({ type: 'PUSH_UNDO' });
@@ -311,14 +318,27 @@ export default function TaskForm() {
                         <div className="fp-row" style={{ position: 'relative' }} ref={acRef}>
                             <input
                                 style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', fontSize: 11, padding: '0 4px', outline: 'none', width: '100%' }}
-                                placeholder="+ Agregar recurso..."
+                                placeholder="+ Agregar recurso (seleccionar o escribir nombre nuevo)..."
                                 value={acTarget === 'res' ? acFilter : ''}
                                 onFocus={() => { setAcTarget('res'); setAcFilter(''); setAcOpen(true); }}
                                 onChange={e => { setAcFilter(e.target.value); setAcOpen(true); }}
+                                onKeyDown={e => {
+                                    if (e.key === 'Enter' && acFilter.trim()) {
+                                        e.preventDefault();
+                                        const match = resourcePool.find((r: any) => r.name.toLowerCase() === acFilter.trim().toLowerCase());
+                                        if (match) addResourceToAct(match.rid, match.name);
+                                        else addResourceByName(acFilter.trim());
+                                    }
+                                }}
                             />
                             {acOpen && acTarget === 'res' && (
                                 <div className="ac-list open">
-                                    {acItems().length === 0 && <div className="ac-empty">Sin coincidencias</div>}
+                                    {acFilter.trim() && !resourcePool.some((r: any) => r.name.toLowerCase() === acFilter.trim().toLowerCase()) && (
+                                        <div className="ac-item" style={{ color: '#34d399' }} onMouseDown={e => { e.preventDefault(); addResourceByName(acFilter.trim()); }}>
+                                            <span className="ac-id">+</span><span className="ac-nm">Crear "<b>{acFilter.trim()}</b>"</span>
+                                        </div>
+                                    )}
+                                    {acItems().length === 0 && !acFilter.trim() && <div className="ac-empty">Sin recursos en el pool</div>}
                                     {(acItems() as any[]).slice(0, 20).map((r: any) => (
                                         <div key={r.rid || r.name} className="ac-item" onMouseDown={e => { e.preventDefault(); addResourceToAct(r.rid, r.name); }}>
                                             <span className="ac-id">{r.rid}</span><span className="ac-nm">{r.name}</span>

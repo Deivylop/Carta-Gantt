@@ -5,7 +5,7 @@
 import React, { createContext, useContext, useReducer, type ReactNode } from 'react';
 import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, VisibleRow, ProgressHistoryEntry, BaselineEntry, CustomCalendar, CustomFilter, MFPConfig } from '../types/gantt';
 import { calcCPM, calcMultipleFloatPaths, traceChain, newActivity, isoDate, parseDate, addDays, calWorkDays, fmtDate } from '../utils/cpm';
-import { autoId, computeOutlineNumbers, syncResFromString, deriveResString, distributeWork, strToPreds, predsToStr } from '../utils/helpers';
+import { autoId, computeOutlineNumbers, syncResFromString, deriveResString, distributeWork, strToPreds, predsToStr, newPoolResource } from '../utils/helpers';
 
 // ─── Column Definitions ─────────────────────────────────────────
 export const DEFAULT_COLS: ColumnDef[] = [
@@ -168,6 +168,7 @@ export type Action =
     | { type: 'ADD_SUC'; fromIdx: number; sucIdx: number; linkType: string; lag: number }
     | { type: 'REMOVE_SUC'; sucId: string; predIdx: number }
     | { type: 'ADD_RESOURCE_TO_ACT'; actIdx: number; rid: number; name: string; units: string; work: number }
+    | { type: 'ADD_RESOURCE_BY_NAME'; actIdx: number; name: string }
     | { type: 'REMOVE_RESOURCE_FROM_ACT'; actIdx: number; resIdx: number }
     | { type: 'EDIT_ACT_RESOURCE'; actIdx: number; resIdx: number; field: string; value: any }
     | { type: 'ADD_TO_POOL'; resource: PoolResource }
@@ -1278,6 +1279,28 @@ function reducer(state: GanttState, action: Action): GanttState {
             deriveResString(a, state.resourcePool);
             acts[action.actIdx] = a;
             return recalc({ ...state, activities: acts });
+        }
+
+        case 'ADD_RESOURCE_BY_NAME': {
+            const trimmed = action.name.trim();
+            if (!trimmed) return state;
+            const pool = [...state.resourcePool];
+            let poolR = pool.find(r => r.name.toLowerCase() === trimmed.toLowerCase());
+            if (!poolR) {
+                poolR = newPoolResource();
+                poolR.name = trimmed;
+                poolR.initials = trimmed.split(' ').map(w => w[0] || '').join('').toUpperCase().substring(0, 3);
+                pool.push(poolR);
+            }
+            const acts = [...state.activities];
+            const a = { ...acts[action.actIdx] };
+            if (!a.resources) a.resources = [];
+            if (a.resources.find(r => r.rid === poolR!.rid)) return { ...state, resourcePool: pool };
+            a.resources = [...a.resources, { rid: poolR.rid, name: poolR.name, units: '100%', work: 0 }];
+            a.work = a.resources.reduce((s, r) => s + (r.work || 0), 0);
+            deriveResString(a, pool);
+            acts[action.actIdx] = a;
+            return recalc({ ...state, activities: acts, resourcePool: pool });
         }
 
         case 'REMOVE_RESOURCE_FROM_ACT': {
