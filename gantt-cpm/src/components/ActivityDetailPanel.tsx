@@ -1,13 +1,14 @@
 // ═══════════════════════════════════════════════════════════════════
 // ActivityDetailPanel – P6-style bottom panel for activity updates
-// Tabs: General | Estado | Recursos | Predecesores | Sucesores | Relaciones | Pasos
+// Tabs: General | Estado | Recursos | Predecesores | Sucesores | Relaciones | Pasos | Curva S
 // ═══════════════════════════════════════════════════════════════════
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useGantt } from '../store/GanttContext';
 import { isoDate, fmtDate, addDays, parseDate } from '../utils/cpm';
 import type { Activity, ConstraintType, LinkType } from '../types/gantt';
+import SCurveChart from './SCurveChart';
 
-type Tab = 'general' | 'estado' | 'recursos' | 'predecesores' | 'sucesores' | 'relaciones' | 'pasos';
+type Tab = 'general' | 'estado' | 'recursos' | 'predecesores' | 'sucesores' | 'relaciones' | 'pasos' | 'curvas';
 
 /* ── Constraint labels ── */
 const CONSTRAINT_LABELS: Record<string, string> = {
@@ -62,7 +63,7 @@ export default function ActivityDetailPanel() {
         return (
             <div className="adp-root">
                 <div className="adp-tabs">
-                    {(['General', 'Estado', 'Recursos', 'Predecesores', 'Sucesores', 'Relaciones', 'Pasos'] as const).map(t => (
+                    {(['General', 'Estado', 'Recursos', 'Predecesores', 'Sucesores', 'Relaciones', 'Pasos', 'Curva S'] as const).map(t => (
                         <div key={t} className="adp-tab disabled">{t}</div>
                     ))}
                 </div>
@@ -122,6 +123,7 @@ export default function ActivityDetailPanel() {
         { key: 'sucesores', label: 'Sucesores' },
         { key: 'relaciones', label: 'Relaciones' },
         { key: 'pasos', label: 'Pasos' },
+        { key: 'curvas', label: 'Curva S' },
     ];
 
     return (
@@ -180,6 +182,7 @@ export default function ActivityDetailPanel() {
                 )}
                 {tab === 'relaciones' && <TabRelaciones a={a} activities={activities} succs={succs} preds={preds} dispatch={dispatch} selIdx={selIdx} addPred={addPred} addSuc={addSuc} removePred={removePred} removeSuc={removeSuc} acOpen={acOpen} acTarget={acTarget} acFilter={acFilter} acRef={acRef} setAcOpen={setAcOpen} setAcTarget={setAcTarget} setAcFilter={setAcFilter} acItems={acItems} />}
                 {tab === 'pasos' && <TabPasos a={a} />}
+                {tab === 'curvas' && <TabCurvaS activityId={a.id} />}
             </div>
         </div>
     );
@@ -782,6 +785,42 @@ function TabPasos({ a }: { a: Activity }) {
             <div style={{ padding: 12, color: 'var(--text-muted)', fontSize: 11 }}>
                 <p>Los pasos permiten dividir una actividad en sub-tareas de seguimiento.</p>
                 <p style={{ marginTop: 8, opacity: 0.6 }}>Funcionalidad pendiente de implementación.</p>
+            </div>
+        </div>
+    );
+}
+
+/* ════════════════════════════════════════════════════════════════
+   TAB: Curva S
+   ════════════════════════════════════════════════════════════════ */
+function TabCurvaS({ activityId }: { activityId: string }) {
+    const { state } = useGantt();
+    const [mode, setMode] = useState<'all' | 'selected'>('all');
+
+    // Same width as timeline → canvas renderer is used (synchronized X-axis)
+    const timelineWidth = Math.max(800, state.totalDays * state.pxPerDay);
+
+    return (
+        <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+            {/* Left: mode selector */}
+            <div style={{ width: 180, padding: '12px 14px', borderRight: `1px solid ${state.lightMode ? '#e2e8f0' : '#334155'}`, display: 'flex', flexDirection: 'column', gap: 10, flexShrink: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', opacity: 0.6, marginBottom: 4 }}>Mostrar</div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, cursor: 'pointer' }}>
+                    <input type="radio" name="adpScurveMode" checked={mode === 'all'} onChange={() => setMode('all')} />
+                    Todas las actividades
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, cursor: 'pointer' }}>
+                    <input type="radio" name="adpScurveMode" checked={mode === 'selected'} onChange={() => setMode('selected')} />
+                    Actividad seleccionada
+                </label>
+            </div>
+            {/* Right: chart – exactWidth triggers canvas renderer with same X-axis as timeline */}
+            <div style={{ flex: 1, overflow: 'hidden', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                <SCurveChart
+                    hideHeader
+                    forcedActivityId={mode === 'selected' ? activityId : '__PROJECT__'}
+                    exactWidth={timelineWidth}
+                />
             </div>
         </div>
     );
