@@ -746,9 +746,11 @@ function reducer(state: GanttState, action: Action): GanttState {
             else if (key === 'endDate') {
                 const d = parseDate(val);
                 if (d) {
-                    // Update duration based on new end date
+                    // User picks inclusive end date; EF in CPM is exclusive
+                    // So add 1 day for non-milestones before computing work days
                     if (a.ES) {
-                        const newDur = calWorkDays(a.ES, d, a.cal || state.defCal);
+                        const efDate = a.type === 'milestone' ? d : addDays(d, 1);
+                        const newDur = calWorkDays(a.ES, efDate, a.cal || state.defCal);
                         a.dur = Math.max(0, newDur);
                     }
                 }

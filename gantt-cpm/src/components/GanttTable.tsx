@@ -503,10 +503,16 @@ export default function GanttTable() {
                                         }
 
                                         if (['startDate', 'endDate'].includes(c.key)) {
+                                            const isEnd = c.key === 'endDate';
+                                            // For non-milestone tasks, EF is exclusive (day after last work day)
+                                            // Display & picker should show the inclusive last day (EF - 1)
+                                            const dateVal = isEnd
+                                                ? (a.EF ? (a.type === 'milestone' ? a.EF : addDays(a.EF, -1)) : null)
+                                                : a.ES;
                                             return (
                                                 <div key={c.key} className={`tcell ${c.cls}`} style={style}>
                                                     <EditableDateCell
-                                                        dateValue={c.key === 'startDate' ? a.ES : a.EF}
+                                                        dateValue={dateVal}
                                                         displayValue={val}
                                                         onUpdate={(newVal) => handleBlur(vr._idx, c.key, newVal)}
                                                         onFocus={() => dispatch({ type: 'SET_SELECTION', index: vr._idx })}
