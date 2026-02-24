@@ -9,9 +9,10 @@ interface Props {
     colKey: string | null;
     selCount: number;
     onFillDown: () => void;
+    onFillUp: () => void;
 }
 
-export default function RowContextMenu({ x, y, onClose, onOpenColumns, colKey, selCount, onFillDown }: Props) {
+export default function RowContextMenu({ x, y, onClose, onOpenColumns, colKey, selCount, onFillDown, onFillUp }: Props) {
     const { state, dispatch } = useGantt();
     const menuRef = useRef<HTMLDivElement>(null);
     const [collapseSubOpen, setCollapseSubOpen] = useState(false);
@@ -82,6 +83,13 @@ export default function RowContextMenu({ x, y, onClose, onOpenColumns, colKey, s
                 onClick={() => (!colKey || selCount < 2) ? undefined : act(() => onFillDown())}>
                 <span className="row-ctx-label">Rellenar hacia abajo</span>
                 <span className="row-ctx-shortcut">Ctrl+D</span>
+            </div>
+
+            {/* Rellenar hacia arriba */}
+            <div className={`row-ctx-item${(!colKey || selCount < 2) ? ' disabled' : ''}`}
+                onClick={() => (!colKey || selCount < 2) ? undefined : act(() => onFillUp())}>
+                <span className="row-ctx-label">Rellenar hacia arriba</span>
+                <span className="row-ctx-shortcut">Ctrl+U</span>
             </div>
 
             <div className="row-ctx-sep" />

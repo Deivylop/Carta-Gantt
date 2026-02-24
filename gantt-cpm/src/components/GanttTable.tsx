@@ -350,17 +350,38 @@ export default function GanttTable() {
         });
     }, [activities, selIdx, selIndices, getRawValue, dispatch]);
 
-    // Ctrl+D = Fill Down
+    // Fill Up – copies value from bottommost selected row upward to all others
+    const handleFillUp = useCallback((colKey: string) => {
+        if (!colKey || !FILL_DOWN_KEYS.has(colKey)) return;
+        if (selIndices.size < 2) return;
+        const sorted = Array.from(selIndices).sort((a, b) => a - b);
+        const sourceIdx = sorted[sorted.length - 1]; // bottommost row
+        const sourceAct = activities[sourceIdx];
+        if (!sourceAct || sourceAct._isProjRow) return;
+        const sourceVal = getRawValue(sourceAct, colKey);
+        dispatch({ type: 'PUSH_UNDO' });
+        sorted.slice(0, -1).forEach(idx => {
+            const target = activities[idx];
+            if (!target || target._isProjRow) return;
+            dispatch({ type: 'COMMIT_EDIT', index: idx, key: colKey, value: sourceVal });
+        });
+    }, [activities, selIndices, getRawValue, dispatch]);
+
+    // Ctrl+D = Fill Down, Ctrl+U = Fill Up
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
             if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
                 e.preventDefault();
                 if (ctxColKey) handleFillDown(ctxColKey);
             }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'u') {
+                e.preventDefault();
+                if (ctxColKey) handleFillUp(ctxColKey);
+            }
         };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
-    }, [ctxColKey, handleFillDown]);
+    }, [ctxColKey, handleFillDown, handleFillUp]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
@@ -658,7 +679,7 @@ export default function GanttTable() {
             {colPickerOpen && <ColumnPickerModal onClose={() => setColPickerOpen(false)} />}
 
             {/* Row right-click context menu */}
-            {ctxMenu && <RowContextMenu x={ctxMenu.x} y={ctxMenu.y} onClose={() => setCtxMenu(null)} onOpenColumns={() => setColPickerOpen(true)} colKey={ctxColKey} selCount={selIndices.size} onFillDown={() => { if (ctxColKey) handleFillDown(ctxColKey); }} />}
+            {ctxMenu && <RowContextMenu x={ctxMenu.x} y={ctxMenu.y} onClose={() => setCtxMenu(null)} onOpenColumns={() => setColPickerOpen(true)} colKey={ctxColKey} selCount={selIndices.size} onFillDown={() => { if (ctxColKey) handleFillDown(ctxColKey); }} onFillUp={() => { if (ctxColKey) handleFillUp(ctxColKey); }} />}
         </div>
     );
 }
