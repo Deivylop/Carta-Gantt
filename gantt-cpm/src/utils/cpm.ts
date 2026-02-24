@@ -167,6 +167,8 @@ export function newActivity(id?: string, defCal: CalendarType = 6): Activity {
         manual: false,
         actualStart: null,
         actualFinish: null,
+        suspendDate: null,
+        resumeDate: null,
         ES: null, EF: null, LS: null, LF: null, TF: null,
         crit: false,
         blDur: null, blES: null, blEF: null, blCal: null,
@@ -281,6 +283,48 @@ export function calcCPM(
         }
     });
 
+    // ═══ SUSPEND / RESUME — split bar when activity was halted ═══
+    activities.forEach(a => {
+        if (a.type === 'summary' || a.type === 'milestone') return;
+        if ((a.pct || 0) >= 100) return; // completed activities don't need suspension
+        if (!a.suspendDate || !a.ES) return;
+
+        const suspDate = parseDate(a.suspendDate);
+        if (!suspDate) return;
+
+        const cal = a.cal || defCal;
+
+        // Work days done before suspension
+        const workBefore = calWorkDays(a.ES, suspDate, cal);
+        const totalDur = a.dur || 0;
+        const remainingWork = Math.max(0, totalDur - workBefore);
+
+        if (a.resumeDate) {
+            const resDate = parseDate(a.resumeDate);
+            if (resDate && resDate > suspDate) {
+                // Activity resumes: EF = addWorkDays(resumeDate, remainingWork)
+                const newEF = addWorkDays(resDate, remainingWork, cal);
+                a.EF = newEF;
+                a._isSplit = true;
+                a._actualEnd = suspDate;       // end of first segment (work done)
+                a._remES = resDate;             // start of second segment (remaining)
+                a._remEF = newEF;               // end of second segment
+                a._spanDur = calWorkDays(a.ES, newEF, cal);
+                a._doneDur = workBefore;
+                a._remDur = remainingWork;
+            }
+        } else {
+            // Suspended but no resume date yet → activity is on hold
+            // Show first segment only, EF stays at suspend point
+            a._actualEnd = suspDate;
+            a._doneDur = workBefore;
+            a._remDur = remainingWork;
+            // EF = suspendDate (exclusive) — work stops here
+            a.EF = suspDate;
+            a._spanDur = workBefore;
+        }
+    });
+
     // ═══ RETAINED LOGIC (Status Date reprogramming) ═══
     if (statusDate) {
         const sd = new Date(statusDate);
@@ -290,6 +334,10 @@ export function calcCPM(
             if (a.type === 'summary' || a.type === 'milestone') return;
             const pct = a.pct || 0;
             if (pct >= 100) return;
+
+            // If activity has explicit suspend/resume, those already set _actualEnd, _remDur etc.
+            // Skip automatic calculation for suspended activities.
+            if (a.suspendDate && a._isSplit) return;
 
             if (pct > 0 && pct < 100) {
                 const origDur = a.dur || 0;
@@ -358,6 +406,13 @@ export function calcCPM(
             }
 
             if (pct > 0 && pct < 100 && a.type !== 'milestone') {
+                // If suspended with explicit dates, preserve the suspend/resume split
+                if (a.suspendDate && a._isSplit) {
+                    // Respect the resume-based EF already computed; just update retained pointers
+                    a._retES = a.ES;
+                    a._retEF = a.EF;
+                    return a._retES;
+                }
                 // Actividad con avance parcial:
                 // - ES se mantiene en la fecha de inicio real (actualStart)
                 // - Solo el trabajo restante se programa hacia adelante desde newES (fecha de corte o pred)
@@ -390,13 +445,19 @@ export function calcCPM(
                 a._spanDur = calWorkDays(a.ES!, a.EF!, a.cal || defCal);
             } else {
                 // Sin avance: mover si newES es posterior al ES actual
-                if (newES > a.ES!) {
-                    a.ES = newES;
-                    const effDur = a.type === 'milestone' ? 0 : (a.remDur != null ? a.remDur : (a.dur || 0));
-                    a.EF = addWorkDays(newES, effDur, a.cal || defCal);
+                // But preserve suspend/resume split if set
+                if (a.suspendDate && a._isSplit) {
+                    a._retES = a.ES;
+                    a._retEF = a.EF;
+                } else {
+                    if (newES > a.ES!) {
+                        a.ES = newES;
+                        const effDur = a.type === 'milestone' ? 0 : (a.remDur != null ? a.remDur : (a.dur || 0));
+                        a.EF = addWorkDays(newES, effDur, a.cal || defCal);
+                    }
+                    a._retES = a.ES;
+                    a._retEF = a.EF;
                 }
-                a._retES = a.ES;
-                a._retEF = a.EF;
             }
             return a._retES;
         }

@@ -103,7 +103,7 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
                     bldur: a.blDur != null ? a.blDur : null, bles: a.blES ? a.blES.toISOString() : null,
                     blef: a.blEF ? a.blEF.toISOString() : null,
                     txt1: a.txt1 || '', txt2: a.txt2 || '', txt3: a.txt3 || '',
-                    txt4: (a.actualStart || a.actualFinish) ? ('__AS__' + (a.actualStart || '') + '|' + (a.actualFinish || '')) : (a.txt4 || ''),
+                    txt4: (a.actualStart || a.actualFinish || a.suspendDate || a.resumeDate) ? ('__AS__' + (a.actualStart || '') + '|' + (a.actualFinish || '') + '|' + (a.suspendDate || '') + '|' + (a.resumeDate || '')) : (a.txt4 || ''),
                     txt5: (a.baselines && a.baselines.some((b: any) => b))
                         ? '__BL__' + JSON.stringify(a.baselines.map((bl: any) => bl ? { d: bl.dur, s: bl.ES ? bl.ES.toISOString() : null, e: bl.EF ? bl.EF.toISOString() : null, c: bl.cal, t: bl.savedAt, n: bl.name || '', desc: bl.description || '', p: bl.pct || 0, w: bl.work || 0, wt: bl.weight, sd: bl.statusDate || '' } : null))
                         : (a.txt5 || '')
@@ -217,11 +217,15 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
             const parts = rawTxt4.slice(6).split('|');
             na.actualStart = parts[0] || null;
             na.actualFinish = parts[1] || null;
+            na.suspendDate = parts[2] || null;
+            na.resumeDate = parts[3] || null;
             na.txt4 = '';
         } else {
             na.txt4 = rawTxt4;
             na.actualStart = null;
             na.actualFinish = null;
+            na.suspendDate = null;
+            na.resumeDate = null;
         }
         // Restore multiple baselines from txt5 if encoded
         const rawTxt5 = a.txt5 || '';

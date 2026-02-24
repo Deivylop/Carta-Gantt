@@ -89,6 +89,8 @@ export interface Activity {
     manual: boolean;      // manually scheduled
     actualStart: string | null; // Actual Start date (ISO) – set when progress > 0
     actualFinish: string | null; // Actual Finish date (ISO) – set when progress = 100
+    suspendDate: string | null;  // Suspend date (ISO) – when work was halted
+    resumeDate: string | null;   // Resume date (ISO) – when work resumes after suspension
 
     // ── CPM Calculated Fields ──
     ES: Date | null;      // Early Start

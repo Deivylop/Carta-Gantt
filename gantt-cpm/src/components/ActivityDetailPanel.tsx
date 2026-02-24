@@ -352,13 +352,22 @@ function TabEstado({ a, dispatch, selIdx }: {
                                 onBlur={e => { const v = e.target.value; if (v !== (a.actualFinish || '')) update({ actualFinish: v || null }); }}
                                 disabled={!finished} />
                             <label className="adp-field-label" style={{ marginLeft: 16 }}>Suspender</label>
-                            <input className="adp-input" type="date" />
+                            <input className="adp-input" type="date" key={`${a.id}-susp-${a.suspendDate}`}
+                                defaultValue={a.suspendDate || ''}
+                                onBlur={e => { const v = e.target.value; if (v !== (a.suspendDate || '')) update({ suspendDate: v || null }); }}
+                            />
                         </div>
                         <div className="adp-field-row">
                             <label className="adp-field-label" style={{ minWidth: 90 }}>Final previsto</label>
-                            <input className="adp-input" type="date" />
+                            <input className="adp-input" type="date"
+                                value={a.EF ? isoDate(a.type === 'milestone' ? a.EF : addDays(a.EF, -1)) : ''}
+                                readOnly />
                             <label className="adp-field-label" style={{ marginLeft: 16 }}>Reanudar</label>
-                            <input className="adp-input" type="date" />
+                            <input className="adp-input" type="date" key={`${a.id}-res-${a.resumeDate}`}
+                                defaultValue={a.resumeDate || ''}
+                                onBlur={e => { const v = e.target.value; if (v !== (a.resumeDate || '')) update({ resumeDate: v || null }); }}
+                                disabled={!a.suspendDate}
+                            />
                         </div>
                     </div>
                 </fieldset>

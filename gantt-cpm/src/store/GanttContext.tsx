@@ -648,6 +648,8 @@ function reducer(state: GanttState, action: Action): GanttState {
             if (newPct === 0) {
                 updated.actualStart = null;
                 updated.actualFinish = null;
+                updated.suspendDate = null;
+                updated.resumeDate = null;
             }
             // Track actualFinish: when pct reaches 100, record the current EF
             if (newPct === 100 && !updated.actualFinish) {
@@ -657,6 +659,14 @@ function reducer(state: GanttState, action: Action): GanttState {
             }
             if (newPct < 100) {
                 updated.actualFinish = null;
+            }
+            if (newPct >= 100) {
+                updated.suspendDate = null;
+                updated.resumeDate = null;
+            }
+            // Clear resumeDate if suspendDate is cleared
+            if (!updated.suspendDate) {
+                updated.resumeDate = null;
             }
             acts[action.index] = updated;
             return recalc({ ...state, activities: acts });
