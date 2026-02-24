@@ -8,6 +8,7 @@ import Ribbon from './components/Ribbon';
 import GanttTable from './components/GanttTable';
 import GanttTimeline from './components/GanttTimeline';
 import TaskForm from './components/TaskForm';
+import ActivityDetailPanel from './components/ActivityDetailPanel';
 import ResourceSheet from './components/ResourceSheet';
 import ActivityModal from './components/modals/ActivityModal';
 import ProjectModal from './components/modals/ProjectModal';
@@ -303,7 +304,7 @@ function AppInner() {
 
           {/* Form Panel */}
           <div style={{ height: formH, flexShrink: 0, overflow: 'hidden' }}>
-            <TaskForm />
+            <ActivityDetailPanel />
           </div>
         </div>
       )}

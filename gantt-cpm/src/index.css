@@ -1653,3 +1653,362 @@ textarea.form-input {
   border-color: #d1d5db;
   box-shadow: 0 6px 20px rgba(0,0,0,.15), 0 2px 6px rgba(0,0,0,.08);
 }
+
+/* ═══════════════ ACTIVITY DETAIL PANEL (P6-style) ═══════════════ */
+.adp-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-primary, #0f172a);
+  font-family: 'Segoe UI', Tahoma, sans-serif;
+  font-size: 11px;
+  color: var(--text-primary, #e5e7eb);
+  overflow: hidden;
+}
+
+/* ── Tab strip ── */
+.adp-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border-bottom: 1px solid var(--border-primary, #1f2937);
+  background: var(--bg-secondary, #1e293b);
+  flex-shrink: 0;
+  min-height: 28px;
+  flex-wrap: wrap;
+}
+
+.adp-tab {
+  padding: 5px 12px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary, #9ca3af);
+  border-bottom: 2px solid transparent;
+  transition: all .15s;
+  user-select: none;
+  white-space: nowrap;
+}
+.adp-tab:hover { color: var(--text-primary, #e5e7eb); background: rgba(99,102,241,.08); }
+.adp-tab.active {
+  color: #818cf8;
+  border-bottom-color: #818cf8;
+  font-weight: 600;
+}
+.adp-tab.disabled { opacity: 0.35; cursor: default; }
+
+/* ── Navigation arrows ── */
+.adp-nav {
+  display: flex;
+  flex-direction: column;
+  margin-left: 4px;
+  gap: 1px;
+}
+.adp-nav-btn {
+  background: none;
+  border: 1px solid var(--border-primary, #1f2937);
+  color: var(--text-secondary, #9ca3af);
+  font-size: 9px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 12px;
+  border-radius: 2px;
+}
+.adp-nav-btn:hover { background: var(--bg-hover, #172040); color: #818cf8; }
+
+/* ── Activity header (in tab strip) ── */
+.adp-act-hdr {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 12px;
+  flex: 1;
+  min-width: 0;
+  padding: 2px 0;
+}
+.adp-lbl {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary, #9ca3af);
+  white-space: nowrap;
+}
+.adp-val {
+  font-size: 11px;
+  color: var(--text-primary, #e5e7eb);
+  background: var(--bg-primary, #0f172a);
+  border: 1px solid var(--border-primary, #1f2937);
+  padding: 1px 6px;
+  border-radius: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Tab body ── */
+.adp-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 6px 8px;
+}
+.adp-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted, #6b7280);
+  font-size: 12px;
+  height: 100%;
+}
+
+/* ── Common field components ── */
+.adp-input {
+  background: var(--bg-primary, #0f172a);
+  border: 1px solid var(--border-primary, #1f2937);
+  color: var(--text-primary, #e5e7eb);
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 2px;
+  outline: none;
+  font-family: inherit;
+}
+.adp-input:focus { border-color: #818cf8; }
+.adp-input:disabled, .adp-input[readOnly] { opacity: 0.6; cursor: default; }
+.adp-input.adp-num { width: 60px; text-align: right; }
+
+.adp-readonly {
+  font-size: 11px;
+  color: var(--text-secondary, #9ca3af);
+  padding: 2px 6px;
+}
+
+.adp-suffix {
+  font-size: 10px;
+  color: var(--text-secondary, #9ca3af);
+  margin-left: 2px;
+}
+
+.adp-field-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.adp-field-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-secondary, #9ca3af);
+  min-width: 80px;
+  white-space: nowrap;
+}
+
+.adp-check-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 90px;
+  font-size: 11px;
+  color: var(--text-primary, #e5e7eb);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.adp-check-label input[type="checkbox"] {
+  accent-color: #818cf8;
+}
+
+/* ── Section & fieldset ── */
+.adp-section {
+  margin-bottom: 10px;
+}
+.adp-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: #818cf8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--border-primary, #1f2937);
+}
+
+.adp-fieldset {
+  border: 1px solid var(--border-primary, #1f2937);
+  border-radius: 3px;
+  padding: 6px 10px 8px;
+  margin: 0;
+}
+.adp-fieldset legend {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary, #9ca3af);
+  padding: 0 4px;
+}
+.adp-fieldset-wide { flex: 1.5; }
+
+/* ── Estado tab layout ── */
+.adp-estado {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.adp-estado-grid {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.adp-estado-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.adp-estado-row2 {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+/* ── Apply bar ── */
+.adp-apply-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px 0;
+}
+.adp-apply-btn {
+  background: #4f46e5;
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  padding: 4px 16px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+}
+.adp-apply-btn:hover { background: #4338ca; }
+
+/* ── General tab ── */
+.adp-general {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.adp-fields-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 16px;
+}
+
+/* ── Table tabs (Pred/Suc/Recursos/Relaciones) ── */
+.adp-table-tab {
+  padding: 2px 0;
+}
+
+.adp-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.adp-tbl th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 10px;
+  color: var(--text-secondary, #9ca3af);
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-primary, #1f2937);
+  background: var(--bg-secondary, #1e293b);
+  white-space: nowrap;
+}
+.adp-tbl td {
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--border-primary, #0f172a);
+  color: var(--text-primary, #e5e7eb);
+}
+.adp-tbl tr:hover td {
+  background: rgba(99,102,241,.06);
+}
+
+.adp-del-cell {
+  color: #ef4444;
+  cursor: pointer;
+  text-align: center;
+  font-weight: 700;
+}
+.adp-del-cell:hover { color: #f87171; }
+
+.adp-inline-sel {
+  background: transparent;
+  border: none;
+  color: inherit;
+  outline: none;
+  font-size: 11px;
+  width: 100%;
+  cursor: pointer;
+}
+.adp-inline-sel option { color: #000; }
+
+.adp-inline-input {
+  background: transparent;
+  border: none;
+  color: inherit;
+  outline: none;
+  font-size: 11px;
+  width: 100%;
+}
+
+/* ── Autocomplete ── */
+.adp-add-row {
+  padding: 4px 0;
+}
+.adp-ac-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  background: var(--bg-modal, #1e293b);
+  border: 1px solid var(--border-secondary, #374151);
+  border-radius: 3px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.4);
+  z-index: 100;
+}
+.adp-ac-item {
+  display: flex;
+  gap: 8px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 11px;
+}
+.adp-ac-item:hover { background: rgba(99,102,241,.15); }
+.adp-ac-id { color: #818cf8; font-weight: 600; min-width: 60px; }
+.adp-ac-nm { color: var(--text-primary, #e5e7eb); }
+.adp-ac-empty { padding: 8px; color: var(--text-muted, #6b7280); font-size: 11px; }
+
+.adp-summary {
+  padding: 6px 8px;
+  font-size: 10px;
+  color: var(--text-muted, #6b7280);
+}
+
+/* ═══════ Light mode overrides for ADP ═══════ */
+.light .adp-root { background: #f8fafc; color: #1f2937; }
+.light .adp-tabs { background: #e2e8f0; border-bottom-color: #cbd5e1; }
+.light .adp-tab { color: #64748b; }
+.light .adp-tab:hover { color: #1e293b; background: rgba(99,102,241,.08); }
+.light .adp-tab.active { color: #4f46e5; border-bottom-color: #4f46e5; }
+.light .adp-nav-btn { border-color: #cbd5e1; color: #64748b; }
+.light .adp-nav-btn:hover { background: #e2e8f0; color: #4f46e5; }
+.light .adp-val { background: #fff; border-color: #cbd5e1; color: #1f2937; }
+.light .adp-input { background: #fff; border-color: #cbd5e1; color: #1f2937; }
+.light .adp-input:focus { border-color: #4f46e5; }
+.light .adp-fieldset { border-color: #cbd5e1; }
+.light .adp-fieldset legend { color: #64748b; }
+.light .adp-field-label { color: #64748b; }
+.light .adp-readonly { color: #64748b; }
+.light .adp-section-title { color: #4f46e5; border-bottom-color: #e2e8f0; }
+.light .adp-tbl th { background: #e2e8f0; color: #475569; border-bottom-color: #cbd5e1; }
+.light .adp-tbl td { border-bottom-color: #f1f5f9; color: #1f2937; }
+.light .adp-tbl tr:hover td { background: rgba(99,102,241,.06); }
+.light .adp-ac-list { background: #fff; border-color: #d1d5db; box-shadow: 0 4px 12px rgba(0,0,0,.1); }
+.light .adp-ac-item:hover { background: rgba(99,102,241,.1); }
+.light .adp-ac-id { color: #4f46e5; }
+.light .adp-lbl { color: #64748b; }
