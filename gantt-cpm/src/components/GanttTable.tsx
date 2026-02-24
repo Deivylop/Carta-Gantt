@@ -29,7 +29,7 @@ const EditableNumberCell = ({ rawValue, displayValue, onUpdate, onFocus, isRowSe
 
     if (isEditing) {
         return (
-            <div style={{ width: '100%', height: '100%', display: 'flex' }} onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
+            <div style={{ width: '100%', height: '100%', display: 'flex' }} onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
                 <input
                     type="number"
                     step={step}
@@ -99,7 +99,7 @@ const EditableDateCell = ({ dateValue, displayValue, onUpdate, onFocus, isRowSel
 
     if (isEditing) {
         return (
-            <div style={{ width: '100%', height: '100%', display: 'flex' }} onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
+            <div style={{ width: '100%', height: '100%', display: 'flex' }} onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
                 <input
                     type="date"
                     style={{ background: 'transparent', outline: 'none', border: 'none', color: 'inherit', padding: 0, margin: 0, width: '100%', height: '100%', fontSize: 'inherit', fontFamily: 'inherit', boxSizing: 'border-box' }}
