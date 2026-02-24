@@ -350,13 +350,21 @@ function buildVisRows(
                 let conditionPasses: boolean[] = [];
                 for (const cond of filter.conditions) {
                     let val = (a as any)[cond.field];
-                    let sVal = String(val || '').trim().toLowerCase();
-                    let tVal = cond.value.trim().toLowerCase();
+                    // Use ?? instead of || so that 0 and false are preserved
+                    let sVal = String(val ?? '').trim().toLowerCase();
+                    // Strip common display suffixes (días, hrs, %) from user input
+                    let tVal = cond.value.trim().toLowerCase()
+                        .replace(/\s*(días|dias|d|hrs|h|%)$/, '');
                     let passCond = false;
 
+                    // For equals/not_equals, also try numeric comparison as fallback
+                    const numVal = parseFloat(sVal);
+                    const numTVal = parseFloat(tVal);
+                    const bothNumeric = !isNaN(numVal) && !isNaN(numTVal) && tVal !== '';
+
                     switch (cond.operator) {
-                        case 'equals': passCond = sVal === tVal; break;
-                        case 'not_equals': passCond = sVal !== tVal; break;
+                        case 'equals': passCond = sVal === tVal || (bothNumeric && numVal === numTVal); break;
+                        case 'not_equals': passCond = bothNumeric ? numVal !== numTVal : sVal !== tVal; break;
                         case 'contains': passCond = sVal.includes(tVal); break;
                         case 'not_contains': passCond = !sVal.includes(tVal); break;
                         case 'is_empty': passCond = sVal === ''; break;
@@ -365,13 +373,11 @@ function buildVisRows(
                         case 'greater_than_or_equal':
                         case 'less_than':
                         case 'less_than_or_equal':
-                            let nVal = parseFloat(sVal);
-                            let nTVal = parseFloat(tVal);
-                            if (!isNaN(nVal) && !isNaN(nTVal)) {
-                                if (cond.operator === 'greater_than') passCond = nVal > nTVal;
-                                if (cond.operator === 'greater_than_or_equal') passCond = nVal >= nTVal;
-                                if (cond.operator === 'less_than') passCond = nVal < nTVal;
-                                if (cond.operator === 'less_than_or_equal') passCond = nVal <= nTVal;
+                            if (bothNumeric) {
+                                if (cond.operator === 'greater_than') passCond = numVal > numTVal;
+                                if (cond.operator === 'greater_than_or_equal') passCond = numVal >= numTVal;
+                                if (cond.operator === 'less_than') passCond = numVal < numTVal;
+                                if (cond.operator === 'less_than_or_equal') passCond = numVal <= numTVal;
                             } else {
                                 // Date fallback
                                 let dVal = parseDate(val);
