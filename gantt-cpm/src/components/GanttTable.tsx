@@ -134,6 +134,9 @@ const EditableDateCell = ({ dateValue, displayValue, onUpdate, onFocus, isRowSel
     );
 };
 
+// Columns that support Fill Down (editable string/number fields)
+const FILL_DOWN_KEYS = new Set(['name', 'id', 'dur', 'remDur', 'pct', 'work', 'weight', 'predStr', 'startDate', 'endDate', 'cal', 'notes', 'res', 'txt1', 'txt2', 'txt3', 'txt4', 'txt5']);
+
 export default function GanttTable() {
     const { state, dispatch } = useGantt();
     const { visRows, columns, colWidths, selIdx, selIndices, activities, lightMode, defCal, chainIds, chainTrace, spotlightEnabled, spotlightEnd, statusDate } = state;
@@ -143,6 +146,7 @@ export default function GanttTable() {
     // Track rows that have been clicked (for edit-on-second-click without waiting for React re-render)
     const touchedRowsRef = useRef<Set<number>>(new Set());
     const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+    const [ctxColKey, setCtxColKey] = useState<string | null>(null);
 
     const visCols = columns.filter(c => c.visible);
     const totalW = visCols.reduce((s, c) => s + colWidths[columns.indexOf(c)], 0);
@@ -330,6 +334,34 @@ export default function GanttTable() {
         dispatch({ type: 'COMMIT_EDIT', index: idx, key, value: val.trim() });
     }, [dispatch]);
 
+    // Fill Down – copies cell value from topmost selected row to all others in the same column
+    const handleFillDown = useCallback((colKey: string) => {
+        if (!colKey || !FILL_DOWN_KEYS.has(colKey)) return;
+        if (selIndices.size < 2) return;
+        const sourceAct = activities[selIdx];
+        if (!sourceAct || sourceAct._isProjRow) return;
+        const sourceVal = getRawValue(sourceAct, colKey);
+        const sortedTargets = Array.from(selIndices).sort((a, b) => a - b).filter(i => i !== selIdx);
+        dispatch({ type: 'PUSH_UNDO' });
+        sortedTargets.forEach(idx => {
+            const target = activities[idx];
+            if (!target || target._isProjRow) return;
+            dispatch({ type: 'COMMIT_EDIT', index: idx, key: colKey, value: sourceVal });
+        });
+    }, [activities, selIdx, selIndices, getRawValue, dispatch]);
+
+    // Ctrl+D = Fill Down
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+                e.preventDefault();
+                if (ctxColKey) handleFillDown(ctxColKey);
+            }
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, [ctxColKey, handleFillDown]);
+
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
             e.preventDefault();
@@ -433,7 +465,13 @@ export default function GanttTable() {
                             }}
                                 onMouseDown={() => { (document.activeElement as HTMLElement)?.blur?.(); }}
                                 onClick={(e) => { touchedRowsRef.current = new Set([vr._idx]); dispatch({ type: 'SET_SELECTION', index: vr._idx, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey }); }}
-                                onContextMenu={(e) => { e.preventDefault(); dispatch({ type: 'SET_SELECTION', index: vr._idx }); setCtxMenu({ x: e.clientX, y: e.clientY }); }}
+                                onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    const cell = (e.target as HTMLElement).closest('[data-colkey]') as HTMLElement | null;
+                                    setCtxColKey(cell?.dataset?.colkey ?? null);
+                                    dispatch({ type: 'SET_SELECTION', index: vr._idx });
+                                    setCtxMenu({ x: e.clientX, y: e.clientY });
+                                }}
                                 onDoubleClick={() => { dispatch({ type: 'SET_SELECTION', index: vr._idx }); dispatch({ type: 'OPEN_ACT_MODAL' }); }}>
                                 {visCols.map((c) => {
                                     const ci = columns.indexOf(c);
@@ -464,7 +502,7 @@ export default function GanttTable() {
                                         const isCrit = a.crit === true;
                                         const critVal = (a.type === 'summary' || a._isProjRow) ? '' : (isCrit ? 'Sí' : 'No');
                                         return (
-                                            <div key={c.key} className={`tcell ${c.cls}`}
+                                            <div key={c.key} data-colkey={c.key} className={`tcell ${c.cls}`}
                                                 style={{ ...style, textAlign: 'center', fontWeight: isCrit ? 700 : 400, color: isCrit ? '#ef4444' : (lightMode ? '#6b7280' : '#6b7280') }}>
                                                 {critVal}
                                             </div>
@@ -474,7 +512,7 @@ export default function GanttTable() {
                                     // Info icon click
                                     if (c.key === '_info' && a.id) {
                                         return (
-                                            <div key={c.key} className={`tcell ${c.cls}`} style={style}
+                                            <div key={c.key} data-colkey={c.key} className={`tcell ${c.cls}`} style={style}
                                                 onClick={e => { e.stopPropagation(); dispatch({ type: 'SET_SELECTION', index: vr._idx }); dispatch({ type: 'OPEN_ACT_MODAL' }); }}>
                                                 ⓘ
                                             </div>
@@ -484,7 +522,7 @@ export default function GanttTable() {
                                     // Mode column (collapse/expand for summaries and resource toggles)
                                     if (c.key === '_mode' && isSummary) {
                                         return (
-                                            <div key={c.key} className={`tcell ${c.cls}`} style={{ ...style, cursor: 'pointer' }}
+                                            <div key={c.key} data-colkey={c.key} className={`tcell ${c.cls}`} style={{ ...style, cursor: 'pointer' }}
                                                 onClick={e => { e.stopPropagation(); dispatch({ type: 'TOGGLE_COLLAPSE', id: a.id }); }}>
                                                 {val}
                                             </div>
@@ -493,7 +531,7 @@ export default function GanttTable() {
                                     // In usage view, show expand/collapse for activities with resources
                                     if (c.key === '_mode' && hasResources) {
                                         return (
-                                            <div key={c.key} className={`tcell ${c.cls}`} style={{ ...style, cursor: 'pointer', color: lightMode ? '#2563eb' : '#60a5fa' }}
+                                            <div key={c.key} data-colkey={c.key} className={`tcell ${c.cls}`} style={{ ...style, cursor: 'pointer', color: lightMode ? '#2563eb' : '#60a5fa' }}
                                                 onClick={e => { e.stopPropagation(); dispatch({ type: 'TOGGLE_RES_COLLAPSE', id: a.id }); }}>
                                                 {val}
                                             </div>
@@ -503,7 +541,7 @@ export default function GanttTable() {
                                     // Calendar select dropdown
                                     if (c.key === 'cal' && c.edit === 'select') {
                                         return (
-                                            <div key={c.key} className={`tcell ${c.cls}`} style={style}>
+                                            <div key={c.key} data-colkey={c.key} className={`tcell ${c.cls}`} style={style}>
                                                 <select className="fp-cell-edit" style={{ width: '100%', height: '100%', background: 'transparent', border: 'none', color: 'inherit', fontSize: 11, outline: 'none', cursor: 'pointer' }}
                                                     value={a.cal || defCal}
                                                     onFocus={() => dispatch({ type: 'SET_SELECTION', index: vr._idx })}
@@ -528,7 +566,7 @@ export default function GanttTable() {
 
                                         if (['dur', 'remDur', 'pct', 'work', 'weight'].includes(c.key)) {
                                             return (
-                                                <div key={c.key} className={`tcell ${c.cls}`} style={style}>
+                                                <div key={c.key} data-colkey={c.key} className={`tcell ${c.cls}`} style={style}>
                                                     <EditableNumberCell
                                                         rawValue={getRawValue(a, c.key)}
                                                         displayValue={val}
@@ -551,7 +589,7 @@ export default function GanttTable() {
                                                 ? (a.EF ? (a.type === 'milestone' ? a.EF : addDays(a.EF, -1)) : null)
                                                 : a.ES;
                                             return (
-                                                <div key={c.key} className={`tcell ${c.cls}`} style={style}>
+                                                <div key={c.key} data-colkey={c.key} className={`tcell ${c.cls}`} style={style}>
                                                     <EditableDateCell
                                                         dateValue={dateVal}
                                                         displayValue={val}
@@ -564,7 +602,7 @@ export default function GanttTable() {
                                         }
 
                                         return (
-                                            <div key={c.key} className={`tcell ${c.cls}`}
+                                            <div key={c.key} data-colkey={c.key} className={`tcell ${c.cls}`}
                                                 style={style}
                                                 contentEditable={!false}
                                                 suppressContentEditableWarning
@@ -588,7 +626,7 @@ export default function GanttTable() {
                                         );
                                     }
 
-                                    return <div key={c.key} className={`tcell ${c.cls}`} style={style}>{val}</div>;
+                                    return <div key={c.key} data-colkey={c.key} className={`tcell ${c.cls}`} style={style}>{val}</div>;
                                 })}
                             </div>
                         );
@@ -617,7 +655,7 @@ export default function GanttTable() {
             {colPickerOpen && <ColumnPickerModal onClose={() => setColPickerOpen(false)} />}
 
             {/* Row right-click context menu */}
-            {ctxMenu && <RowContextMenu x={ctxMenu.x} y={ctxMenu.y} onClose={() => setCtxMenu(null)} onOpenColumns={() => setColPickerOpen(true)} />}
+            {ctxMenu && <RowContextMenu x={ctxMenu.x} y={ctxMenu.y} onClose={() => setCtxMenu(null)} onOpenColumns={() => setColPickerOpen(true)} colKey={ctxColKey} selCount={selIndices.size} onFillDown={() => { if (ctxColKey) handleFillDown(ctxColKey); }} />}
         </div>
     );
 }

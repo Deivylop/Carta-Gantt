@@ -6,9 +6,12 @@ interface Props {
     y: number;
     onClose: () => void;
     onOpenColumns: () => void;
+    colKey: string | null;
+    selCount: number;
+    onFillDown: () => void;
 }
 
-export default function RowContextMenu({ x, y, onClose, onOpenColumns }: Props) {
+export default function RowContextMenu({ x, y, onClose, onOpenColumns, colKey, selCount, onFillDown }: Props) {
     const { state, dispatch } = useGantt();
     const menuRef = useRef<HTMLDivElement>(null);
     const [collapseSubOpen, setCollapseSubOpen] = useState(false);
@@ -72,6 +75,13 @@ export default function RowContextMenu({ x, y, onClose, onOpenColumns }: Props) 
                 onClick={() => hasClipboard && act(() => dispatch({ type: 'PASTE_ACTIVITY' }))}>
                 <span className="row-ctx-label">Pegar</span>
                 <span className="row-ctx-shortcut">Ctrl+V</span>
+            </div>
+
+            {/* Rellenar hacia abajo */}
+            <div className={`row-ctx-item${(!colKey || selCount < 2) ? ' disabled' : ''}`}
+                onClick={() => (!colKey || selCount < 2) ? undefined : act(() => onFillDown())}>
+                <span className="row-ctx-label">Rellenar hacia abajo</span>
+                <span className="row-ctx-shortcut">Ctrl+D</span>
             </div>
 
             <div className="row-ctx-sep" />
