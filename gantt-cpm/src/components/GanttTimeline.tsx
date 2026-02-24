@@ -914,9 +914,10 @@ export default function GanttTimeline() {
                             <div
                                 title={`Reflector: arrastre para cambiar fin (${fmtDate(slEnd)})`}
                                 style={{
-                                    position: 'absolute', top: 0, left: slX2 - 2, width: 4, height: H,
+                                    position: 'absolute', top: 0, left: slX2 - 3, width: 6, height: H,
                                     cursor: 'ew-resize', zIndex: 3,
-                                    background: '#d97706',
+                                    background: 'transparent',
+                                    borderLeft: '2px solid #d97706',
                                 }}
                                 onMouseDown={handleSpotlightDragStart}
                             />
