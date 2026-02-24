@@ -1766,7 +1766,7 @@ textarea.form-input {
   border: 1px solid var(--border-primary, #1f2937);
   color: var(--text-primary, #e5e7eb);
   font-size: 11px;
-  padding: 2px 6px;
+  padding: 3px 6px;
   border-radius: 2px;
   outline: none;
   font-family: inherit;
@@ -1774,14 +1774,28 @@ textarea.form-input {
 .adp-input:focus { border-color: #818cf8; }
 .adp-input:disabled, .adp-input[readOnly] { opacity: 0.6; cursor: default; }
 .adp-input.adp-num {
-  width: 64px;
+  width: 72px;
   text-align: right;
   -moz-appearance: textfield;
 }
+/* Hide spin buttons by default */
 .adp-input.adp-num::-webkit-inner-spin-button,
 .adp-input.adp-num::-webkit-outer-spin-button {
-  opacity: 1;
+  opacity: 0;
   height: 20px;
+  pointer-events: none;
+}
+/* Show spin buttons only on hover/focus */
+.adp-input.adp-num:hover::-webkit-inner-spin-button,
+.adp-input.adp-num:hover::-webkit-outer-spin-button,
+.adp-input.adp-num:focus::-webkit-inner-spin-button,
+.adp-input.adp-num:focus::-webkit-outer-spin-button {
+  opacity: 1;
+  pointer-events: auto;
+}
+.adp-input.adp-num:hover,
+.adp-input.adp-num:focus {
+  -moz-appearance: auto;
 }
 
 .adp-readonly {
@@ -1799,14 +1813,14 @@ textarea.form-input {
 .adp-field-row {
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin-bottom: 2px;
+  gap: 6px;
+  margin-bottom: 3px;
 }
 .adp-field-label {
   font-size: 10px;
   font-weight: 500;
   color: var(--text-secondary, #9ca3af);
-  min-width: 80px;
+  min-width: 85px;
   white-space: nowrap;
 }
 
@@ -1842,8 +1856,10 @@ textarea.form-input {
 .adp-fieldset {
   border: 1px solid var(--border-primary, #1f2937);
   border-radius: 3px;
-  padding: 4px 8px 6px;
+  padding: 6px 10px 8px;
   margin: 0;
+  flex: 1;
+  min-width: 0;
 }
 .adp-fieldset legend {
   font-size: 10px;
@@ -1857,11 +1873,11 @@ textarea.form-input {
 .adp-estado {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 .adp-estado-grid {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   align-items: flex-start;
 }
 .adp-estado-checks {

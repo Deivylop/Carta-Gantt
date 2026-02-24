@@ -12,15 +12,20 @@ import RowContextMenu from './RowContextMenu';
 const EditableNumberCell = ({ rawValue, displayValue, onUpdate, onFocus, isRowSelected, step, min, max }: { rawValue: string, displayValue: string, onUpdate: (val: string) => void, onFocus: () => void, isRowSelected: boolean, step?: number, min?: number, max?: number }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [val, setVal] = useState(rawValue);
+    const wasSelectedRef = useRef(false);
 
-    useEffect(() => {
-        setVal(rawValue);
-    }, [rawValue]);
+    useEffect(() => { setVal(rawValue); }, [rawValue]);
+    useEffect(() => { wasSelectedRef.current = isRowSelected; }, [isRowSelected]);
 
     // Exit edit mode when row is deselected
     useEffect(() => {
         if (!isRowSelected && isEditing) { setIsEditing(false); onUpdate(val); }
     }, [isRowSelected]);
+
+    const enterEdit = (e: React.MouseEvent) => {
+        e.preventDefault(); e.stopPropagation();
+        setIsEditing(true); onFocus();
+    };
 
     if (isEditing) {
         return (
@@ -51,11 +56,13 @@ const EditableNumberCell = ({ rawValue, displayValue, onUpdate, onFocus, isRowSe
             style={{ cursor: 'text', display: 'flex', alignItems: 'center', justifyContent: 'inherit', width: '100%', height: '100%' }}
             onMouseDown={(e) => {
                 if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
-                if (!isRowSelected) return; // first click selects row, second click edits
-                e.preventDefault(); e.stopPropagation(); setIsEditing(true); onFocus();
+                // Use ref to check selection (avoids React render delay)
+                if (isRowSelected || wasSelectedRef.current) { enterEdit(e); return; }
+                // First click: let it propagate to select the row, mark as selected for next click
+                wasSelectedRef.current = true;
             }}
-            onDoubleClick={(e) => { e.stopPropagation(); if (!isEditing) { setIsEditing(true); onFocus(); } }}
-            onClick={(e) => { if (isRowSelected && !e.ctrlKey && !e.metaKey && !e.shiftKey) e.stopPropagation(); }}
+            onDoubleClick={(e) => { if (!isEditing) enterEdit(e); }}
+            onClick={(e) => { if ((isRowSelected || wasSelectedRef.current) && !e.ctrlKey && !e.metaKey && !e.shiftKey) e.stopPropagation(); }}
         >
             {displayValue}
         </span>
@@ -64,6 +71,7 @@ const EditableNumberCell = ({ rawValue, displayValue, onUpdate, onFocus, isRowSe
 
 const EditableDateCell = ({ dateValue, displayValue, onUpdate, onFocus, isRowSelected }: { dateValue: Date | null | undefined, displayValue: string, onUpdate: (val: string) => void, onFocus: () => void, isRowSelected: boolean }) => {
     const [isEditing, setIsEditing] = useState(false);
+    const wasSelectedRef = useRef(false);
 
     // Convert Date to YYYY-MM-DD for input
     const toIsoDate = (d: Date | null | undefined) => {
@@ -76,14 +84,18 @@ const EditableDateCell = ({ dateValue, displayValue, onUpdate, onFocus, isRowSel
 
     const [val, setVal] = useState(toIsoDate(dateValue));
 
-    useEffect(() => {
-        setVal(toIsoDate(dateValue));
-    }, [dateValue]);
+    useEffect(() => { setVal(toIsoDate(dateValue)); }, [dateValue]);
+    useEffect(() => { wasSelectedRef.current = isRowSelected; }, [isRowSelected]);
 
     // Exit edit mode when row is deselected
     useEffect(() => {
         if (!isRowSelected && isEditing) { setIsEditing(false); onUpdate(val); }
     }, [isRowSelected]);
+
+    const enterEdit = (e: React.MouseEvent) => {
+        e.preventDefault(); e.stopPropagation();
+        setIsEditing(true); onFocus();
+    };
 
     if (isEditing) {
         return (
@@ -111,11 +123,11 @@ const EditableDateCell = ({ dateValue, displayValue, onUpdate, onFocus, isRowSel
             style={{ cursor: 'text', display: 'flex', alignItems: 'center', justifyContent: 'inherit', width: '100%', height: '100%' }}
             onMouseDown={(e) => {
                 if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
-                if (!isRowSelected) return; // first click selects row, second click edits
-                e.preventDefault(); e.stopPropagation(); setIsEditing(true); onFocus();
+                if (isRowSelected || wasSelectedRef.current) { enterEdit(e); return; }
+                wasSelectedRef.current = true;
             }}
-            onDoubleClick={(e) => { e.stopPropagation(); if (!isEditing) { setIsEditing(true); onFocus(); } }}
-            onClick={(e) => { if (isRowSelected && !e.ctrlKey && !e.metaKey && !e.shiftKey) e.stopPropagation(); }}
+            onDoubleClick={(e) => { if (!isEditing) enterEdit(e); }}
+            onClick={(e) => { if ((isRowSelected || wasSelectedRef.current) && !e.ctrlKey && !e.metaKey && !e.shiftKey) e.stopPropagation(); }}
         >
             {displayValue}
         </span>
@@ -128,6 +140,8 @@ export default function GanttTable() {
     const bodyRef = useRef<HTMLDivElement>(null);
     const [colResize, setColResize] = useState<{ idx: number; startX: number; startW: number } | null>(null);
     const [colPickerOpen, setColPickerOpen] = useState(false);
+    // Track rows that have been clicked (for edit-on-second-click without waiting for React re-render)
+    const touchedRowsRef = useRef<Set<number>>(new Set());
     const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
 
     const visCols = columns.filter(c => c.visible);
@@ -389,7 +403,7 @@ export default function GanttTable() {
                                 ...chainStyle
                             }}
                                 onMouseDown={() => { (document.activeElement as HTMLElement)?.blur?.(); }}
-                                onClick={(e) => dispatch({ type: 'SET_SELECTION', index: vr._idx, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })}
+                                onClick={(e) => { touchedRowsRef.current = new Set([vr._idx]); dispatch({ type: 'SET_SELECTION', index: vr._idx, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey }); }}
                                 onContextMenu={(e) => { e.preventDefault(); dispatch({ type: 'SET_SELECTION', index: vr._idx }); setCtxMenu({ x: e.clientX, y: e.clientY }); }}
                                 onDoubleClick={() => { dispatch({ type: 'SET_SELECTION', index: vr._idx }); dispatch({ type: 'OPEN_ACT_MODAL' }); }}>
                                 {visCols.map((c) => {
@@ -510,11 +524,12 @@ export default function GanttTable() {
                                                 spellCheck={false}
                                                 onMouseDown={e => {
                                                     if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) {
-                                                        e.preventDefault(); // prevent focus/edit on right-click or multi-select
-                                                        return;
+                                                        e.preventDefault(); return;
                                                     }
-                                                    if (!selIndices.has(vr._idx)) {
-                                                        e.preventDefault(); // first click selects row, second click edits
+                                                    const alreadySel = selIndices.has(vr._idx) || touchedRowsRef.current.has(vr._idx);
+                                                    if (!alreadySel) {
+                                                        e.preventDefault(); // first click selects row
+                                                        touchedRowsRef.current = new Set([vr._idx]);
                                                     }
                                                 }}
                                                 onContextMenu={e => { e.preventDefault(); e.currentTarget.blur(); }}
