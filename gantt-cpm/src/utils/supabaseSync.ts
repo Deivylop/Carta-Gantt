@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import type { GanttState } from '../store/GanttContext';
+import { BUILTIN_FILTERS } from '../store/GanttContext';
 import { newActivity, isoDate, parseDate } from './cpm';
 import { deriveResString } from './helpers';
 
@@ -79,12 +80,14 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
             } as any);
         }
         // Inject custom filters as a hidden activity
-        if (state.customFilters && state.customFilters.length > 0) {
+        const userFilters = state.customFilters ? state.customFilters.filter((f: any) => !f.builtin) : [];
+        const builtinActive = state.customFilters ? state.customFilters.filter((f: any) => f.builtin && f.active).map((f: any) => f.id) : [];
+        if (userFilters.length > 0 || builtinActive.length > 0) {
             acts.push({
                 ...newActivity('__FILTERS__', defCal),
                 name: '__CUSTOM_FILTERS__',
                 type: 'milestone',
-                notes: JSON.stringify({ customFilters: state.customFilters, filtersMatchAll: state.filtersMatchAll }),
+                notes: JSON.stringify({ customFilters: userFilters, builtinActive, filtersMatchAll: state.filtersMatchAll }),
                 lv: -1,
             } as any);
         }
@@ -255,7 +258,11 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
         if (na.id === '__FILTERS__') {
             try {
                 const filterData = JSON.parse(na.notes);
-                if (filterData.customFilters) customFilters = filterData.customFilters;
+                const userFilters = filterData.customFilters || [];
+                const builtinActive: string[] = filterData.builtinActive || [];
+                // Re-inject builtins with saved active states
+                const builtins = BUILTIN_FILTERS.map(bf => ({ ...bf, active: builtinActive.includes(bf.id) }));
+                customFilters = [...builtins, ...userFilters];
                 if (filterData.filtersMatchAll !== undefined) filtersMatchAll = filterData.filtersMatchAll;
             } catch (e) { }
             return false;

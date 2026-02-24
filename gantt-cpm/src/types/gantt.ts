@@ -258,4 +258,5 @@ export interface CustomFilter {
     matchAll: boolean; // true = ALL conditions must match (AND), false = ANY condition (OR)
     conditions: CustomFilterCondition[];
     active: boolean; // whether the filter is checked/applied
+    builtin?: boolean; // true = system filter (read-only, cannot be deleted or edited)
 }

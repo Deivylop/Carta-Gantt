@@ -7,6 +7,21 @@ import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, Visibl
 import { calcCPM, calcMultipleFloatPaths, traceChain, newActivity, isoDate, parseDate, addDays, calWorkDays, fmtDate } from '../utils/cpm';
 import { autoId, computeOutlineNumbers, syncResFromString, deriveResString, distributeWork, strToPreds, predsToStr, newPoolResource } from '../utils/helpers';
 
+// ─── Built-in (read-only) Filters ─────────────────────────────────────────
+export const BUILTIN_FILTERS: import('../types/gantt').CustomFilter[] = [
+    { id: '_bf_critico',       name: 'Crítico',                          builtin: true, active: false, matchAll: true,  conditions: [{ id: 'c1', field: 'crit',       operator: 'equals',   value: 'Sí' }] },
+    { id: '_bf_no_critico',    name: 'No crítico',                       builtin: true, active: false, matchAll: true,  conditions: [{ id: 'c1', field: 'crit',       operator: 'equals',   value: 'No' }] },
+    { id: '_bf_en_curso',      name: 'En curso',                          builtin: true, active: false, matchAll: true,  conditions: [{ id: 'c1', field: 'pct',        operator: 'greater_than', value: '0' }, { id: 'c2', field: 'pct', operator: 'less_than', value: '100' }] },
+    { id: '_bf_finalizado',    name: 'Finalizado',                        builtin: true, active: false, matchAll: true,  conditions: [{ id: 'c1', field: 'pct',        operator: 'equals',   value: '100' }] },
+    { id: '_bf_no_iniciado',   name: 'No iniciado',                       builtin: true, active: false, matchAll: true,  conditions: [{ id: 'c1', field: 'pct',        operator: 'equals',   value: '0' }] },
+    { id: '_bf_hito',          name: 'Hito',                              builtin: true, active: false, matchAll: true,  conditions: [{ id: 'c1', field: 'type',       operator: 'equals',   value: 'Hito' }] },
+    { id: '_bf_normal',        name: 'Normal',                            builtin: true, active: false, matchAll: true,  conditions: [{ id: 'c1', field: 'type',       operator: 'equals',   value: 'Tarea' }] },
+    { id: '_bf_margen_neg',    name: 'Margen negativo',                   builtin: true, active: false, matchAll: true,  conditions: [{ id: 'c1', field: 'TF',         operator: 'less_than', value: '0' }] },
+    { id: '_bf_ruta_larga',    name: 'Ruta de acceso más larga',          builtin: true, active: false, matchAll: true,  conditions: [{ id: 'c1', field: 'floatPath',  operator: 'equals',   value: '1' }] },
+    { id: '_bf_rest_ini',      name: 'Tiene restricción de inicio',       builtin: true, active: false, matchAll: false, conditions: [{ id: 'c1', field: 'constraint', operator: 'equals',   value: 'MSO' }, { id: 'c2', field: 'constraint', operator: 'equals', value: 'SNET' }, { id: 'c3', field: 'constraint', operator: 'equals', value: 'SNLT' }] },
+    { id: '_bf_rest_fin',      name: 'Tiene restricción de finalización', builtin: true, active: false, matchAll: false, conditions: [{ id: 'c1', field: 'constraint', operator: 'equals',   value: 'MFO'  }, { id: 'c2', field: 'constraint', operator: 'equals', value: 'FNLT' }, { id: 'c3', field: 'constraint', operator: 'equals', value: 'FNET' }] },
+];
+
 // ─── Column Definitions ─────────────────────────────────────────
 export const DEFAULT_COLS: ColumnDef[] = [
     { key: '_num', label: '#', w: 30, edit: false, cls: 'tcell-num', visible: true },
@@ -1469,7 +1484,15 @@ function reducer(state: GanttState, action: Action): GanttState {
             return { ...state, checkModalOpen: false };
 
         case 'SET_CUSTOM_FILTERS':
-            return recalc({ ...state, customFilters: action.filters });
+            return recalc({ ...state, customFilters: [
+                // Re-inject builtins, taking active state from action.filters if present
+                ...BUILTIN_FILTERS.map(bf => {
+                    const saved = action.filters.find(f => f.id === bf.id);
+                    return { ...bf, active: saved ? saved.active : bf.active };
+                }),
+                // Keep only user (non-builtin) filters from the action
+                ...action.filters.filter(f => !f.builtin)
+            ] });
 
         case 'SET_FILTERS_MATCH_ALL':
             return recalc({ ...state, filtersMatchAll: action.matchAll });
@@ -1570,7 +1593,7 @@ const initialState: GanttState = {
     activeCheckerFilter: null,
     checkerThresholds: { longLags: 20, largeMargins: 20, longDurations: 20 },
     checkModalOpen: false,
-    customFilters: [],
+    customFilters: BUILTIN_FILTERS.map(f => ({ ...f })),
     filtersMatchAll: true,
     filtersModalOpen: false,
     mfpConfig: { enabled: false, endActivityId: null, mode: 'totalFloat', maxPaths: 10 },
