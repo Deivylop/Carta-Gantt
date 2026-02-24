@@ -34,7 +34,7 @@ export default function CheckThresholdsModal() {
 
     return (
         <div className="modal-overlay open" onClick={onClose}>
-            <div className="modal" onClick={e => e.stopPropagation()} style={{ width: '400px' }}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{ width: '520px' }}>
                 <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <Settings size={20} />
@@ -44,6 +44,29 @@ export default function CheckThresholdsModal() {
                 </div>
 
                 <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+                    <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.5, padding: '4px 0', borderBottom: '1px solid var(--border-primary)' }}>
+                        <p style={{ margin: '0 0 6px', fontWeight: 600, color: 'var(--text-primary)' }}>¿Qué hace cada comprobación?</p>
+                        <ul style={{ margin: 0, paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                            <li><b>Malla Abierta:</b> Detecta tareas sin sucesora con avance &lt; 100%</li>
+                            <li><b>Sin Predecesora:</b> Detecta tareas sin predecesora con avance &lt; 100%</li>
+                            <li><b>Fechas no Válidas:</b> ES o EF antes de la fecha de corte</li>
+                            <li><b>Tipo de Relación:</b> Relaciones distintas a FS (Fin-Comienzo)</li>
+                            <li><b>Demoras Negativas:</b> Predecesoras con lag negativo</li>
+                            <li><b>Demoras Prolongadas:</b> Lag ≥ umbral configurado abajo</li>
+                            <li><b>Duraciones Prolongadas:</b> Duración &gt; umbral configurado abajo</li>
+                            <li><b>Márgenes Grandes:</b> Holgura total &gt; umbral configurado abajo</li>
+                            <li><b>Restricciones Obligatorias:</b> MSO, MFO, SNLT, FNLT</li>
+                            <li><b>Restricciones Flexibles:</b> ASAP, ALAP, SNET, FNET</li>
+                            <li><b>Lógica Rota:</b> Relación con predecesora no se cumple temporalmente</li>
+                            <li><b>Avance Post. F. Estado:</b> Comienzo real posterior a fecha de corte</li>
+                            <li><b>Sin Comienzo Real:</b> Avance &gt; 0% sin fecha de comienzo real asignada</li>
+                        </ul>
+                    </div>
+
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', borderBottom: '1px solid var(--border-primary)', paddingBottom: 4 }}>
+                        Umbrales configurables
+                    </div>
 
                     <div className="form-group">
                         <label>Demoras Prolongadas (días)</label>

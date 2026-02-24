@@ -288,21 +288,21 @@ function TabEstado({ a, dispatch, selIdx }: {
                     <legend>Duración</legend>
                     <div className="adp-field-row">
                         <label className="adp-field-label">Original</label>
-                        <input className="adp-input adp-num" value={origDur} readOnly />
+                        <input className="adp-input adp-num" type="number" step={1} min={0} value={origDur} readOnly />
                     </div>
                     <div className="adp-field-row">
                         <label className="adp-field-label">Real</label>
-                        <input className="adp-input adp-num" value={realDur} readOnly />
+                        <input className="adp-input adp-num" type="number" step={1} min={0} value={realDur} readOnly />
                     </div>
                     <div className="adp-field-row">
                         <label className="adp-field-label">Restante</label>
-                        <input className="adp-input adp-num" key={`${a.id}-rem-${remDur}`} defaultValue={remDur}
+                        <input className="adp-input adp-num" type="number" step={1} min={0} key={`${a.id}-rem-${remDur}`} defaultValue={remDur}
                             onBlur={e => { const v = e.target.value.trim(); if (v !== String(remDur)) commit('remDur', v); }}
                             onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
                     </div>
                     <div className="adp-field-row">
                         <label className="adp-field-label">Al finalizar</label>
-                        <input className="adp-input adp-num" value={atCompletion} readOnly />
+                        <input className="adp-input adp-num" type="number" step={1} min={0} value={atCompletion} readOnly />
                     </div>
                 </fieldset>
 
@@ -328,10 +328,10 @@ function TabEstado({ a, dispatch, selIdx }: {
                                 onBlur={e => { const v = e.target.value; if (v !== (a.actualStart || '')) update({ actualStart: v || null }); }}
                                 disabled={!started} />
                             <label className="adp-field-label" style={{ marginLeft: 16 }}>% físico</label>
-                            <input className="adp-input adp-num" key={`${a.id}-pct-${a.pct}`} defaultValue={a.pct || 0}
+                            <input className="adp-input adp-num" type="number" step={5} min={0} max={100} key={`${a.id}-pct-${a.pct}`} defaultValue={a.pct || 0}
                                 onBlur={e => { const v = e.target.value.trim(); if (v !== String(a.pct || 0)) commit('pct', v); }}
                                 onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                                style={{ width: 50 }} />
+                                style={{ width: 58 }} />
                             <span className="adp-suffix">%</span>
                         </div>
                         <div className="adp-field-row">
@@ -368,19 +368,19 @@ function TabEstado({ a, dispatch, selIdx }: {
                     <legend>Unidades de mano de obra</legend>
                     <div className="adp-field-row">
                         <label className="adp-field-label">Presupuestado</label>
-                        <input className="adp-input adp-num" value={a.work || 0} readOnly />
+                        <input className="adp-input adp-num" type="number" step={100} min={0} value={a.work || 0} readOnly />
                     </div>
                     <div className="adp-field-row">
                         <label className="adp-field-label">Real</label>
-                        <input className="adp-input adp-num" value={a.pct === 100 ? (a.work || 0) : Math.round((a.work || 0) * (a.pct || 0) / 100)} readOnly />
+                        <input className="adp-input adp-num" type="number" step={100} min={0} value={a.pct === 100 ? (a.work || 0) : Math.round((a.work || 0) * (a.pct || 0) / 100)} readOnly />
                     </div>
                     <div className="adp-field-row">
                         <label className="adp-field-label">Restante</label>
-                        <input className="adp-input adp-num" value={a.pct === 100 ? 0 : Math.round((a.work || 0) * (100 - (a.pct || 0)) / 100)} readOnly />
+                        <input className="adp-input adp-num" type="number" step={100} min={0} value={a.pct === 100 ? 0 : Math.round((a.work || 0) * (100 - (a.pct || 0)) / 100)} readOnly />
                     </div>
                     <div className="adp-field-row">
                         <label className="adp-field-label">Al finalizar</label>
-                        <input className="adp-input adp-num" value={a.work || 0} readOnly />
+                        <input className="adp-input adp-num" type="number" step={100} min={0} value={a.work || 0} readOnly />
                     </div>
                 </fieldset>
             </div>
@@ -391,11 +391,11 @@ function TabEstado({ a, dispatch, selIdx }: {
                     <legend>Margen</legend>
                     <div className="adp-field-row">
                         <label className="adp-field-label">Margen total</label>
-                        <input className="adp-input adp-num" value={a.TF != null ? a.TF : ''} readOnly />
+                        <input className="adp-input adp-num" type="number" step={1} value={a.TF != null ? a.TF : ''} readOnly />
                     </div>
                     <div className="adp-field-row">
                         <label className="adp-field-label">Margen libre</label>
-                        <input className="adp-input adp-num" value={a._freeFloat != null ? a._freeFloat : ''} readOnly />
+                        <input className="adp-input adp-num" type="number" step={1} value={a._freeFloat != null ? a._freeFloat : ''} readOnly />
                     </div>
                 </fieldset>
 

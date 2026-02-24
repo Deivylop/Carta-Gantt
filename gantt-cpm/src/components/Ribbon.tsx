@@ -321,29 +321,29 @@ export default function Ribbon() {
                                     value={state.activeCheckerFilter || ''}
                                     onChange={e => dispatch({ type: 'SET_CHECKER_FILTER', filter: e.target.value || null })}>
                                     <option value="">(Sin filtro)</option>
-                                    <option value="Malla Abierta">Malla Abierta</option>
-                                    <option value="Sin Predecesora">Sin Predecesora</option>
-                                    <option value="Fechas no Válidas">Fechas no Válidas</option>
-                                    <option value="Tipo de Relación">Tipo de Relación</option>
-                                    <option value="Demoras Negativas">Demoras Negativas</option>
-                                    <option value="Demoras Prolongadas">Demoras Prolongadas</option>
-                                    <option value="Duraciones Prolongadas">Duraciones Prolongadas</option>
-                                    <option value="Márgenes Grandes">Márgenes Grandes</option>
-                                    <option value="Restricciones Obligatorias">Restricciones Oblig.</option>
-                                    <option value="Restricciones Flexibles">Restricc. Flexibles</option>
-                                    <option value="Lógica Rota">Lógica Rota</option>
-                                    <option value="Avance Post. F. Estado">Avance Post. F. Estado</option>
-                                    <option value="Sin Comienzo Real">Sin Comienzo Real</option>
+                                    <option value="Malla Abierta" title="Tareas sin sucesora (avance < 100%)">Malla Abierta</option>
+                                    <option value="Sin Predecesora" title="Tareas sin predecesora (avance < 100%)">Sin Predecesora</option>
+                                    <option value="Fechas no Válidas" title="ES o EF antes de la fecha de corte">Fechas no Válidas</option>
+                                    <option value="Tipo de Relación" title="Relaciones distintas a FS (Fin-Comienzo)">Tipo de Relación</option>
+                                    <option value="Demoras Negativas" title="Predecesoras con lag negativo">Demoras Negativas</option>
+                                    <option value="Demoras Prolongadas" title="Lag ≥ umbral configurado">Demoras Prolongadas</option>
+                                    <option value="Duraciones Prolongadas" title="Duración > umbral configurado">Duraciones Prolongadas</option>
+                                    <option value="Márgenes Grandes" title="Holgura total > umbral configurado">Márgenes Grandes</option>
+                                    <option value="Restricciones Obligatorias" title="MSO, MFO, SNLT, FNLT">Restricciones Oblig.</option>
+                                    <option value="Restricciones Flexibles" title="ASAP, ALAP, SNET, FNET">Restricc. Flexibles</option>
+                                    <option value="Lógica Rota" title="Relación con predecesora no se cumple">Lógica Rota</option>
+                                    <option value="Avance Post. F. Estado" title="Comienzo real posterior a fecha de corte">Avance Post. F. Estado</option>
+                                    <option value="Sin Comienzo Real" title="Avance > 0% sin fecha de comienzo real">Sin Comienzo Real</option>
                                 </select>
                                 <RB icon={<Settings size={14} />} onClick={() => dispatch({ type: 'OPEN_CHECK_MODAL' })} />
                             </div>
                             {state.activeCheckerFilter && (
-                                <span style={{ fontSize: 8, color: 'var(--text-muted)', maxWidth: 170, lineHeight: 1.2 }}>
+                                <span style={{ fontSize: 9, color: '#818cf8', maxWidth: 200, lineHeight: 1.3, fontWeight: 500 }}>
                                     {({
                                         'Malla Abierta': 'Tareas sin sucesora (avance < 100%)',
                                         'Sin Predecesora': 'Tareas sin predecesora (avance < 100%)',
                                         'Fechas no Válidas': 'ES o EF antes de la fecha de corte',
-                                        'Tipo de Relación': 'Relaciones distintas a FS',
+                                        'Tipo de Relación': 'Relaciones distintas a FS (Fin-Comienzo)',
                                         'Demoras Negativas': 'Predecesoras con lag negativo',
                                         'Demoras Prolongadas': 'Lag ≥ umbral configurado',
                                         'Duraciones Prolongadas': 'Duración > umbral configurado',
