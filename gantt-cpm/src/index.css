@@ -1991,6 +1991,58 @@ textarea.form-input {
   color: var(--text-muted, #6b7280);
 }
 
+/* ── Relaciones tab: 2-panel layout ── */
+.adp-rel-root {
+  display: flex;
+  gap: 8px;
+  height: 100%;
+  overflow: hidden;
+}
+.adp-rel-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  border: 1px solid var(--border-primary, #1f2937);
+  border-radius: 3px;
+}
+.adp-rel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: var(--bg-secondary, #1e293b);
+  border-bottom: 1px solid var(--border-primary, #1f2937);
+}
+.adp-rel-title {
+  font-weight: 700;
+  font-size: 11px;
+}
+.adp-rel-btns {
+  display: flex;
+  gap: 4px;
+}
+.adp-rel-btn {
+  background: transparent;
+  border: 1px solid var(--border-secondary, #374151);
+  color: var(--text-primary, #e5e7eb);
+  padding: 2px 8px;
+  font-size: 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s;
+}
+.adp-rel-btn:hover:not(:disabled) { background: rgba(99,102,241,.15); }
+.adp-rel-btn:disabled { opacity: 0.35; cursor: default; }
+.adp-rel-btn-del { color: #ef4444; border-color: rgba(239,68,68,.3); }
+.adp-rel-btn-del:hover:not(:disabled) { background: rgba(239,68,68,.12); }
+.adp-rel-sel td { background: rgba(99,102,241,.2) !important; }
+.adp-rel-ac {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-primary, #1f2937);
+}
+
 /* ═══════ Light mode overrides for ADP ═══════ */
 .light .adp-root { background: #f8fafc; color: #1f2937; }
 .light .adp-tabs { background: #e2e8f0; border-bottom-color: #cbd5e1; }
@@ -2014,3 +2066,8 @@ textarea.form-input {
 .light .adp-ac-item:hover { background: rgba(99,102,241,.1); }
 .light .adp-ac-id { color: #4f46e5; }
 .light .adp-lbl { color: #64748b; }
+.light .adp-rel-panel { border-color: #cbd5e1; }
+.light .adp-rel-header { background: #e2e8f0; border-bottom-color: #cbd5e1; }
+.light .adp-rel-btn { border-color: #cbd5e1; color: #475569; }
+.light .adp-rel-btn-del { color: #ef4444; border-color: rgba(239,68,68,.3); }
+.light .adp-rel-sel td { background: rgba(99,102,241,.12) !important; }

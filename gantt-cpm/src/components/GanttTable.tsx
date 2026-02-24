@@ -55,7 +55,7 @@ const EditableNumberCell = ({ rawValue, displayValue, onUpdate, onFocus, isRowSe
                 e.preventDefault(); e.stopPropagation(); setIsEditing(true); onFocus();
             }}
             onDoubleClick={(e) => { e.stopPropagation(); if (!isEditing) { setIsEditing(true); onFocus(); } }}
-            onClick={(e) => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey) e.stopPropagation(); }}
+            onClick={(e) => { if (isRowSelected && !e.ctrlKey && !e.metaKey && !e.shiftKey) e.stopPropagation(); }}
         >
             {displayValue}
         </span>
@@ -115,7 +115,7 @@ const EditableDateCell = ({ dateValue, displayValue, onUpdate, onFocus, isRowSel
                 e.preventDefault(); e.stopPropagation(); setIsEditing(true); onFocus();
             }}
             onDoubleClick={(e) => { e.stopPropagation(); if (!isEditing) { setIsEditing(true); onFocus(); } }}
-            onClick={(e) => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey) e.stopPropagation(); }}
+            onClick={(e) => { if (isRowSelected && !e.ctrlKey && !e.metaKey && !e.shiftKey) e.stopPropagation(); }}
         >
             {displayValue}
         </span>

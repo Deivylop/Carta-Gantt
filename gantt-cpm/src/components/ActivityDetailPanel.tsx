@@ -34,58 +34,11 @@ export default function ActivityDetailPanel() {
     const a = selIdx >= 0 ? activities[selIdx] : null;
     const [tab, setTab] = useState<Tab>('estado');
 
-    // ── Editable form state for "Estado" tab ──
-    const [form, setForm] = useState<any>({});
-    const [dirty, setDirty] = useState(false);
-
     // ── Autocomplete ──
     const [acOpen, setAcOpen] = useState(false);
     const [acFilter, setAcFilter] = useState('');
     const [acTarget, setAcTarget] = useState<'pred' | 'suc' | 'res'>('pred');
     const acRef = useRef<HTMLDivElement>(null);
-
-    // Reset form when selection changes
-    useEffect(() => {
-        if (!a) return;
-        resetForm(a);
-    }, [selIdx, a?.pct, a?.dur, a?.remDur, a?.actualStart, a?.actualFinish, a?.work, a?.constraint, a?.constraintDate]);
-
-    const resetForm = (act: Activity) => {
-        const origDur = act._origDur ?? act.dur ?? 0;
-        const realDur = act._doneDur ?? (act.pct > 0 ? Math.round(origDur * act.pct / 100) : 0);
-        const remDur = act.remDur ?? Math.round(origDur * (100 - (act.pct || 0)) / 100);
-        const atCompletion = act.pct === 100 ? realDur : (realDur + remDur);
-
-        setForm({
-            started: act.pct > 0 || !!act.actualStart,
-            finished: act.pct === 100 && !!act.actualFinish,
-            actualStart: act.actualStart || '',
-            actualFinish: act.actualFinish || '',
-            expectedFinish: '', // user can enter expected finish
-            pctPhysical: act.pct || 0,
-            suspend: '',
-            resume: '',
-            origDur,
-            realDur,
-            remDur,
-            atCompletion,
-            constraint: act.constraint || '',
-            constraintDate: act.constraintDate || '',
-            constraint2: '',
-            constraintDate2: '',
-            work: act.work || 0,
-            budgetedWork: act.work || 0,
-            actualWork: act.pct === 100 ? (act.work || 0) : Math.round((act.work || 0) * (act.pct || 0) / 100),
-            remainingWork: act.pct === 100 ? 0 : Math.round((act.work || 0) * (100 - (act.pct || 0)) / 100),
-            atCompletionWork: act.work || 0,
-        });
-        setDirty(false);
-    };
-
-    const F = (key: string, val: any) => {
-        setForm((f: any) => ({ ...f, [key]: val }));
-        setDirty(true);
-    };
 
     // Close autocomplete on outside click
     useEffect(() => {
@@ -104,54 +57,6 @@ export default function ActivityDetailPanel() {
             return resourcePool.filter(r => !acFilter || r.name.toLowerCase().includes(acFilter.toLowerCase()));
         }
     }, [a, activities, resourcePool, acFilter, acTarget]);
-
-    /* ── Apply (save changes from Estado tab) ── */
-    const applyEstado = () => {
-        if (!a || a._isProjRow || !dirty) return;
-        dispatch({ type: 'PUSH_UNDO' });
-        const updates: Partial<Activity> = {};
-
-        // Started checkbox → set actualStart
-        if (form.started && !a.actualStart && form.actualStart) {
-            updates.actualStart = form.actualStart;
-        }
-        if (!form.started) {
-            updates.actualStart = null;
-            updates.pct = 0;
-        }
-
-        // Finished checkbox → set actualFinish and pct=100
-        if (form.finished && !a.actualFinish && form.actualFinish) {
-            updates.actualFinish = form.actualFinish;
-            updates.pct = 100;
-            updates.remDur = 0;
-        }
-        if (!form.finished && a.actualFinish) {
-            updates.actualFinish = null;
-            if (a.pct === 100) updates.pct = 99; // unfinish
-        }
-
-        // Physical %
-        if (form.pctPhysical !== (a.pct || 0)) {
-            updates.pct = Math.min(100, Math.max(0, parseInt(form.pctPhysical) || 0));
-        }
-
-        // Remaining duration
-        if (form.remDur !== (a.remDur ?? Math.round((a.dur || 0) * (100 - (a.pct || 0)) / 100))) {
-            updates.remDur = Math.max(0, parseInt(form.remDur) || 0);
-        }
-
-        // Constraint
-        if (form.constraint !== (a.constraint || '')) {
-            updates.constraint = form.constraint as ConstraintType;
-        }
-        if (form.constraintDate !== (a.constraintDate || '')) {
-            updates.constraintDate = form.constraintDate;
-        }
-
-        dispatch({ type: 'UPDATE_ACTIVITY', index: selIdx, updates });
-        setDirty(false);
-    };
 
     if (!a) {
         return (
@@ -245,7 +150,7 @@ export default function ActivityDetailPanel() {
             <div className="adp-body">
                 {tab === 'general' && <TabGeneral a={a} dispatch={dispatch} selIdx={selIdx} state={state} />}
                 {tab === 'estado' && (
-                    <TabEstado a={a} form={form} F={F} dirty={dirty} applyEstado={applyEstado} />
+                    <TabEstado a={a} dispatch={dispatch} selIdx={selIdx} />
                 )}
                 {tab === 'recursos' && (
                     <TabRecursos
@@ -273,7 +178,7 @@ export default function ActivityDetailPanel() {
                         setAcFilter={setAcFilter} acItems={acItems} addSuc={addSuc} removeSuc={removeSuc}
                     />
                 )}
-                {tab === 'relaciones' && <TabRelaciones a={a} activities={activities} succs={succs} preds={preds} />}
+                {tab === 'relaciones' && <TabRelaciones a={a} activities={activities} succs={succs} preds={preds} dispatch={dispatch} selIdx={selIdx} addPred={addPred} addSuc={addSuc} removePred={removePred} removeSuc={removeSuc} acOpen={acOpen} acTarget={acTarget} acFilter={acFilter} acRef={acRef} setAcOpen={setAcOpen} setAcTarget={setAcTarget} setAcFilter={setAcFilter} acItems={acItems} />}
                 {tab === 'pasos' && <TabPasos a={a} />}
             </div>
         </div>
@@ -354,9 +259,26 @@ function TabGeneral({ a, dispatch, selIdx, state }: { a: Activity; dispatch: any
 /* ════════════════════════════════════════════════════════════════
    TAB: Estado  (P6-style status update panel)
    ════════════════════════════════════════════════════════════════ */
-function TabEstado({ a, form, F, dirty, applyEstado }: {
-    a: Activity; form: any; F: (k: string, v: any) => void; dirty: boolean; applyEstado: () => void;
+function TabEstado({ a, dispatch, selIdx }: {
+    a: Activity; dispatch: any; selIdx: number;
 }) {
+    // Derived display values (read from actual state, not form)
+    const origDur = (a as any)._origDur ?? a.dur ?? 0;
+    const realDur = (a as any)._doneDur ?? (a.pct > 0 ? Math.round(origDur * a.pct / 100) : 0);
+    const remDur = a.remDur ?? Math.round(origDur * (100 - (a.pct || 0)) / 100);
+    const atCompletion = a.pct === 100 ? realDur : (realDur + remDur);
+    const started = a.pct > 0 || !!a.actualStart;
+    const finished = a.pct === 100 && !!a.actualFinish;
+
+    const commit = (key: string, value: string) => {
+        dispatch({ type: 'PUSH_UNDO' });
+        dispatch({ type: 'COMMIT_EDIT', index: selIdx, key, value });
+    };
+    const update = (upd: Partial<Activity>) => {
+        dispatch({ type: 'PUSH_UNDO' });
+        dispatch({ type: 'UPDATE_ACTIVITY', index: selIdx, updates: upd });
+    };
+
     return (
         <div className="adp-estado">
             {/* ── Row 1: Duración | Estado | Unidades de mano de obra ── */}
@@ -366,20 +288,21 @@ function TabEstado({ a, form, F, dirty, applyEstado }: {
                     <legend>Duración</legend>
                     <div className="adp-field-row">
                         <label className="adp-field-label">Original</label>
-                        <input className="adp-input adp-num" value={form.origDur ?? ''} readOnly />
+                        <input className="adp-input adp-num" value={origDur} readOnly />
                     </div>
                     <div className="adp-field-row">
                         <label className="adp-field-label">Real</label>
-                        <input className="adp-input adp-num" value={form.realDur ?? ''} readOnly />
+                        <input className="adp-input adp-num" value={realDur} readOnly />
                     </div>
                     <div className="adp-field-row">
                         <label className="adp-field-label">Restante</label>
-                        <input className="adp-input adp-num" value={form.remDur ?? ''}
-                            onChange={e => F('remDur', e.target.value)} />
+                        <input className="adp-input adp-num" key={`${a.id}-rem-${remDur}`} defaultValue={remDur}
+                            onBlur={e => { const v = e.target.value.trim(); if (v !== String(remDur)) commit('remDur', v); }}
+                            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
                     </div>
                     <div className="adp-field-row">
                         <label className="adp-field-label">Al finalizar</label>
-                        <input className="adp-input adp-num" value={form.atCompletion ?? ''} readOnly />
+                        <input className="adp-input adp-num" value={atCompletion} readOnly />
                     </div>
                 </fieldset>
 
@@ -389,50 +312,53 @@ function TabEstado({ a, form, F, dirty, applyEstado }: {
                     <div className="adp-estado-checks">
                         <div className="adp-field-row">
                             <label className="adp-check-label">
-                                <input type="checkbox" checked={!!form.started}
+                                <input type="checkbox" checked={started}
                                     onChange={e => {
-                                        F('started', e.target.checked);
-                                        if (e.target.checked && !form.actualStart) {
-                                            F('actualStart', a.ES ? isoDate(a.ES) : isoDate(new Date()));
+                                        if (e.target.checked) {
+                                            const startDate = a.ES ? isoDate(a.ES) : isoDate(new Date());
+                                            update({ actualStart: a.actualStart || startDate, pct: a.pct > 0 ? a.pct : 1 });
+                                        } else {
+                                            update({ actualStart: null, pct: 0 });
                                         }
                                     }} />
                                 Iniciado
                             </label>
-                            <input className="adp-input" type="date" value={form.actualStart || ''}
-                                onChange={e => F('actualStart', e.target.value)}
-                                disabled={!form.started} />
+                            <input className="adp-input" type="date" key={`${a.id}-as-${a.actualStart}`}
+                                defaultValue={a.actualStart || ''}
+                                onBlur={e => { const v = e.target.value; if (v !== (a.actualStart || '')) update({ actualStart: v || null }); }}
+                                disabled={!started} />
                             <label className="adp-field-label" style={{ marginLeft: 16 }}>% físico</label>
-                            <input className="adp-input adp-num" value={form.pctPhysical ?? ''}
-                                onChange={e => F('pctPhysical', e.target.value)}
+                            <input className="adp-input adp-num" key={`${a.id}-pct-${a.pct}`} defaultValue={a.pct || 0}
+                                onBlur={e => { const v = e.target.value.trim(); if (v !== String(a.pct || 0)) commit('pct', v); }}
+                                onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                                 style={{ width: 50 }} />
                             <span className="adp-suffix">%</span>
                         </div>
                         <div className="adp-field-row">
                             <label className="adp-check-label">
-                                <input type="checkbox" checked={!!form.finished}
+                                <input type="checkbox" checked={finished}
                                     onChange={e => {
-                                        F('finished', e.target.checked);
                                         if (e.target.checked) {
-                                            F('pctPhysical', 100);
-                                            F('remDur', 0);
-                                            if (!form.actualFinish) {
-                                                F('actualFinish', a.EF ? isoDate(addDays(a.EF, -1)) : isoDate(new Date()));
-                                            }
+                                            const finDate = a.actualFinish || (a.EF ? isoDate(addDays(a.EF, -1)) : isoDate(new Date()));
+                                            update({ actualFinish: finDate, pct: 100, remDur: 0 });
+                                        } else {
+                                            update({ actualFinish: null, pct: a.pct === 100 ? 99 : a.pct });
                                         }
                                     }} />
                                 Finalizado
                             </label>
-                            <input className="adp-input" type="date" value={form.actualFinish || ''}
-                                onChange={e => F('actualFinish', e.target.value)}
-                                disabled={!form.finished} />
+                            <input className="adp-input" type="date" key={`${a.id}-af-${a.actualFinish}`}
+                                defaultValue={a.actualFinish || ''}
+                                onBlur={e => { const v = e.target.value; if (v !== (a.actualFinish || '')) update({ actualFinish: v || null }); }}
+                                disabled={!finished} />
                             <label className="adp-field-label" style={{ marginLeft: 16 }}>Suspender</label>
-                            <input className="adp-input" type="date" value={form.suspend || ''} onChange={e => F('suspend', e.target.value)} />
+                            <input className="adp-input" type="date" />
                         </div>
                         <div className="adp-field-row">
                             <label className="adp-field-label" style={{ minWidth: 90 }}>Final previsto</label>
-                            <input className="adp-input" type="date" value={form.expectedFinish || ''} onChange={e => F('expectedFinish', e.target.value)} />
+                            <input className="adp-input" type="date" />
                             <label className="adp-field-label" style={{ marginLeft: 16 }}>Reanudar</label>
-                            <input className="adp-input" type="date" value={form.resume || ''} onChange={e => F('resume', e.target.value)} />
+                            <input className="adp-input" type="date" />
                         </div>
                     </div>
                 </fieldset>
@@ -442,19 +368,19 @@ function TabEstado({ a, form, F, dirty, applyEstado }: {
                     <legend>Unidades de mano de obra</legend>
                     <div className="adp-field-row">
                         <label className="adp-field-label">Presupuestado</label>
-                        <input className="adp-input adp-num" value={form.budgetedWork ?? ''} readOnly />
+                        <input className="adp-input adp-num" value={a.work || 0} readOnly />
                     </div>
                     <div className="adp-field-row">
                         <label className="adp-field-label">Real</label>
-                        <input className="adp-input adp-num" value={form.actualWork ?? ''} readOnly />
+                        <input className="adp-input adp-num" value={a.pct === 100 ? (a.work || 0) : Math.round((a.work || 0) * (a.pct || 0) / 100)} readOnly />
                     </div>
                     <div className="adp-field-row">
                         <label className="adp-field-label">Restante</label>
-                        <input className="adp-input adp-num" value={form.remainingWork ?? ''} readOnly />
+                        <input className="adp-input adp-num" value={a.pct === 100 ? 0 : Math.round((a.work || 0) * (100 - (a.pct || 0)) / 100)} readOnly />
                     </div>
                     <div className="adp-field-row">
                         <label className="adp-field-label">Al finalizar</label>
-                        <input className="adp-input adp-num" value={form.atCompletionWork ?? ''} readOnly />
+                        <input className="adp-input adp-num" value={a.work || 0} readOnly />
                     </div>
                 </fieldset>
             </div>
@@ -477,34 +403,26 @@ function TabEstado({ a, form, F, dirty, applyEstado }: {
                     <legend>Restricciones</legend>
                     <div className="adp-field-row">
                         <label className="adp-field-label">Principal</label>
-                        <select className="adp-input" value={form.constraint}
-                            onChange={e => F('constraint', e.target.value)}>
+                        <select className="adp-input" value={a.constraint || ''}
+                            onChange={e => update({ constraint: e.target.value as ConstraintType })}>
                             {Object.entries(CONSTRAINT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                         </select>
                         <label className="adp-field-label" style={{ marginLeft: 12 }}>Fecha</label>
-                        <input className="adp-input" type="date" value={form.constraintDate || ''}
-                            onChange={e => F('constraintDate', e.target.value)}
-                            disabled={!form.constraint} />
+                        <input className="adp-input" type="date" key={`${a.id}-cd-${a.constraintDate}`}
+                            defaultValue={a.constraintDate || ''}
+                            onBlur={e => { const v = e.target.value; if (v !== (a.constraintDate || '')) update({ constraintDate: v }); }}
+                            disabled={!(a.constraint || '')} />
                     </div>
                     <div className="adp-field-row">
                         <label className="adp-field-label">Secundario</label>
-                        <select className="adp-input" value={form.constraint2 || ''} onChange={e => F('constraint2', e.target.value)}>
+                        <select className="adp-input" value="" onChange={() => {}}>
                             {Object.entries(CONSTRAINT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                         </select>
                         <label className="adp-field-label" style={{ marginLeft: 12 }}>Fecha</label>
-                        <input className="adp-input" type="date" value={form.constraintDate2 || ''}
-                            onChange={e => F('constraintDate2', e.target.value)}
-                            disabled={!form.constraint2} />
+                        <input className="adp-input" type="date" disabled />
                     </div>
                 </fieldset>
             </div>
-
-            {/* ── Apply button ── */}
-            {dirty && (
-                <div className="adp-apply-bar">
-                    <button className="adp-apply-btn" onClick={applyEstado}>✓ Aplicar cambios</button>
-                </div>
-            )}
         </div>
     );
 }
@@ -703,49 +621,144 @@ function TabSucesores({ a, succs, activities, selIdx, dispatch, acOpen, acTarget
 }
 
 /* ════════════════════════════════════════════════════════════════
-   TAB: Relaciones (read-only network view)
+   TAB: Relaciones (side-by-side Pred / Suc panels)
    ════════════════════════════════════════════════════════════════ */
-function TabRelaciones({ a, activities, succs, preds }: { a: Activity; activities: Activity[]; succs: any[]; preds: any[] }) {
+function TabRelaciones({ a, activities, succs, preds, dispatch, selIdx, addPred, addSuc, removePred, removeSuc, acOpen, acTarget, acFilter, acRef, setAcOpen, setAcTarget, setAcFilter, acItems }: any) {
+    const [selP, setSelP] = useState<number | null>(null);
+    const [selS, setSelS] = useState<number | null>(null);
+
+    const goTo = (actId: string) => {
+        const idx = activities.findIndex((x: any) => x.id === actId);
+        if (idx >= 0) dispatch({ type: 'SET_SELECTION', index: idx });
+    };
+
     return (
-        <div className="adp-table-tab">
-            <div className="adp-section-title" style={{ color: '#818cf8' }}>Predecesoras ({preds.length})</div>
-            <table className="adp-tbl">
-                <thead><tr><th>ID</th><th>Nombre</th><th>Tipo</th><th>Retardo</th><th>ES Pred.</th><th>EF Pred.</th></tr></thead>
-                <tbody>
-                    {preds.map((p: any, i: number) => {
-                        const pa = activities.find(x => x.id === p.id);
-                        return (
-                            <tr key={i}>
-                                <td>{p.id}</td>
-                                <td>{p.name}</td>
-                                <td>{LINK_TYPE_LABELS[p.type] || p.type}</td>
-                                <td>{p.lag}</td>
-                                <td>{pa?.ES ? fmtDate(pa.ES) : '—'}</td>
-                                <td>{pa?.EF ? fmtDate(addDays(pa.EF, -1)) : '—'}</td>
-                            </tr>
-                        );
-                    })}
-                </tbody>
-            </table>
-            <div className="adp-section-title" style={{ color: '#6ee7b7', marginTop: 12 }}>Sucesoras ({succs.length})</div>
-            <table className="adp-tbl">
-                <thead><tr><th>ID</th><th>Nombre</th><th>Tipo</th><th>Retardo</th><th>ES Suc.</th><th>EF Suc.</th></tr></thead>
-                <tbody>
-                    {succs.map((s: any, i: number) => {
-                        const sa = activities.find(x => x.id === s.sucId);
-                        return (
-                            <tr key={i}>
-                                <td>{s.sucId}</td>
-                                <td>{s.sucName}</td>
-                                <td>{LINK_TYPE_LABELS[s.type] || s.type}</td>
-                                <td>{s.lag}</td>
-                                <td>{sa?.ES ? fmtDate(sa.ES) : '—'}</td>
-                                <td>{sa?.EF ? fmtDate(addDays(sa.EF, -1)) : '—'}</td>
-                            </tr>
-                        );
-                    })}
-                </tbody>
-            </table>
+        <div className="adp-rel-root">
+            {/* ── Left: Predecesoras ── */}
+            <div className="adp-rel-panel">
+                <div className="adp-rel-header">
+                    <span className="adp-rel-title" style={{ color: '#818cf8' }}>Predecesoras ({preds.length})</span>
+                    <div className="adp-rel-btns">
+                        <button className="adp-rel-btn" title="Asignar predecesora"
+                            onClick={() => { setAcTarget('pred'); setAcFilter(''); setAcOpen(!acOpen || acTarget !== 'pred'); }}>＋ Asignar</button>
+                        <button className="adp-rel-btn adp-rel-btn-del" title="Eliminar predecesora"
+                            disabled={selP == null}
+                            onClick={() => { if (selP != null) { removePred(selP); setSelP(null); } }}>✕ Eliminar</button>
+                        <button className="adp-rel-btn" title="Ir a predecesora"
+                            disabled={selP == null}
+                            onClick={() => { if (selP != null && preds[selP]) goTo(preds[selP].id); }}>→ Ir a</button>
+                    </div>
+                </div>
+                {/* Autocomplete for pred */}
+                {acOpen && acTarget === 'pred' && (
+                    <div className="adp-rel-ac" ref={acRef}>
+                        <input className="adp-input" autoFocus placeholder="Buscar actividad (ID o nombre)..."
+                            value={acFilter} onChange={(e: any) => setAcFilter(e.target.value)} />
+                        <div className="adp-ac-list" style={{ position: 'relative' }}>
+                            {acItems().length === 0 && <div className="adp-ac-empty">Sin coincidencias</div>}
+                            {(acItems() as Activity[]).slice(0, 15).map((x: Activity) => (
+                                <div key={x.id} className="adp-ac-item" onMouseDown={(e: any) => { e.preventDefault(); addPred(x.id); }}>
+                                    <span className="adp-ac-id">{x.id}</span>
+                                    <span className="adp-ac-nm">{x.name}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+                <table className="adp-tbl">
+                    <thead><tr><th>ID</th><th>Nombre</th><th>Tipo</th><th>Retardo</th><th>ES</th><th>EF</th></tr></thead>
+                    <tbody>
+                        {preds.map((p: any, i: number) => {
+                            const pa = activities.find((x: any) => x.id === p.id);
+                            return (
+                                <tr key={i} className={selP === i ? 'adp-rel-sel' : ''} onClick={() => setSelP(i)}>
+                                    <td>{p.id}</td>
+                                    <td>{p.name}</td>
+                                    <td>
+                                        <select className="adp-inline-sel" value={p.type}
+                                            onChange={(e: any) => { dispatch({ type: 'PUSH_UNDO' }); dispatch({ type: 'UPDATE_PRED', actIdx: selIdx, predIdx: p.pi, updates: { type: e.target.value } }); }}>
+                                            <option value="FS">FC</option><option value="SS">CC</option><option value="FF">FF</option><option value="SF">CF</option>
+                                        </select>
+                                    </td>
+                                    <td>
+                                        <input className="adp-inline-input" type="number" value={p.lag} style={{ width: 40 }}
+                                            onChange={(e: any) => { dispatch({ type: 'PUSH_UNDO' }); dispatch({ type: 'UPDATE_PRED', actIdx: selIdx, predIdx: p.pi, updates: { lag: parseInt(e.target.value) || 0 } }); }} />
+                                    </td>
+                                    <td>{pa?.ES ? fmtDate(pa.ES) : '—'}</td>
+                                    <td>{pa?.EF ? fmtDate(addDays(pa.EF, -1)) : '—'}</td>
+                                </tr>
+                            );
+                        })}
+                        {preds.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', opacity: 0.5 }}>Sin predecesoras</td></tr>}
+                    </tbody>
+                </table>
+            </div>
+
+            {/* ── Right: Sucesoras ── */}
+            <div className="adp-rel-panel">
+                <div className="adp-rel-header">
+                    <span className="adp-rel-title" style={{ color: '#6ee7b7' }}>Sucesoras ({succs.length})</span>
+                    <div className="adp-rel-btns">
+                        <button className="adp-rel-btn" title="Asignar sucesora"
+                            onClick={() => { setAcTarget('suc'); setAcFilter(''); setAcOpen(!acOpen || acTarget !== 'suc'); }}>＋ Asignar</button>
+                        <button className="adp-rel-btn adp-rel-btn-del" title="Eliminar sucesora"
+                            disabled={selS == null}
+                            onClick={() => { if (selS != null && succs[selS]) { removeSuc(succs[selS].sucId, succs[selS].predIdx); setSelS(null); } }}>✕ Eliminar</button>
+                        <button className="adp-rel-btn" title="Ir a sucesora"
+                            disabled={selS == null}
+                            onClick={() => { if (selS != null && succs[selS]) goTo(succs[selS].sucId); }}>→ Ir a</button>
+                    </div>
+                </div>
+                {/* Autocomplete for suc */}
+                {acOpen && acTarget === 'suc' && (
+                    <div className="adp-rel-ac" ref={acRef}>
+                        <input className="adp-input" autoFocus placeholder="Buscar actividad (ID o nombre)..."
+                            value={acFilter} onChange={(e: any) => setAcFilter(e.target.value)} />
+                        <div className="adp-ac-list" style={{ position: 'relative' }}>
+                            {acItems().length === 0 && <div className="adp-ac-empty">Sin coincidencias</div>}
+                            {(acItems() as Activity[]).slice(0, 15).map((x: Activity) => (
+                                <div key={x.id} className="adp-ac-item" onMouseDown={(e: any) => { e.preventDefault(); addSuc(x.id); }}>
+                                    <span className="adp-ac-id">{x.id}</span>
+                                    <span className="adp-ac-nm">{x.name}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+                <table className="adp-tbl">
+                    <thead><tr><th>ID</th><th>Nombre</th><th>Tipo</th><th>Retardo</th><th>ES</th><th>EF</th></tr></thead>
+                    <tbody>
+                        {succs.map((s: any, i: number) => {
+                            const sa = activities.find((x: any) => x.id === s.sucId);
+                            return (
+                                <tr key={i} className={selS === i ? 'adp-rel-sel' : ''} onClick={() => setSelS(i)}>
+                                    <td>{s.sucId}</td>
+                                    <td>{s.sucName}</td>
+                                    <td>
+                                        <select className="adp-inline-sel" value={s.type}
+                                            onChange={(e: any) => {
+                                                const sucIdx = activities.findIndex((x: any) => x.id === s.sucId);
+                                                if (sucIdx >= 0) { dispatch({ type: 'PUSH_UNDO' }); dispatch({ type: 'UPDATE_PRED', actIdx: sucIdx, predIdx: s.predIdx, updates: { type: e.target.value } }); }
+                                            }}>
+                                            <option value="FS">FC</option><option value="SS">CC</option><option value="FF">FF</option><option value="SF">CF</option>
+                                        </select>
+                                    </td>
+                                    <td>
+                                        <input className="adp-inline-input" type="number" value={s.lag} style={{ width: 40 }}
+                                            onChange={(e: any) => {
+                                                const sucIdx = activities.findIndex((x: any) => x.id === s.sucId);
+                                                if (sucIdx >= 0) { dispatch({ type: 'PUSH_UNDO' }); dispatch({ type: 'UPDATE_PRED', actIdx: sucIdx, predIdx: s.predIdx, updates: { lag: parseInt(e.target.value) || 0 } }); }
+                                            }} />
+                                    </td>
+                                    <td>{sa?.ES ? fmtDate(sa.ES) : '—'}</td>
+                                    <td>{sa?.EF ? fmtDate(addDays(sa.EF, -1)) : '—'}</td>
+                                </tr>
+                            );
+                        })}
+                        {succs.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', opacity: 0.5 }}>Sin sucesoras</td></tr>}
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 }
