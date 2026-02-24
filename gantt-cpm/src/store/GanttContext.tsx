@@ -422,14 +422,24 @@ function buildVisRows(
                         .replace(/\s*(días|dias|d|hrs|h|%)$/, '');
                     let passCond = false;
 
+                    // Detect ISO date strings (YYYY-MM-DD) so they aren't mistaken for numbers
+                    const isoRx = /^\d{4}-\d{2}-\d{2}$/;
+                    const bothDates = isoRx.test(sVal) && isoRx.test(tVal);
+
                     // For equals/not_equals, also try numeric comparison as fallback
                     const numVal = parseFloat(sVal);
                     const numTVal = parseFloat(tVal);
-                    const bothNumeric = !isNaN(numVal) && !isNaN(numTVal) && tVal !== '';
+                    const bothNumeric = !bothDates && !isNaN(numVal) && !isNaN(numTVal) && tVal !== '';
 
                     switch (cond.operator) {
-                        case 'equals': passCond = sVal === tVal || (bothNumeric && numVal === numTVal); break;
-                        case 'not_equals': passCond = bothNumeric ? numVal !== numTVal : sVal !== tVal; break;
+                        case 'equals':
+                            if (bothDates) { passCond = sVal === tVal; }
+                            else { passCond = sVal === tVal || (bothNumeric && numVal === numTVal); }
+                            break;
+                        case 'not_equals':
+                            if (bothDates) { passCond = sVal !== tVal; }
+                            else { passCond = bothNumeric ? numVal !== numTVal : sVal !== tVal; }
+                            break;
                         case 'contains': passCond = sVal.includes(tVal); break;
                         case 'not_contains': passCond = !sVal.includes(tVal); break;
                         case 'is_empty': passCond = sVal === ''; break;
@@ -437,24 +447,24 @@ function buildVisRows(
                         case 'greater_than':
                         case 'greater_than_or_equal':
                         case 'less_than':
-                        case 'less_than_or_equal':
-                            if (bothNumeric) {
+                        case 'less_than_or_equal': {
+                            // Try date comparison first, then numeric
+                            let dVal = parseDate(sVal);
+                            let dTVal = parseDate(tVal);
+                            if (dVal && dTVal) {
+                                const dt = dVal.getTime(), tt = dTVal.getTime();
+                                if (cond.operator === 'greater_than') passCond = dt > tt;
+                                else if (cond.operator === 'greater_than_or_equal') passCond = dt >= tt;
+                                else if (cond.operator === 'less_than') passCond = dt < tt;
+                                else passCond = dt <= tt;
+                            } else if (bothNumeric) {
                                 if (cond.operator === 'greater_than') passCond = numVal > numTVal;
-                                if (cond.operator === 'greater_than_or_equal') passCond = numVal >= numTVal;
-                                if (cond.operator === 'less_than') passCond = numVal < numTVal;
-                                if (cond.operator === 'less_than_or_equal') passCond = numVal <= numTVal;
-                            } else {
-                                // Date fallback
-                                let dVal = parseDate(val);
-                                let dTVal = parseDate(cond.value);
-                                if (dVal && dTVal) {
-                                    if (cond.operator === 'greater_than') passCond = dVal.getTime() > dTVal.getTime();
-                                    if (cond.operator === 'greater_than_or_equal') passCond = dVal.getTime() >= dTVal.getTime();
-                                    if (cond.operator === 'less_than') passCond = dVal.getTime() < dTVal.getTime();
-                                    if (cond.operator === 'less_than_or_equal') passCond = dVal.getTime() <= dTVal.getTime();
-                                }
+                                else if (cond.operator === 'greater_than_or_equal') passCond = numVal >= numTVal;
+                                else if (cond.operator === 'less_than') passCond = numVal < numTVal;
+                                else passCond = numVal <= numTVal;
                             }
                             break;
+                        }
                     }
                     conditionPasses.push(passCond);
                 }
