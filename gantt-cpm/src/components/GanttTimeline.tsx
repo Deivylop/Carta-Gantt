@@ -106,13 +106,15 @@ export default function GanttTimeline() {
 
         const isSplit = !!(r._isSplit && r._remES && r._remEF && r._actualEnd);
         if (isSplit) {
-            // Check segment 1 (done work — extends to barStatusDate)
+            // Check segment 1
             const seg1x = Math.max(0, dayDiff(projStart, r.ES) * PX);
-            const seg1EndX = barStatusDate
-                ? dayDiff(projStart, barStatusDate) * PX
-                : dayDiff(projStart, r._actualEnd!) * PX;
+            const seg1EndX = r.suspendDate
+                ? dayDiff(projStart, r._actualEnd!) * PX
+                : (barStatusDate
+                    ? dayDiff(projStart, barStatusDate) * PX
+                    : dayDiff(projStart, r._actualEnd!) * PX);
             const seg1w = Math.max(4, seg1EndX - seg1x);
-            if (mx >= seg1x - 3 && mx <= seg1x + seg1w + 3) return { visIdx: vi, zone: 'move' };
+            if (mx >= seg1x - 3 && mx <= seg1x + seg1w + 3) return { visIdx: vi, zone: 'move' as const };
             // Check segment 2 (remaining work)
             const seg2x = dayDiff(projStart, r._remES!) * PX;
             const seg2EndX = dayDiff(projStart, r._remEF!) * PX;
@@ -150,9 +152,11 @@ export default function GanttTimeline() {
         const isSplit = !!(r._isSplit && r._remES && r._remEF && r._actualEnd);
         if (isSplit) {
             const seg1x = Math.max(0, dayDiff(projStart, r.ES) * PX);
-            const seg1EndX = barStatusDate
-                ? dayDiff(projStart, barStatusDate) * PX
-                : dayDiff(projStart, r._actualEnd!) * PX;
+            const seg1EndX = r.suspendDate
+                ? dayDiff(projStart, r._actualEnd!) * PX
+                : (barStatusDate
+                    ? dayDiff(projStart, barStatusDate) * PX
+                    : dayDiff(projStart, r._actualEnd!) * PX);
             const seg2x = dayDiff(projStart, r._remES!) * PX;
             const seg2EndX = dayDiff(projStart, r._remEF!) * PX;
             if ((mx >= seg1x - 6 && mx <= seg1EndX + 6) ||
@@ -357,18 +361,24 @@ export default function GanttTimeline() {
 
                 if (isSplit) {
                     // ═══ SPLIT BAR — two segments with dashed connector ═══
-                    // Segment 1: done work (ES → barStatusDate) — progress extends to the cut-off date
+                    const isSuspend = !!r.suspendDate;
+
+                    // Segment 1: extends to suspendDate for suspended activities,
+                    // otherwise to barStatusDate (retained logic split).
                     const seg1x = bx;
-                    const seg1EndX = barStatusDate
-                        ? dayDiff(projStart, barStatusDate) * PX
-                        : dayDiff(projStart, r._actualEnd!) * PX;
+                    const seg1EndX = isSuspend
+                        ? dayDiff(projStart, r._actualEnd!) * PX   // _actualEnd = suspendDate
+                        : (barStatusDate
+                            ? dayDiff(projStart, barStatusDate) * PX
+                            : dayDiff(projStart, r._actualEnd!) * PX);
                     const seg1w = Math.max(4, seg1EndX - seg1x);
+
                     // Segment 2: remaining work (_remES → _remEF)
                     const seg2x = dayDiff(projStart, r._remES!) * PX;
                     const seg2EndX = dayDiff(projStart, r._remEF!) * PX;
                     const seg2w = Math.max(4, seg2EndX - seg2x);
 
-                    // Draw segment 1 (done)
+                    // Draw segment 1 (base bar)
                     ctx.fillStyle = color;
                     if (!lightMode) { ctx.shadowColor = color; ctx.shadowBlur = 3; }
                     rrect(ctx, seg1x, by, seg1w, bh, 3); ctx.fill();
@@ -377,9 +387,22 @@ export default function GanttTimeline() {
                         ctx.strokeStyle = r.crit ? '#b91c1c' : (r.lv <= 1 ? '#4338ca' : '#1d4ed8');
                         ctx.lineWidth = 1; rrect(ctx, seg1x, by, seg1w, bh, 3); ctx.stroke();
                     }
-                    // Progress fill on segment 1
-                    ctx.fillStyle = lightMode ? '#22c55eaa' : '#22c55e99';
-                    rrect(ctx, seg1x, by, seg1w, bh, 3); ctx.fill();
+
+                    // Progress fill on segment 1:
+                    // For suspended: progress covers only up to statusDate (done work portion)
+                    // For normal split: entire segment 1 is done work
+                    if (isSuspend && barStatusDate) {
+                        const progEndX = Math.min(dayDiff(projStart, barStatusDate) * PX, seg1EndX);
+                        const progW = Math.max(0, progEndX - seg1x);
+                        if (progW > 0) {
+                            ctx.fillStyle = lightMode ? '#22c55eaa' : '#22c55e99';
+                            rrect(ctx, seg1x, by, progW, bh, 3); ctx.fill();
+                        }
+                    } else {
+                        ctx.fillStyle = lightMode ? '#22c55eaa' : '#22c55e99';
+                        rrect(ctx, seg1x, by, seg1w, bh, 3); ctx.fill();
+                    }
+
                     // Gradient sheen seg 1
                     const g1 = ctx.createLinearGradient(0, by, 0, by + bh);
                     g1.addColorStop(0, t.gradTop); g1.addColorStop(1, t.gradBot);
