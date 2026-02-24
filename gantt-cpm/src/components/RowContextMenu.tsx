@@ -78,18 +78,18 @@ export default function RowContextMenu({ x, y, onClose, onOpenColumns, colKey, s
                 <span className="row-ctx-shortcut">Ctrl+V</span>
             </div>
 
-            {/* Rellenar hacia abajo */}
-            <div className={`row-ctx-item${(!colKey || selCount < 2) ? ' disabled' : ''}`}
-                onClick={() => (!colKey || selCount < 2) ? undefined : act(() => onFillDown())}>
-                <span className="row-ctx-label">Rellenar hacia abajo</span>
-                <span className="row-ctx-shortcut">Ctrl+D</span>
-            </div>
-
             {/* Rellenar hacia arriba */}
             <div className={`row-ctx-item${(!colKey || selCount < 2) ? ' disabled' : ''}`}
                 onClick={() => (!colKey || selCount < 2) ? undefined : act(() => onFillUp())}>
                 <span className="row-ctx-label">Rellenar hacia arriba</span>
                 <span className="row-ctx-shortcut">Ctrl+U</span>
+            </div>
+
+            {/* Rellenar hacia abajo */}
+            <div className={`row-ctx-item${(!colKey || selCount < 2) ? ' disabled' : ''}`}
+                onClick={() => (!colKey || selCount < 2) ? undefined : act(() => onFillDown())}>
+                <span className="row-ctx-label">Rellenar hacia abajo</span>
+                <span className="row-ctx-shortcut">Ctrl+D</span>
             </div>
 
             <div className="row-ctx-sep" />
