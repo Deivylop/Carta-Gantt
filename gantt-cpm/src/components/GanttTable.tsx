@@ -296,6 +296,8 @@ export default function GanttTable() {
         if (c.key === 'lv') return String(a.lv);
         if (c.key === 'actualStart') return a.actualStart ? fmtDate(new Date(a.actualStart)) : '';
         if (c.key === 'actualFinish') return a.actualFinish ? fmtDate(new Date(a.actualFinish)) : '';
+        if (c.key === 'suspendDate') return a.suspendDate ? fmtDate(new Date(a.suspendDate)) : '';
+        if (c.key === 'resumeDate') return a.resumeDate ? fmtDate(new Date(a.resumeDate)) : '';
         if (c.key === 'remStartDate') return a._remES ? fmtDate(a._remES) : '';
         if (c.key === 'remEndDate') return a._remEF ? fmtDate(addDays(a._remEF, -1)) : '';
         if (c.key === 'blDur') return a.blDur != null ? a.blDur + ' días' : '';

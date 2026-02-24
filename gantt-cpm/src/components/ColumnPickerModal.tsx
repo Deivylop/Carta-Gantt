@@ -15,7 +15,7 @@ const COLUMN_GROUPS: { group: string; keys: string[] }[] = [
     },
     {
         group: 'Fechas',
-        keys: ['startDate', 'endDate', 'actualStart', 'remStartDate', 'remEndDate', 'constraint', 'constraintDate'],
+        keys: ['startDate', 'endDate', 'actualStart', 'actualFinish', 'suspendDate', 'resumeDate', 'remStartDate', 'remEndDate', 'constraint', 'constraintDate'],
     },
     {
         group: 'Relaciones',
@@ -39,7 +39,11 @@ const COLUMN_GROUPS: { group: string; keys: string[] }[] = [
     },
     {
         group: 'Holguras',
-        keys: ['TF'],
+        keys: ['TF', 'FF', 'floatPath'],
+    },
+    {
+        group: 'CPM',
+        keys: ['crit', 'activityCount'],
     },
     {
         group: 'Personalizado',

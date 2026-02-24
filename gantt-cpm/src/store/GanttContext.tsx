@@ -35,6 +35,8 @@ export const DEFAULT_COLS: ColumnDef[] = [
     { key: 'activityCount', label: 'Recuento de actividades', w: 95, edit: false, cls: 'tcell-num', visible: true },
     { key: 'actualStart', label: 'Comienzo Real', w: 95, edit: false, cls: 'tcell-date', visible: false },
     { key: 'actualFinish', label: 'Fin Real', w: 95, edit: false, cls: 'tcell-date', visible: false },
+    { key: 'suspendDate', label: 'Fecha Suspensión', w: 105, edit: false, cls: 'tcell-date', visible: false },
+    { key: 'resumeDate', label: 'Fecha Reanudación', w: 110, edit: false, cls: 'tcell-date', visible: false },
     { key: 'remStartDate', label: 'Inicio Trab. Rest.', w: 105, edit: false, cls: 'tcell-date', visible: false },
     { key: 'remEndDate', label: 'Fin Trab. Rest.', w: 105, edit: false, cls: 'tcell-date', visible: false },
     { key: 'blDur', label: 'Dur. LB', w: 60, edit: false, cls: 'tcell-dur', visible: false },
