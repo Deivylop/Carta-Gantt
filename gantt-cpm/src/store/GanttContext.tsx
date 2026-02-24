@@ -386,6 +386,15 @@ function buildVisRows(
                 case 'type': return a.type === 'milestone' ? 'Hito' : a.type === 'summary' ? 'Resumen' : 'Tarea';
                 case 'lv': return a.lv;
                 case 'outlineNum': return a.outlineNum ?? '';
+                case 'startDate': return isoDate(a.ES ?? null);
+                case 'endDate': return isoDate(a.EF ?? null);
+                case 'actualStart': return a.actualStart ? isoDate(new Date(a.actualStart)) : '';
+                case 'actualFinish': return a.actualFinish ? isoDate(new Date(a.actualFinish)) : '';
+                case 'remStartDate': return isoDate(a._remES ?? null);
+                case 'remEndDate': return isoDate(a._remEF ?? null);
+                case 'blStart': return isoDate(a.blES ?? null);
+                case 'blEnd': return isoDate(a.blEF ?? null);
+                case 'constraintDate': return a.constraintDate ? isoDate(new Date(a.constraintDate)) : '';
                 case 'predStr': {
                     if (!a.preds || a.preds.length === 0) return '';
                     return a.preds.map((p: any) => p.id + (p.type !== 'FS' ? ` ${p.type}` : '') + (p.lag ? ` +${p.lag}d` : '')).join(', ');

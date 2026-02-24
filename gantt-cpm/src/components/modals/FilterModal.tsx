@@ -113,6 +113,9 @@ export default function FilterModal() {
     // Extract available fields
     const availableFields = DEFAULT_COLS.filter(c => c.key !== '_num' && c.key !== '_info' && c.key !== '_mode');
 
+    // Fields that are date-type (show date picker)
+    const DATE_FIELDS = new Set(['startDate', 'endDate', 'actualStart', 'actualFinish', 'remStartDate', 'remEndDate', 'blStart', 'blEnd', 'constraintDate']);
+
     return (
         <div className="modal-overlay open" onClick={close} style={{ zIndex: 10000 }}>
             <div className="modal" ref={resizeRef} onClick={e => e.stopPropagation()} style={{ ...resizeStyle, width: 850, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
@@ -281,14 +284,24 @@ export default function FilterModal() {
                                                     </td>
                                                     <td style={{ padding: '6px 8px' }}>
                                                         {cond.operator !== 'is_empty' && cond.operator !== 'is_not_empty' ? (
-                                                            <input
-                                                                type="text"
-                                                                className="form-input"
-                                                                style={{ width: '100%', padding: '4px', textAlign: 'center' }}
-                                                                value={cond.value}
-                                                                onChange={e => updateCondition(cond.id, { value: e.target.value })}
-                                                                placeholder="..."
-                                                            />
+                                                            DATE_FIELDS.has(cond.field) ? (
+                                                                <input
+                                                                    type="date"
+                                                                    className="form-input"
+                                                                    style={{ width: '100%', padding: '4px', textAlign: 'center' }}
+                                                                    value={cond.value}
+                                                                    onChange={e => updateCondition(cond.id, { value: e.target.value })}
+                                                                />
+                                                            ) : (
+                                                                <input
+                                                                    type="text"
+                                                                    className="form-input"
+                                                                    style={{ width: '100%', padding: '4px', textAlign: 'center' }}
+                                                                    value={cond.value}
+                                                                    onChange={e => updateCondition(cond.id, { value: e.target.value })}
+                                                                    placeholder="..."
+                                                                />
+                                                            )
                                                         ) : null}
                                                     </td>
                                                 </tr>
