@@ -9,13 +9,18 @@ import { predsToStr, getWeightPct, strToPreds, autoId, syncResFromString } from 
 import ColumnPickerModal from './ColumnPickerModal';
 import RowContextMenu from './RowContextMenu';
 
-const EditableNumberCell = ({ rawValue, displayValue, onUpdate, onFocus, step, min, max }: { rawValue: string, displayValue: string, onUpdate: (val: string) => void, onFocus: () => void, step?: number, min?: number, max?: number }) => {
+const EditableNumberCell = ({ rawValue, displayValue, onUpdate, onFocus, isRowSelected, step, min, max }: { rawValue: string, displayValue: string, onUpdate: (val: string) => void, onFocus: () => void, isRowSelected: boolean, step?: number, min?: number, max?: number }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [val, setVal] = useState(rawValue);
 
     useEffect(() => {
         setVal(rawValue);
     }, [rawValue]);
+
+    // Exit edit mode when row is deselected
+    useEffect(() => {
+        if (!isRowSelected && isEditing) { setIsEditing(false); onUpdate(val); }
+    }, [isRowSelected]);
 
     if (isEditing) {
         return (
@@ -35,6 +40,7 @@ const EditableNumberCell = ({ rawValue, displayValue, onUpdate, onFocus, step, m
                         if (e.key === 'Escape') setIsEditing(false);
                     }}
                     onFocus={onFocus}
+                    onContextMenu={e => { e.preventDefault(); setIsEditing(false); }}
                 />
             </div>
         );
@@ -44,10 +50,11 @@ const EditableNumberCell = ({ rawValue, displayValue, onUpdate, onFocus, step, m
         <span
             style={{ cursor: 'text', display: 'flex', alignItems: 'center', justifyContent: 'inherit', width: '100%', height: '100%' }}
             onMouseDown={(e) => {
-                if (e.ctrlKey || e.metaKey || e.shiftKey) return; // let row handle multi-select
+                if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
+                if (!isRowSelected) return; // first click selects row, second click edits
                 e.preventDefault(); e.stopPropagation(); setIsEditing(true); onFocus();
             }}
-            onDoubleClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => { e.stopPropagation(); if (!isEditing) { setIsEditing(true); onFocus(); } }}
             onClick={(e) => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey) e.stopPropagation(); }}
         >
             {displayValue}
@@ -55,7 +62,7 @@ const EditableNumberCell = ({ rawValue, displayValue, onUpdate, onFocus, step, m
     );
 };
 
-const EditableDateCell = ({ dateValue, displayValue, onUpdate, onFocus }: { dateValue: Date | null | undefined, displayValue: string, onUpdate: (val: string) => void, onFocus: () => void }) => {
+const EditableDateCell = ({ dateValue, displayValue, onUpdate, onFocus, isRowSelected }: { dateValue: Date | null | undefined, displayValue: string, onUpdate: (val: string) => void, onFocus: () => void, isRowSelected: boolean }) => {
     const [isEditing, setIsEditing] = useState(false);
 
     // Convert Date to YYYY-MM-DD for input
@@ -73,6 +80,11 @@ const EditableDateCell = ({ dateValue, displayValue, onUpdate, onFocus }: { date
         setVal(toIsoDate(dateValue));
     }, [dateValue]);
 
+    // Exit edit mode when row is deselected
+    useEffect(() => {
+        if (!isRowSelected && isEditing) { setIsEditing(false); onUpdate(val); }
+    }, [isRowSelected]);
+
     if (isEditing) {
         return (
             <div style={{ width: '100%', height: '100%', display: 'flex' }} onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
@@ -88,6 +100,7 @@ const EditableDateCell = ({ dateValue, displayValue, onUpdate, onFocus }: { date
                         if (e.key === 'Escape') setIsEditing(false);
                     }}
                     onFocus={onFocus}
+                    onContextMenu={e => { e.preventDefault(); setIsEditing(false); }}
                 />
             </div>
         );
@@ -97,10 +110,11 @@ const EditableDateCell = ({ dateValue, displayValue, onUpdate, onFocus }: { date
         <span
             style={{ cursor: 'text', display: 'flex', alignItems: 'center', justifyContent: 'inherit', width: '100%', height: '100%' }}
             onMouseDown={(e) => {
-                if (e.ctrlKey || e.metaKey || e.shiftKey) return; // let row handle multi-select
+                if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
+                if (!isRowSelected) return; // first click selects row, second click edits
                 e.preventDefault(); e.stopPropagation(); setIsEditing(true); onFocus();
             }}
-            onDoubleClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => { e.stopPropagation(); if (!isEditing) { setIsEditing(true); onFocus(); } }}
             onClick={(e) => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey) e.stopPropagation(); }}
         >
             {displayValue}
@@ -374,6 +388,7 @@ export default function GanttTable() {
                                 ...(hasResources ? { fontWeight: 600 } : {}),
                                 ...chainStyle
                             }}
+                                onMouseDown={() => { (document.activeElement as HTMLElement)?.blur?.(); }}
                                 onClick={(e) => dispatch({ type: 'SET_SELECTION', index: vr._idx, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })}
                                 onContextMenu={(e) => { e.preventDefault(); dispatch({ type: 'SET_SELECTION', index: vr._idx }); setCtxMenu({ x: e.clientX, y: e.clientY }); }}
                                 onDoubleClick={() => { dispatch({ type: 'SET_SELECTION', index: vr._idx }); dispatch({ type: 'OPEN_ACT_MODAL' }); }}>
@@ -464,6 +479,7 @@ export default function GanttTable() {
                                                         displayValue={val}
                                                         onUpdate={(newVal) => handleBlur(vr._idx, c.key, newVal)}
                                                         onFocus={() => dispatch({ type: 'SET_SELECTION', index: vr._idx })}
+                                                        isRowSelected={selIndices.has(vr._idx)}
                                                         step={c.key === 'pct' ? 5 : undefined}
                                                         min={c.key === 'pct' ? 0 : undefined}
                                                         max={c.key === 'pct' ? 100 : undefined}
@@ -480,6 +496,7 @@ export default function GanttTable() {
                                                         displayValue={val}
                                                         onUpdate={(newVal) => handleBlur(vr._idx, c.key, newVal)}
                                                         onFocus={() => dispatch({ type: 'SET_SELECTION', index: vr._idx })}
+                                                        isRowSelected={selIndices.has(vr._idx)}
                                                     />
                                                 </div>
                                             );
@@ -492,10 +509,15 @@ export default function GanttTable() {
                                                 suppressContentEditableWarning
                                                 spellCheck={false}
                                                 onMouseDown={e => {
-                                                    if (e.ctrlKey || e.metaKey || e.shiftKey) {
-                                                        e.preventDefault(); // prevent focus/edit, let row handle multi-select
+                                                    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) {
+                                                        e.preventDefault(); // prevent focus/edit on right-click or multi-select
+                                                        return;
+                                                    }
+                                                    if (!selIndices.has(vr._idx)) {
+                                                        e.preventDefault(); // first click selects row, second click edits
                                                     }
                                                 }}
+                                                onContextMenu={e => { e.preventDefault(); e.currentTarget.blur(); }}
                                                 onFocus={() => dispatch({ type: 'SET_SELECTION', index: vr._idx })}
                                                 onBlur={e => handleBlur(vr._idx, c.key, e.currentTarget.textContent || '')}
                                                 onKeyDown={handleKeyDown}
