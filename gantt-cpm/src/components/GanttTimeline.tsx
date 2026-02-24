@@ -909,23 +909,17 @@ export default function GanttTimeline() {
                             <div style={{
                                 position: 'absolute', top: 0, left: slX1, width: slW, height: H,
                                 background: 'rgba(234, 179, 8, 0.13)', pointerEvents: 'none', zIndex: 2,
-                                borderRight: '2px dashed rgba(234,179,8,0.5)',
                             }} />
-                            {/* Drag handle – thick edge */}
+                            {/* Drag handle – thin vertical line like status-date line */}
                             <div
                                 title={`Reflector: arrastre para cambiar fin (${fmtDate(slEnd)})`}
                                 style={{
-                                    position: 'absolute', top: 0, left: slX2 - 5, width: 10, height: H,
+                                    position: 'absolute', top: 0, left: slX2 - 2, width: 4, height: H,
                                     cursor: 'ew-resize', zIndex: 3,
-                                    background: 'rgba(234,179,8,0.35)',
-                                    borderLeft: '2px solid #d97706',
-                                    borderRight: '2px solid #d97706',
-                                    display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+                                    background: '#d97706',
                                 }}
                                 onMouseDown={handleSpotlightDragStart}
-                            >
-                                <span style={{ fontSize: 9, color: '#d97706', marginTop: 2, userSelect: 'none', pointerEvents: 'none' }}>●●</span>
-                            </div>
+                            />
                         </>
                     );
                 })()}

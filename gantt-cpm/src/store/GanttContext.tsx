@@ -359,6 +359,21 @@ function buildVisRows(
                 case 'TF': return (a.type === 'summary' || a._isProjRow) ? null : (a.TF ?? null);
                 case 'FF': return (a.type === 'summary' || a._isProjRow) ? null : (a._freeFloat ?? null);
                 case 'floatPath': return (a.type === 'summary' || a._isProjRow) ? null : (a._floatPath ?? null);
+                case 'crit': return (a.type === 'summary' || a._isProjRow) ? '' : (a.crit ? 'Sí' : 'No');
+                case 'activityCount': {
+                    if (a._isProjRow) return activities.filter((x: any) => x.type !== 'summary').length;
+                    if (a.type !== 'summary') return 1;
+                    const si = activities.indexOf(a);
+                    let cnt = 0;
+                    for (let j = si + 1; j < activities.length; j++) {
+                        const ch = activities[j] as any;
+                        if (ch.lv <= a.lv) break;
+                        if (ch.type !== 'summary') cnt++;
+                    }
+                    return cnt;
+                }
+                case 'suspendDate': return a.suspendDate ? isoDate(new Date(a.suspendDate)) : '';
+                case 'resumeDate': return a.resumeDate ? isoDate(new Date(a.resumeDate)) : '';
                 case 'weight': return a.weight ?? null;
                 case 'earnedValue': {
                     let ev: number;
