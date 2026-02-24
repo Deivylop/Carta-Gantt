@@ -338,6 +338,62 @@ function buildVisRows(
         // Si ya hay un CheckerFilter, solo procesamos los que ya pasaron
         const baseActivities = activeCheckerFilter ? activities.filter(a => filteredSet.has(a.id) || a._isProjRow) : activities;
 
+        // Resolve the actual value for a field (handles computed columns)
+        const resolveFieldValue = (a: any, field: string): any => {
+            switch (field) {
+                case 'dur': return a.type === 'milestone' ? 0 : ((a as any)._spanDur ?? a.dur ?? 0);
+                case 'remDur': return a.type === 'milestone' ? 0 : (a.remDur ?? a.dur ?? 0);
+                case 'pct': return a.pct ?? 0;
+                case 'plannedPct': return a._plannedPct ?? a.pct ?? 0;
+                case 'work': return a.work ?? 0;
+                case 'TF': return (a.type === 'summary' || a._isProjRow) ? null : (a.TF ?? null);
+                case 'FF': return (a.type === 'summary' || a._isProjRow) ? null : (a._freeFloat ?? null);
+                case 'floatPath': return (a.type === 'summary' || a._isProjRow) ? null : (a._floatPath ?? null);
+                case 'weight': return a.weight ?? null;
+                case 'earnedValue': {
+                    let ev: number;
+                    if (a.type === 'summary' || a._isProjRow) {
+                        ev = 0;
+                        const startJ = a._isProjRow ? 1 : activities.indexOf(a) + 1;
+                        for (let j = startJ; j < activities.length; j++) {
+                            const ch = activities[j];
+                            if (!a._isProjRow && ch.lv <= a.lv) break;
+                            if (ch.type === 'summary') continue;
+                            ev += (ch.work || 0) * (ch.pct || 0) / 100;
+                        }
+                    } else {
+                        ev = (a.work || 0) * (a.pct || 0) / 100;
+                    }
+                    return Math.round(ev * 10) / 10;
+                }
+                case 'remainingWork': {
+                    let ev: number;
+                    if (a.type === 'summary' || a._isProjRow) {
+                        ev = 0;
+                        const startJ = a._isProjRow ? 1 : activities.indexOf(a) + 1;
+                        for (let j = startJ; j < activities.length; j++) {
+                            const ch = activities[j];
+                            if (!a._isProjRow && ch.lv <= a.lv) break;
+                            if (ch.type === 'summary') continue;
+                            ev += (ch.work || 0) * (ch.pct || 0) / 100;
+                        }
+                    } else {
+                        ev = (a.work || 0) * (a.pct || 0) / 100;
+                    }
+                    return Math.round(((a.work || 0) - ev) * 10) / 10;
+                }
+                case 'cal': return a.cal ?? '';
+                case 'type': return a.type === 'milestone' ? 'Hito' : a.type === 'summary' ? 'Resumen' : 'Tarea';
+                case 'lv': return a.lv;
+                case 'outlineNum': return a.outlineNum ?? '';
+                case 'predStr': {
+                    if (!a.preds || a.preds.length === 0) return '';
+                    return a.preds.map((p: any) => p.id + (p.type !== 'FS' ? ` ${p.type}` : '') + (p.lag ? ` +${p.lag}d` : '')).join(', ');
+                }
+                default: return a[field] ?? null;
+            }
+        };
+
         let customFilteredSet = new Set<string>();
 
         baseActivities.forEach(a => {
@@ -349,7 +405,7 @@ function buildVisRows(
             for (const filter of activeCustomFilters) {
                 let conditionPasses: boolean[] = [];
                 for (const cond of filter.conditions) {
-                    let val = (a as any)[cond.field];
+                    let val = resolveFieldValue(a, cond.field);
                     // Use ?? instead of || so that 0 and false are preserved
                     let sVal = String(val ?? '').trim().toLowerCase();
                     // Strip common display suffixes (días, hrs, %) from user input
