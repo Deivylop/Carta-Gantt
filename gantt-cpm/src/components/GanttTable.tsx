@@ -277,7 +277,7 @@ export default function GanttTable() {
         }
         if (c.key === 'crit') {
             if (a.type === 'summary' || a._isProjRow) return '';
-            return a.crit ? '1' : '0';
+            return a.crit ? 'Sí' : 'No';
         }
         if (c.key === 'activityCount') {
             if (a._isProjRow) return String(activities.filter((x: any) => x.type !== 'summary').length);
@@ -293,7 +293,7 @@ export default function GanttTable() {
             return String(count);
         }
         if (c.key === 'type') return a.type === 'milestone' ? 'Hito' : a.type === 'summary' ? 'Resumen' : 'Tarea';
-        if (c.key === 'lv') return String(a.lv);
+        if (c.key === 'lv') return String(a.lv + 1);
         if (c.key === 'actualStart') return a.actualStart ? fmtDate(new Date(a.actualStart)) : '';
         if (c.key === 'actualFinish') return a.actualFinish ? fmtDate(new Date(a.actualFinish)) : '';
         if (c.key === 'suspendDate') return a.suspendDate ? fmtDate(new Date(a.suspendDate)) : '';
@@ -449,13 +449,14 @@ export default function GanttTable() {
                                     // Weight coloring
                                     if (c.key === 'weight' && a.weight != null && a.weight > 0) style.color = '#fbbf24';
 
-                                    // Crítico column – render checkbox icon
+                                    // Crítico column
                                     if (c.key === 'crit') {
                                         const isCrit = a.crit === true;
+                                        const critVal = (a.type === 'summary' || a._isProjRow) ? '' : (isCrit ? 'Sí' : 'No');
                                         return (
                                             <div key={c.key} className={`tcell ${c.cls}`}
-                                                style={{ ...style, textAlign: 'center', fontSize: 13, color: isCrit ? '#ef4444' : (lightMode ? '#9ca3af' : '#4b5563') }}>
-                                                {(a.type === 'summary' || a._isProjRow) ? '' : (isCrit ? '✓' : '□')}
+                                                style={{ ...style, textAlign: 'center', fontWeight: isCrit ? 700 : 400, color: isCrit ? '#ef4444' : (lightMode ? '#6b7280' : '#6b7280') }}>
+                                                {critVal}
                                             </div>
                                         );
                                     }
