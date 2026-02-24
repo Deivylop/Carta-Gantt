@@ -797,13 +797,13 @@ function TabCurvaS({ activityId }: { activityId: string }) {
     const { state } = useGantt();
     const [mode, setMode] = useState<'all' | 'selected'>('all');
 
-    // Same width as timeline → canvas renderer is used (synchronized X-axis)
-    const timelineWidth = Math.max(800, state.totalDays * state.pxPerDay);
+    // Left panel matches table width exactly → chart viewport aligns with the Gantt timeline
+    const leftW = state.tableW;
 
     return (
         <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
-            {/* Left: mode selector */}
-            <div style={{ width: 180, padding: '12px 14px', borderRight: `1px solid ${state.lightMode ? '#e2e8f0' : '#334155'}`, display: 'flex', flexDirection: 'column', gap: 10, flexShrink: 0 }}>
+            {/* Left: mode selector – same width as GanttTable so chart aligns with timeline */}
+            <div style={{ width: leftW, flexShrink: 0, padding: '12px 14px', borderRight: `1px solid ${state.lightMode ? '#e2e8f0' : '#334155'}`, display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
                 <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', opacity: 0.6, marginBottom: 4 }}>Mostrar</div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, cursor: 'pointer' }}>
                     <input type="radio" name="adpScurveMode" checked={mode === 'all'} onChange={() => setMode('all')} />
@@ -814,12 +814,12 @@ function TabCurvaS({ activityId }: { activityId: string }) {
                     Actividad seleccionada
                 </label>
             </div>
-            {/* Right: chart – exactWidth triggers canvas renderer with same X-axis as timeline */}
-            <div style={{ flex: 1, overflow: 'hidden', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+            {/* Right: chart viewport aligns with the Gantt timeline, canvas scrolls to full width */}
+            <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
                 <SCurveChart
                     hideHeader
                     forcedActivityId={mode === 'selected' ? activityId : '__PROJECT__'}
-                    exactWidth={timelineWidth}
+                    exactWidth={state.totalDays * state.pxPerDay}
                 />
             </div>
         </div>

@@ -850,6 +850,9 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
     useEffect(() => {
         const el = containerRef.current;
         if (!el) return;
+        // Sync initial scroll position from whichever grid is visible
+        const grBody = document.getElementById('gr-body');
+        if (grBody) el.scrollLeft = grBody.scrollLeft;
         const ro = new ResizeObserver(() => {
             draw(el.getBoundingClientRect().height);
         });
@@ -858,7 +861,7 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
         return () => ro.disconnect();
     }, [draw]);
 
-    // Sync scroll with Gantt (gr-body)
+    // Sync scroll with Gantt timeline (gr-body) and task/resource usage grids
     useEffect(() => {
         const wrapper = containerRef.current;
         if (!wrapper) return;
@@ -867,6 +870,9 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
             if (grBody) grBody.scrollLeft = wrapper.scrollLeft;
             const resGrBody = document.getElementById('res-gr-body');
             if (resGrBody) resGrBody.scrollLeft = wrapper.scrollLeft;
+            // Also keep the task usage time header in sync
+            const usageHdr = document.getElementById('usage-hdr-scroll');
+            if (usageHdr) usageHdr.scrollLeft = wrapper.scrollLeft;
         };
         wrapper.addEventListener('scroll', handler);
         return () => wrapper.removeEventListener('scroll', handler);
