@@ -275,6 +275,23 @@ export default function GanttTable() {
             if (a.type === 'summary' || a._isProjRow) return '';
             return a._floatPath != null ? String(a._floatPath) : '';
         }
+        if (c.key === 'crit') {
+            if (a.type === 'summary' || a._isProjRow) return '';
+            return a.crit ? '1' : '0';
+        }
+        if (c.key === 'activityCount') {
+            if (a._isProjRow) return String(activities.filter((x: any) => x.type !== 'summary').length);
+            if (a.type !== 'summary') return '1';
+            const startIdx = activities.findIndex((x: any) => x.id === a.id);
+            if (startIdx < 0) return '';
+            let count = 0;
+            for (let j = startIdx + 1; j < activities.length; j++) {
+                const act = activities[j] as any;
+                if (act.lv <= a.lv) break;
+                if (act.type !== 'summary') count++;
+            }
+            return String(count);
+        }
         if (c.key === 'type') return a.type === 'milestone' ? 'Hito' : a.type === 'summary' ? 'Resumen' : 'Tarea';
         if (c.key === 'lv') return String(a.lv);
         if (c.key === 'actualStart') return a.actualStart ? fmtDate(new Date(a.actualStart)) : '';
@@ -429,6 +446,17 @@ export default function GanttTable() {
 
                                     // Weight coloring
                                     if (c.key === 'weight' && a.weight != null && a.weight > 0) style.color = '#fbbf24';
+
+                                    // Crítico column – render checkbox icon
+                                    if (c.key === 'crit') {
+                                        const isCrit = a.crit === true;
+                                        return (
+                                            <div key={c.key} className={`tcell ${c.cls}`}
+                                                style={{ ...style, textAlign: 'center', fontSize: 13, color: isCrit ? '#ef4444' : (lightMode ? '#9ca3af' : '#4b5563') }}>
+                                                {(a.type === 'summary' || a._isProjRow) ? '' : (isCrit ? '✓' : '□')}
+                                            </div>
+                                        );
+                                    }
 
                                     // Info icon click
                                     if (c.key === '_info' && a.id) {

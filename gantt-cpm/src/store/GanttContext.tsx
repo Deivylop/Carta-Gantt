@@ -31,6 +31,8 @@ export const DEFAULT_COLS: ColumnDef[] = [
     { key: 'TF', label: 'Holgura Total', w: 75, edit: false, cls: 'tcell-dur', visible: true },
     { key: 'FF', label: 'Holgura Libre', w: 75, edit: false, cls: 'tcell-dur', visible: false },
     { key: 'floatPath', label: 'Float Path', w: 70, edit: false, cls: 'tcell-num', visible: false },
+    { key: 'crit', label: 'Crítico', w: 55, edit: false, cls: 'tcell-num', visible: true },
+    { key: 'activityCount', label: 'Recuento de actividades', w: 95, edit: false, cls: 'tcell-num', visible: true },
     { key: 'actualStart', label: 'Comienzo Real', w: 95, edit: false, cls: 'tcell-date', visible: false },
     { key: 'actualFinish', label: 'Fin Real', w: 95, edit: false, cls: 'tcell-date', visible: false },
     { key: 'remStartDate', label: 'Inicio Trab. Rest.', w: 105, edit: false, cls: 'tcell-date', visible: false },

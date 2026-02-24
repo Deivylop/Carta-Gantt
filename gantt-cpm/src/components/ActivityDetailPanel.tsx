@@ -675,7 +675,7 @@ function TabRelaciones({ a, activities, succs, preds, dispatch, selIdx, addPred,
                     </div>
                 )}
                 <table className="adp-tbl">
-                    <thead><tr><th>ID</th><th>Nombre</th><th>Tipo</th><th>Retardo</th><th>ES</th><th>EF</th></tr></thead>
+                    <thead><tr><th>ID</th><th>Nombre de Tarea</th><th>Tipo</th><th>Retardo</th><th>Comienzo</th><th>Fin</th></tr></thead>
                     <tbody>
                         {preds.map((p: any, i: number) => {
                             const pa = activities.find((x: any) => x.id === p.id);
@@ -735,7 +735,7 @@ function TabRelaciones({ a, activities, succs, preds, dispatch, selIdx, addPred,
                     </div>
                 )}
                 <table className="adp-tbl">
-                    <thead><tr><th>ID</th><th>Nombre</th><th>Tipo</th><th>Retardo</th><th>ES</th><th>EF</th></tr></thead>
+                    <thead><tr><th>ID</th><th>Nombre de Tarea</th><th>Tipo</th><th>Retardo</th><th>Comienzo</th><th>Fin</th></tr></thead>
                     <tbody>
                         {succs.map((s: any, i: number) => {
                             const sa = activities.find((x: any) => x.id === s.sucId);
