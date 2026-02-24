@@ -136,7 +136,7 @@ const EditableDateCell = ({ dateValue, displayValue, onUpdate, onFocus, isRowSel
 
 export default function GanttTable() {
     const { state, dispatch } = useGantt();
-    const { visRows, columns, colWidths, selIdx, selIndices, activities, lightMode, defCal, chainIds, chainTrace } = state;
+    const { visRows, columns, colWidths, selIdx, selIndices, activities, lightMode, defCal, chainIds, chainTrace, spotlightEnabled, spotlightEnd, statusDate } = state;
     const bodyRef = useRef<HTMLDivElement>(null);
     const [colResize, setColResize] = useState<{ idx: number; startX: number; startW: number } | null>(null);
     const [colPickerOpen, setColPickerOpen] = useState(false);
@@ -405,6 +405,15 @@ export default function GanttTable() {
                                 : { opacity: 0.35 }
                             : {};
 
+                        // Progress Spotlight row highlight
+                        const slEndDate = spotlightEnabled && spotlightEnd ? new Date(spotlightEnd) : null;
+                        const inSpotlight = spotlightEnabled && slEndDate && !isProj && !isResRow
+                            && a.pct < 100 && a.ES && a.EF
+                            && a.ES < slEndDate && a.EF > statusDate;
+                        const spotlightStyle: React.CSSProperties = inSpotlight && !chainActive
+                            ? { background: lightMode ? '#fef9c3' : '#3d3100' }
+                            : {};
+
                         // In usage view, non-summary rows expand to fit multiple metric lines
                         const needsTallRow = isUsageView && !isProj && !isSummary && usageModes.length > 1;
                         const rowHeight = needsTallRow ? usageRowH : undefined;
@@ -419,6 +428,7 @@ export default function GanttTable() {
                                     background: lightMode ? '#f0f9ff' : '#0c1929',
                                 } : {}),
                                 ...(hasResources ? { fontWeight: 600 } : {}),
+                                ...spotlightStyle,
                                 ...chainStyle
                             }}
                                 onMouseDown={() => { (document.activeElement as HTMLElement)?.blur?.(); }}

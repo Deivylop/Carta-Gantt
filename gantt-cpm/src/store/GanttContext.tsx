@@ -111,6 +111,9 @@ export interface GanttState {
     // Chain Trace (Trace Logic)
     chainTrace: { actId: string; dir: 'fwd' | 'bwd' | 'both' } | null;
     chainIds: Set<string>;  // computed set of activity IDs in the traced chain
+    // Progress Spotlight
+    spotlightEnabled: boolean;
+    spotlightEnd: string | null; // ISO date string – draggable right boundary
 }
 
 // ─── Actions ────────────────────────────────────────────────────
@@ -196,7 +199,9 @@ export type Action =
     | { type: 'SET_MFP_CONFIG'; config: Partial<MFPConfig> }
     | { type: 'TOGGLE_MFP' }
     | { type: 'SET_CHAIN_TRACE'; dir: 'fwd' | 'bwd' | 'both' }
-    | { type: 'CLEAR_CHAIN_TRACE' };
+    | { type: 'CLEAR_CHAIN_TRACE' }
+    | { type: 'TOGGLE_SPOTLIGHT' }
+    | { type: 'SET_SPOTLIGHT_END'; isoDate: string };
 
 // ─── Grouping / Filtering ─────────────────────────────────────────
 function applyGroupFilter(rows: VisibleRow[], activities: Activity[], activeGroup: string, columns: ColumnDef[]): VisibleRow[] {
@@ -870,6 +875,14 @@ function reducer(state: GanttState, action: Action): GanttState {
 
         case 'TOGGLE_DEPENDENCIES':
             return { ...state, showDependencies: !state.showDependencies };
+
+        case 'TOGGLE_SPOTLIGHT': {
+            const on = !state.spotlightEnabled;
+            const end = state.spotlightEnd || isoDate(addDays(state.statusDate, 7));
+            return { ...state, spotlightEnabled: on, spotlightEnd: on ? end : state.spotlightEnd };
+        }
+        case 'SET_SPOTLIGHT_END':
+            return { ...state, spotlightEnd: action.isoDate };
 
         case 'SET_VIEW': {
             const visRows = buildVisRows(state.activities, state.collapsed, state.activeGroup, state.columns, action.view, state.expResources, state.usageModes);
@@ -1548,6 +1561,8 @@ const initialState: GanttState = {
     mfpConfig: { enabled: false, endActivityId: null, mode: 'totalFloat', maxPaths: 10 },
     chainTrace: null,
     chainIds: new Set<string>(),
+    spotlightEnabled: false,
+    spotlightEnd: null,
 };
 
 // ─── Context ────────────────────────────────────────────────────

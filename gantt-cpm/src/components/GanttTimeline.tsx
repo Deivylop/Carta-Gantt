@@ -53,7 +53,7 @@ interface DragPreview {
 
 export default function GanttTimeline() {
     const { state, dispatch } = useGantt();
-    const { visRows, zoom, totalDays, timelineStart: projStart, statusDate, _cpmStatusDate, selIdx, selIndices, lightMode, activities, defCal, pxPerDay, showProjRow: _showProjRow, showTodayLine, showStatusLine, showDependencies, mfpConfig, chainIds, chainTrace } = state;
+    const { visRows, zoom, totalDays, timelineStart: projStart, statusDate, _cpmStatusDate, selIdx, selIndices, lightMode, activities, defCal, pxPerDay, showProjRow: _showProjRow, showTodayLine, showStatusLine, showDependencies, mfpConfig, chainIds, chainTrace, spotlightEnabled, spotlightEnd } = state;
     // For bar rendering, use the statusDate from last CPM calc (not the live one from the picker)
     const barStatusDate = _cpmStatusDate || statusDate;
     const PX = pxPerDay;
@@ -74,6 +74,9 @@ export default function GanttTimeline() {
     // Continuous timescale zoom state
     const [headerDrag, setHeaderDrag] = useState<{ startX: number; startPX: number } | null>(null);
     const [tip, setTip] = useState<{ x: number, y: number, html: string } | null>(null);
+
+    // Spotlight drag – live x coordinate during drag (null = not dragging)
+    const [spotlightDragX, setSpotlightDragX] = useState<number | null>(null);
 
     // Measure container
     useEffect(() => {
@@ -581,6 +584,30 @@ export default function GanttTimeline() {
         if (dragPreviewRef.current) drawDragOverlay();
     }, [visRows, zoom, totalDays, projStart, statusDate, selIdx, selIndices, lightMode, activities, W, H, t, PX, defCal, drawDragOverlay, state.activeBaselineIdx, showTodayLine, showStatusLine, showDependencies]);
 
+    // ─── Spotlight drag handler ───────────────────────────────────
+    const handleSpotlightDragStart = useCallback((e: React.MouseEvent) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const slEnd = spotlightEnd ? new Date(spotlightEnd) : addDays(statusDate, 7);
+        const origX = dayDiff(projStart, slEnd) * PX;
+        const minX = dayDiff(projStart, statusDate) * PX;
+        const startClientX = e.clientX;
+        const onMove = (me: MouseEvent) => {
+            const newX = Math.max(minX, origX + (me.clientX - startClientX));
+            setSpotlightDragX(newX);
+        };
+        const onUp = (me: MouseEvent) => {
+            const newX = Math.max(minX, origX + (me.clientX - startClientX));
+            const days = Math.round(newX / PX);
+            dispatch({ type: 'SET_SPOTLIGHT_END', isoDate: isoDate(addDays(projStart, days)) });
+            setSpotlightDragX(null);
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+    }, [spotlightEnd, statusDate, projStart, PX, dispatch]);
+
     useEffect(() => { draw(); }, [draw]);
 
     // Go today event
@@ -867,6 +894,41 @@ export default function GanttTimeline() {
                     onMouseLeave={handleMouseLeave}
                     onClick={handleClick}
                     onDoubleClick={handleDblClick} />
+                {/* Progress Spotlight overlay */}
+                {spotlightEnabled && (() => {
+                    const slStart = statusDate;
+                    const slEnd = spotlightDragX !== null
+                        ? addDays(projStart, Math.round(spotlightDragX / PX))
+                        : (spotlightEnd ? new Date(spotlightEnd) : addDays(statusDate, 7));
+                    const slX1 = Math.max(0, dayDiff(projStart, slStart) * PX);
+                    const slX2 = spotlightDragX !== null ? spotlightDragX : dayDiff(projStart, slEnd) * PX;
+                    const slW = Math.max(0, slX2 - slX1);
+                    return (
+                        <>
+                            {/* Yellow shaded region */}
+                            <div style={{
+                                position: 'absolute', top: 0, left: slX1, width: slW, height: H,
+                                background: 'rgba(234, 179, 8, 0.13)', pointerEvents: 'none', zIndex: 2,
+                                borderRight: '2px dashed rgba(234,179,8,0.5)',
+                            }} />
+                            {/* Drag handle – thick edge */}
+                            <div
+                                title={`Reflector: arrastre para cambiar fin (${fmtDate(slEnd)})`}
+                                style={{
+                                    position: 'absolute', top: 0, left: slX2 - 5, width: 10, height: H,
+                                    cursor: 'ew-resize', zIndex: 3,
+                                    background: 'rgba(234,179,8,0.35)',
+                                    borderLeft: '2px solid #d97706',
+                                    borderRight: '2px solid #d97706',
+                                    display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+                                }}
+                                onMouseDown={handleSpotlightDragStart}
+                            >
+                                <span style={{ fontSize: 9, color: '#d97706', marginTop: 2, userSelect: 'none', pointerEvents: 'none' }}>●●</span>
+                            </div>
+                        </>
+                    );
+                })()}
                 {visRows.length === 0 && (
                     <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', textAlign: 'center', color: 'var(--text-muted)' }}>
                         <div style={{ fontSize: 40, marginBottom: 8 }}>📊</div>

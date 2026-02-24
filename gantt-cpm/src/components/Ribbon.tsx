@@ -7,7 +7,7 @@ import { newActivity, isoDate, parseDate } from '../utils/cpm';
 import { autoId, exportJSON, exportCSV, importJSONData, importCSVData } from '../utils/helpers';
 import {
     Plus, Trash2, ArrowRight, ClipboardPaste, Scissors, Settings, Calculator, BarChart3, Sun, Moon, Clock,
-    TrendingUp, LineChart, FileText, Diamond, ArrowLeft, ArrowUp, ArrowDown, Info, Undo2, Cloud, Database, Upload, Download, LayoutTemplate, Users, CalendarDays, Filter, ArrowLeftRight
+    TrendingUp, LineChart, FileText, Diamond, ArrowLeft, ArrowUp, ArrowDown, Info, Undo2, Cloud, Database, Upload, Download, LayoutTemplate, Users, CalendarDays, Filter, ArrowLeftRight, Zap
 } from 'lucide-react';
 import type { ZoomLevel } from '../types/gantt';
 
@@ -310,6 +310,7 @@ export default function Ribbon() {
                         <RB icon={<Clock size={14} />} label="Línea Hoy" active={state.showTodayLine} onClick={() => dispatch({ type: 'TOGGLE_TODAY_LINE' })} />
                         <RB icon={<Clock size={14} />} label="Línea Corte" active={state.showStatusLine} onClick={() => dispatch({ type: 'TOGGLE_STATUS_LINE' })} />
                         <RB icon={<ArrowRight size={14} />} label="Relaciones" active={state.showDependencies} onClick={() => dispatch({ type: 'TOGGLE_DEPENDENCIES' })} />
+                        <RB icon={<Zap size={14} />} label="Reflector" active={state.spotlightEnabled} onClick={() => dispatch({ type: 'TOGGLE_SPOTLIGHT' })} title="Reflector de Progreso: resalta las actividades con trabajo en el período seleccionado" />
                     </RG>
                     <RG label="FILTROS">
                         <RB icon={<Filter size={16} />} label="Filtros" active={state.filtersModalOpen || state.customFilters.some(f => f.active)} onClick={() => dispatch({ type: 'OPEN_FILTERS_MODAL' })} />
