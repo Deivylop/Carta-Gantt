@@ -469,7 +469,10 @@ export default function GanttTable() {
                                     e.preventDefault();
                                     const cell = (e.target as HTMLElement).closest('[data-colkey]') as HTMLElement | null;
                                     setCtxColKey(cell?.dataset?.colkey ?? null);
-                                    dispatch({ type: 'SET_SELECTION', index: vr._idx });
+                                    // Only reset selection if right-clicking outside the current multi-selection
+                                    if (!selIndices.has(vr._idx)) {
+                                        dispatch({ type: 'SET_SELECTION', index: vr._idx });
+                                    }
                                     setCtxMenu({ x: e.clientX, y: e.clientY });
                                 }}
                                 onDoubleClick={() => { dispatch({ type: 'SET_SELECTION', index: vr._idx }); dispatch({ type: 'OPEN_ACT_MODAL' }); }}>
