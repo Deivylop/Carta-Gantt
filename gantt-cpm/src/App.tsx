@@ -87,15 +87,18 @@ function AppInner() {
     initApp();
   }, [dispatch]); // run once
 
-  // 2. Auto-save on state changes
+  // 2. Auto-save on state changes (only if a project is already connected)
   useEffect(() => {
     if (!state.activities.length) return;
+    const pid = localStorage.getItem('sb_current_project_id');
+    if (!pid) return; // No auto-create — user must create/load a project first
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = window.setTimeout(async () => {
-      const pid = localStorage.getItem('sb_current_project_id');
+      const currentPid = localStorage.getItem('sb_current_project_id');
+      if (!currentPid) return;
       try {
-        const newId = await saveToSupabase(state, pid);
-        if (newId && newId !== pid) localStorage.setItem('sb_current_project_id', newId);
+        const newId = await saveToSupabase(state, currentPid);
+        if (newId && newId !== currentPid) localStorage.setItem('sb_current_project_id', newId);
         console.log('Auto-saved to Supabase');
       } catch (err) {
         console.error('Auto-save error:', err);
@@ -127,6 +130,10 @@ function AppInner() {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
       const silent = e?.detail?.silent === true;
       const pid = localStorage.getItem('sb_current_project_id');
+      if (!pid) {
+        if (!silent) alert('No hay proyecto conectado. Cree o cargue un proyecto primero desde Configuración.');
+        return;
+      }
       try {
         const newId = await saveToSupabase(state, pid);
         if (newId && newId !== pid) localStorage.setItem('sb_current_project_id', newId);

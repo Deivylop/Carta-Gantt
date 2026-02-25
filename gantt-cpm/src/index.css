@@ -2108,3 +2108,6 @@ textarea.form-input {
 .light .adp-rel-btn { border-color: #cbd5e1; color: #475569; }
 .light .adp-rel-btn-del { color: #ef4444; border-color: rgba(239,68,68,.3); }
 .light .adp-rel-sel td { background: rgba(99,102,241,.12) !important; }
+
+/* ── Utility animations ── */
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
