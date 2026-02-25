@@ -1,0 +1,2743 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Panel de Rendimiento – Montec</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { background:#0f172a; color:#e2e8f0; margin:0; }
+    ::-webkit-scrollbar { width:5px; height:5px; }
+    ::-webkit-scrollbar-track { background:#1e293b; }
+    ::-webkit-scrollbar-thumb { background:#475569; border-radius:4px; }
+    ::-webkit-scrollbar-thumb:hover { background:#64748b; }
+    input[type=date]::-webkit-calendar-picker-indicator { filter:invert(1); }
+    .timeline-track { position:relative; height:6px; background:#1e293b; border-radius:3px; margin:0 8px; }
+    .timeline-track .fill { position:absolute; height:100%; background:linear-gradient(90deg,#3b82f6,#06b6d4); border-radius:3px; }
+    .timeline-thumb { -webkit-appearance:none; appearance:none; position:absolute; top:50%; transform:translateY(-50%); width:16px; height:16px; background:#3b82f6; border:2px solid #0f172a; border-radius:50%; cursor:pointer; pointer-events:auto; z-index:2; }
+    .timeline-thumb:hover { background:#60a5fa; transform:translateY(-50%) scale(1.2); }
+    .timeline-container input[type=range] { -webkit-appearance:none; appearance:none; position:absolute; width:100%; height:6px; background:transparent; pointer-events:none; margin:0; top:50%; transform:translateY(-50%); }
+    .timeline-container input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:16px; height:16px; background:#3b82f6; border:2px solid #0f172a; border-radius:50%; cursor:pointer; pointer-events:auto; }
+    .timeline-container input[type=range]::-webkit-slider-thumb:hover { background:#60a5fa; transform:scale(1.2); }
+    .timeline-container input[type=range]::-moz-range-thumb { width:16px; height:16px; background:#3b82f6; border:2px solid #0f172a; border-radius:50%; cursor:pointer; pointer-events:auto; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useRef } = React;
+
+    const defaultCsvData = `,,,,,,,,,,,,,,,,
+,,,,LÍNEA BASE,,,,,,FORECAST ENERO ,,,,,,
+,Ítem,Resumen,ID de actividad,Duración restante,Inicio temprano de trabajo restante,Finalización,Porcentaje finalizado de unidades,Q Total (Cantidad),Rendimiento (ml/d),Duración restante,Inicio temprano de trabajo restante,Finalización,Porcentaje finalizado de unidades,Q Total (Cantidad),Canta avanzada,
+,1,R,PROYECTO ACUEDUCTO PUCHUNCAVÍ - SAN ISIDRO - QUILAPILÚN,206,2025-05-31,2025-12-22,0,25299,122.8,156,2026-02-02,2026-07-07,0.6057,25299,15323.6043
+,3,R,ACUEDUCTO,206,2025-05-31,2025-12-22,0,25299,122.8,156,2026-02-02,2026-07-07,0.6057,25299,15323.6043
+,4,R,SECTOR 3000,45,2025-11-23,2025-12-22,0,867,19.2,30,2026-02-10,2026-03-24,0.3,867,325.7
+,5,R,TRAMO A KM 0+000 AL KM 4+380 (4.380 m),20,2025-11-23,2025-12-12,0,470,23.5,7,2026-02-10,2026-02-16,0.5987,470,281.389
+,6,Actividad,REPROGRAMADO IB4 AL ID18 (470 m),20,2025-11-23,2025-12-12,0,470,23.5,7,2026-02-10,2026-02-16,0.5987,470,281.389
+,6,Actividad,REPROGRAMADO ID18 AL ID19 (175 m),5,2025-12-13,2025-12-17,0,65,13,2,2026-02-16,2026-02-17,0,65,0
+,6,Actividad,REPROGRAMADO VIAL1 168-O (180 m),15,2025-11-17,2025-12-01,0,180,12,11,2026-02-21,2026-03-04,0.2203,180,39.654
+,6,Actividad,REPROGRAMADO VIAL1 168-P + ID168 (152 m),21,2025-12-02,2025-12-22,0,152,7.2,20,2026-03-04,2026-03-24,0.0312,152,4.7424
+,6,Actividad,REPROGRAMADO ID168 (CAMINOS INTERNOS) (608 m),128,2025-08-17,2025-12-22,0,608,4.75,117,2026-02-02,2026-05-29,0.7805,608,474.544
+,6,Actividad,REPROGRAMADO ID171-C AL ID171-D (146 m),6,2025-09-23,2025-09-28,0,146,24.3,3,2026-02-07,2026-02-09,0.332,146,48.472
+,5,R,TRAMO F KM 70+621 AL KM 75+187 (4.566 m),84,2025-06-05,2025-08-27,0,60,0.71,5,2026-02-12,2026-02-16,0,60,0
+,6,Actividad,REPROGRAMADO ID248 AL ID250 (60 m),5,2025-07-18,2025-07-22,0,60,12,5,2026-02-12,2026-02-16,0,60,0`;
+
+    // Returns Monday of the ISO week as DD-MM label
+    function getWeekLabel(date) {
+      const d = new Date(date);
+      const day = d.getDay() || 7;
+      d.setDate(d.getDate() - day + 1);
+      return d.toLocaleDateString('es-ES', {day:'2-digit', month:'2-digit'});
+    }
+
+    function getISOWeekInfo(date) {
+      const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+      const dayNum = d.getUTCDay() || 7;
+      d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+      const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+      const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+      return `${d.getUTCFullYear()}-S${String(weekNo).padStart(2, '0')}`;
+    }
+
+    function parseExcelDate(val) {
+      if (!val) return null;
+      if (typeof val === 'number') {
+        const date = new Date((val - (25567 + 2)) * 86400 * 1000);
+        return date.toISOString().split('T')[0];
+      }
+      if (typeof val === 'string') {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+        const parts = val.split(/[-/]/);
+        if (parts.length === 3) {
+          let day, month, year;
+          if (parts[2].length === 4) {
+            year = parts[2]; month = parts[1]; day = parts[0];
+            if (parseInt(month) > 12) { month = parts[0]; day = parts[1]; }
+            return `${year}-${month.padStart(2,'0')}-${day.padStart(2,'0')}`;
+          } else if (parts[0].length === 4) {
+            year = parts[0]; month = parts[1]; day = parts[2];
+            return `${year}-${month.padStart(2,'0')}-${day.padStart(2,'0')}`;
+          }
+        }
+        const d = new Date(val);
+        if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+      }
+      return null;
+    }
+
+    function parseNum(val) {
+      if (typeof val === 'number') return val;
+      if (typeof val === 'string') return parseFloat(val.replace(/,/g, '')) || 0;
+      return 0;
+    }
+
+    function fmtDate(iso) {
+      if (!iso) return '-';
+      const [y, m, d] = iso.split('-');
+      return `${d}-${m}-${String(y).slice(2)}`;
+    }
+
+    const getQtyForPeriod = (spread, headerKey, mode) => {
+      let total = 0;
+      for (const [dateStr, qty] of Object.entries(spread)) {
+        if (mode === 'day' && dateStr === headerKey) total += qty;
+        else if (mode === 'week') { const d = new Date(dateStr + 'T00:00:00'); if (getISOWeekInfo(d) === headerKey) total += qty; }
+        else if (mode === 'month' && dateStr.startsWith(headerKey)) total += qty;
+      }
+      return total;
+    };
+
+    function App() {
+      const [data, setData]         = useState([]);
+      const [viewMode, setViewMode] = useState('month');
+      const [loading, setLoading]   = useState(false);
+      const [fileName, setFileName] = useState('');
+      const [collapsedIds, setCollapsedIds] = useState(new Set());
+      const [levelStart, setLevelStart]     = useState('2026-02-01');
+      const [soldadoresDia, setSoldadoresDia] = useState(null); // null = usar promedio LB
+      const [restrictions, setRestrictions] = useState({}); // { activityId: 'YYYY-MM-DD' }
+      const [tcChartHeight, setTcChartHeight] = useState(480);
+      const [chart1Height, setChart1Height] = useState(380);
+      const [chart2Height, setChart2Height] = useState(380);
+      const [sliderRange, setSliderRange] = useState([0, 100]);
+      const [tcQtyRange, setTcQtyRange] = useState([0, 100]);
+      const tcTotalDist = useRef(0);
+      const tcResizeDrag = useRef(null);
+      const chartRef      = useRef(null);
+      const chartInstance = useRef(null);
+      const chartRef2     = useRef(null);
+      const chartInstance2 = useRef(null);
+      const chartRef3     = useRef(null);
+      const chartInstance3 = useRef(null);
+      const chartRef4     = useRef(null);
+      const chartInstance4 = useRef(null);
+      const [parallelChartHeight, setParallelChartHeight] = useState(360);
+      const [objFilterWbs, setObjFilterWbs] = useState('__all__');  // filter for objection charts
+      const [objExcessFilter, setObjExcessFilter] = useState('all'); // 'all' | 'sinExceso' | 'conExceso'
+      const [niveladoFilterTramo, setNiveladoFilterTramo] = useState('__all__');
+      const [niveladoFilterAct, setNiveladoFilterAct] = useState('__all__');
+      const [collapsedSections, setCollapsedSections] = useState(new Set()); // section IDs
+      const toggleSection = (id) => setCollapsedSections(prev => { const n = new Set(prev); n.has(id)?n.delete(id):n.add(id); return n; });
+
+      const toggleCollapse = (id) => {
+        setCollapsedIds(prev => {
+          const next = new Set(prev);
+          next.has(id) ? next.delete(id) : next.add(id);
+          return next;
+        });
+      };
+
+      const parseArrayData = (rows) => {
+        const parsedData = [];
+        let headerFound = false;
+        let cols = { id:-1, res:-1, item:-1, lb_start:-1, lb_end:-1, lb_qty:-1, fc_start:-1, fc_end:-1, fc_qty:-1, fc_adv:-1 };
+        let levelParents = {};
+
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i];
+          if (!row || !row.length) continue;
+
+          if (!headerFound) {
+            const idIdx = row.findIndex(c => typeof c === 'string' && c.trim().toLowerCase() === 'id de actividad');
+            if (idIdx !== -1) {
+              headerFound = true;
+              cols.id  = idIdx;
+              cols.res = row.findIndex(c => typeof c === 'string' && c.trim().toLowerCase() === 'resumen');
+              cols.item = row.findIndex(c => typeof c === 'string' && /^[ií]tem$/i.test(c.trim()));
+              let starts = [], ends = [], qtys = [];
+              row.forEach((c, idx) => {
+                if (typeof c !== 'string') return;
+                const str = c.trim().toLowerCase();
+                if (str.includes('inicio temprano')) starts.push(idx);
+                if (str.includes('finalización') || str === 'fin') ends.push(idx);
+                if (str.includes('q total')) qtys.push(idx);
+                if (str.includes('canta avanzada') || str.includes('cant avanzada') || str.includes('cant. avanzada') || str.includes('cantidad avanzada') || str.includes('cant.avanzada')) cols.fc_adv = idx;
+              });
+              cols.lb_start = starts[0] ?? idIdx+2;
+              cols.lb_end   = ends[0]   ?? idIdx+3;
+              cols.lb_qty   = qtys[0]   ?? idIdx+5;
+              cols.fc_start = starts[1] ?? idIdx+8;
+              cols.fc_end   = ends[1]   ?? idIdx+9;
+              cols.fc_qty   = qtys[1]   ?? idIdx+11;
+              if (cols.fc_adv === -1) cols.fc_adv = idIdx+12;
+            }
+            continue;
+          }
+
+          if (cols.id !== -1) {
+            const resumen = cols.res !== -1 ? row[cols.res] : row[cols.id-1];
+            const id = row[cols.id];
+            if (resumen && id) {
+              const resStr = resumen.toString().trim().toUpperCase();
+              if (resStr === 'R' || resStr === 'ACTIVIDAD') {
+                const lb_qty       = parseNum(row[cols.lb_qty]);
+                const fc_qty_total = parseNum(row[cols.fc_qty]);
+                const fc_qty_adv   = parseNum(row[cols.fc_adv]);
+                let fc_qty_rem = lb_qty - fc_qty_adv;
+                if (fc_qty_rem < 0) fc_qty_rem = 0;
+                const itemVal = cols.item !== -1 ? parseInt(row[cols.item]) : null;
+                const wbsLevel = itemVal != null && itemVal >= 1 && itemVal <= 20 ? itemVal : (resStr === 'R' ? 1 : 6);
+                let parentId = null;
+                for (let l = wbsLevel - 1; l >= 1; l--) { if (levelParents[l]) { parentId = levelParents[l]; break; } }
+                parsedData.push({
+                  id: id.toString().trim(),
+                  type: resStr === 'R' ? 'summary' : 'activity',
+                  parentId,
+                  wbsLevel,
+                  lb_start: parseExcelDate(row[cols.lb_start]),
+                  lb_end:   parseExcelDate(row[cols.lb_end]),
+                  lb_qty,
+                  fc_start: parseExcelDate(row[cols.fc_start]),
+                  fc_end:   parseExcelDate(row[cols.fc_end]),
+                  fc_qty_total,
+                  fc_qty_adv,
+                  fc_qty: fc_qty_rem
+                });
+                if (resStr === 'R') {
+                  levelParents[wbsLevel] = id.toString().trim();
+                  for (let l = wbsLevel + 1; l <= 20; l++) delete levelParents[l];
+                }
+              }
+            }
+          }
+        }
+        setData(parsedData);
+      };
+
+      useEffect(() => {
+        const rows = defaultCsvData.split('\n').map(l => l.split(','));
+        parseArrayData(rows);
+      }, []);
+
+      const handleFileUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (!window.XLSX) { alert('La librería XLSX aún no cargó. Intenta en unos segundos.'); return; }
+        setLoading(true);
+        setFileName(file.name);
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          try {
+            const buf = new Uint8Array(evt.target.result);
+            const wb  = window.XLSX.read(buf, { type:'array' });
+
+            // ── Parse "Restricciones" sheet ──
+            const restSheet = wb.SheetNames.find(s => s.toLowerCase().includes('restriccion'));
+            if (restSheet) {
+              const restRows = window.XLSX.utils.sheet_to_json(wb.Sheets[restSheet], { header:1, raw:false, dateNF:'yyyy-mm-dd' });
+              const restMap = {};
+              for (let i = 1; i < restRows.length; i++) {
+                const row = restRows[i];
+                if (!row || !row[0] || !row[1]) continue;
+                const actId = String(row[0]).trim();
+                // Parse date — accept dd-mm-yyyy, yyyy-mm-dd, Excel serial, etc.
+                let dateStr = null;
+                const raw = String(row[1]).trim();
+                if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+                  dateStr = raw;
+                } else if (/^\d{2}-\d{2}-\d{4}$/.test(raw)) {
+                  const [dd, mm, yyyy] = raw.split('-');
+                  dateStr = `${yyyy}-${mm}-${dd}`;
+                } else {
+                  const d = new Date(raw);
+                  if (!isNaN(d.getTime())) dateStr = d.toISOString().split('T')[0];
+                }
+                if (dateStr) restMap[actId] = dateStr;
+              }
+              setRestrictions(restMap);
+            } else {
+              setRestrictions({});
+            }
+
+            const sheetName = wb.SheetNames.find(s => s.toLowerCase().includes('enero')) || wb.SheetNames[0];
+            const jsonData  = window.XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header:1, raw:false, dateNF:'yyyy-mm-dd' });
+            parseArrayData(jsonData);
+          } catch (err) {
+            console.error(err);
+            alert('Error al leer el archivo Excel.');
+          } finally {
+            setLoading(false);
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      };
+
+      const processedSchedule = useMemo(() => {
+        if (data.length === 0) return { dates:[], activities:[] };
+
+        let globalMin = new Date('2099-01-01');
+        let globalMax = new Date('1900-01-01');
+
+        const distributeQty = (startStr, endStr, totalQ) => {
+          const spread = {};
+          if (!startStr || !endStr || totalQ <= 0) return spread;
+          const start = new Date(startStr + 'T00:00:00');
+          const end   = new Date(endStr   + 'T00:00:00');
+          if (isNaN(start.getTime()) || isNaN(end.getTime())) return spread;
+          if (start < globalMin) globalMin = new Date(start);
+          if (end   > globalMax) globalMax = new Date(end);
+          const days = Math.round((end - start) / 86400000) + 1;
+          const daily = days > 0 ? totalQ / days : 0;
+          for (let i = 0; i < days; i++) {
+            const cur = new Date(start);
+            cur.setDate(cur.getDate() + i);
+            spread[cur.toISOString().split('T')[0]] = daily;
+          }
+          return spread;
+        };
+
+        const rows = data.map(act => {
+          // Compute fc_end_calc using lb rendimiento rate
+          let fc_end_for_spread = act.fc_end;
+          let fc_dur_calc = null;
+          if (act.type === 'activity' && act.lb_start && act.lb_end && act.fc_start && act.fc_qty > 0) {
+            const lbS = new Date(act.lb_start + 'T00:00:00');
+            const lbE = new Date(act.lb_end   + 'T00:00:00');
+            const lbDur = Math.round((lbE - lbS) / 86400000) + 1;
+            const lbRate = lbDur > 0 && act.lb_qty > 0 ? act.lb_qty / lbDur : 0;
+            if (lbRate > 0) {
+              fc_dur_calc = Math.max(1, Math.round(act.fc_qty / lbRate));
+              const fcS = new Date(act.fc_start + 'T00:00:00');
+              const fcE = new Date(fcS);
+              fcE.setDate(fcE.getDate() + fc_dur_calc - 1);
+              fc_end_for_spread = fcE.toISOString().split('T')[0];
+            }
+          }
+          return {
+            ...act,
+            fc_dur_calc,
+            lb_spread: distributeQty(act.lb_start, act.lb_end, act.lb_qty),
+            fc_spread: distributeQty(act.fc_start, act.fc_end, act.fc_qty)
+          };
+        });
+
+        const timeHeaders = [];
+        if (globalMin <= globalMax) {
+          let cur = new Date(globalMin);
+          if (viewMode === 'month') cur.setDate(1);
+          else if (viewMode === 'week') { const d = cur.getUTCDay()||7; cur.setUTCDate(cur.getUTCDate()-d+1); }
+
+          while (cur <= globalMax) {
+            if (viewMode === 'day') {
+              timeHeaders.push({ key: cur.toISOString().split('T')[0], label: cur.toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'}) });
+              cur.setDate(cur.getDate()+1);
+            } else if (viewMode === 'week') {
+              const wk = getISOWeekInfo(cur);
+              if (!timeHeaders.find(t => t.key === wk)) timeHeaders.push({ key:wk, label: getWeekLabel(cur) });
+              cur.setDate(cur.getDate()+1);
+            } else {
+              const mk = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}`;
+              if (!timeHeaders.find(t => t.key === mk))
+                timeHeaders.push({ key:mk, label: cur.toLocaleDateString('es-ES',{month:'short',year:'numeric'}).toUpperCase() });
+              cur.setMonth(cur.getMonth()+1);
+            }
+          }
+        }
+        return { dates: timeHeaders, activities: rows };
+      }, [data, viewMode]);
+
+      const periodTotals = useMemo(() => {
+        const totals = {};
+        processedSchedule.dates.forEach(h => { totals[h.key] = { lb:0, fc:0 }; });
+        processedSchedule.activities.forEach(act => {
+          if (act.type === 'activity') {
+            processedSchedule.dates.forEach(h => {
+              totals[h.key].lb += getQtyForPeriod(act.lb_spread, h.key, viewMode);
+              totals[h.key].fc += getQtyForPeriod(act.fc_spread, h.key, viewMode);
+            });
+          }
+        });
+        return totals;
+      }, [processedSchedule, viewMode]);
+
+      const globalTotals = useMemo(() => {
+        let lb=0, fc=0;
+        data.forEach(act => { if (act.type==='activity') { lb+=act.lb_qty; fc+=act.fc_qty; } });
+        return { lb, fc };
+      }, [data]);
+
+      // Count how many activities run in parallel each period (have qty > 0)
+      const parallelCounts = useMemo(() => {
+        const counts = {};
+        processedSchedule.dates.forEach(h => { counts[h.key] = { lb: 0, fc: 0 }; });
+        processedSchedule.activities.forEach(act => {
+          if (act.type !== 'activity') return;
+          processedSchedule.dates.forEach(h => {
+            if (getQtyForPeriod(act.lb_spread, h.key, viewMode) > 0) counts[h.key].lb++;
+            if (getQtyForPeriod(act.fc_spread, h.key, viewMode) > 0) counts[h.key].fc++;
+          });
+        });
+        return counts;
+      }, [processedSchedule, viewMode]);
+
+      // ──── Daily LB capacity: count parallel activities per DAY ────
+      const dailyLbCapacity = useMemo(() => {
+        const acts = processedSchedule.activities.filter(a => a.type === 'activity' && a.lb_start && a.lb_end);
+        if (acts.length === 0) return { avg: 1, max: 1, daily: {} };
+        let minD = acts[0].lb_start, maxD = acts[0].lb_end;
+        acts.forEach(a => { if (a.lb_start < minD) minD = a.lb_start; if (a.lb_end > maxD) maxD = a.lb_end; });
+        const daily = {};
+        const cur = new Date(minD + 'T00:00:00');
+        const end = new Date(maxD + 'T00:00:00');
+        while (cur <= end) {
+          const dStr = cur.toISOString().split('T')[0];
+          let cnt = 0;
+          acts.forEach(a => { if (a.lb_start <= dStr && a.lb_end >= dStr) cnt++; });
+          if (cnt > 0) daily[dStr] = cnt;
+          cur.setDate(cur.getDate() + 1);
+        }
+        const vals = Object.values(daily);
+        const avg = vals.length > 0 ? Math.max(1, Math.round(vals.reduce((a,b) => a+b, 0) / vals.length)) : 1;
+        const max = vals.length > 0 ? Math.max(...vals) : 1;
+        return { avg, max, daily };
+      }, [processedSchedule]);
+
+      // Build rowsById for visibility checks
+      const rowsById = useMemo(() => {
+        const map = {};
+        processedSchedule.activities.forEach(a => { map[a.id] = a; });
+        return map;
+      }, [processedSchedule.activities]);
+
+      // Child sums for summary rows
+      const childSums = useMemo(() => {
+        const map = {};
+        processedSchedule.activities.forEach(act => {
+          if (act.type !== 'activity' || !act.parentId) return;
+          if (!map[act.parentId]) map[act.parentId] = { lb_qty:0, fc_qty:0, lb_spread:{}, fc_spread:{} };
+          const p = map[act.parentId];
+          p.lb_qty += act.lb_qty;
+          p.fc_qty += act.fc_qty;
+          Object.entries(act.lb_spread).forEach(([d,v]) => { p.lb_spread[d] = (p.lb_spread[d]||0)+v; });
+          Object.entries(act.fc_spread).forEach(([d,v]) => { p.fc_spread[d] = (p.fc_spread[d]||0)+v; });
+        });
+        return map;
+      }, [processedSchedule]);
+
+      // ──── Earned Schedule KPIs ────────────────────────────────────────
+      const earnedSchedule = useMemo(() => {
+        const acts = processedSchedule.activities.filter(a => a.type === 'activity');
+        if (acts.length === 0) return null;
+
+        // LB global envelope: earliest start → latest end
+        let lbMinDate = null, lbMaxDate = null;
+        let fcMinDate = null, fcMaxDate = null;
+        let lbTotalQty = 0, fcTotalQty = 0, fcAdvQty = 0;
+        let fcContractorMaxDate = null; // contractor's claimed FC end
+
+        acts.forEach(a => {
+          lbTotalQty += a.lb_qty || 0;
+          fcTotalQty += a.fc_qty || 0;  // remaining
+          fcAdvQty   += a.fc_qty_adv || 0;
+          if (a.lb_start) { const d = new Date(a.lb_start+'T00:00:00'); if (!lbMinDate || d < lbMinDate) lbMinDate = d; }
+          if (a.lb_end)   { const d = new Date(a.lb_end+'T00:00:00');   if (!lbMaxDate || d > lbMaxDate) lbMaxDate = d; }
+          if (a.fc_start) { const d = new Date(a.fc_start+'T00:00:00'); if (!fcMinDate || d < fcMinDate) fcMinDate = d; }
+          if (a.fc_end)   { const d = new Date(a.fc_end+'T00:00:00');   if (!fcContractorMaxDate || d > fcContractorMaxDate) fcContractorMaxDate = d; }
+        });
+
+        // Per-activity: compute what FC duration SHOULD be at LB rate
+        let sumFcDurContractor = 0; // sum of contractor's FC durations
+        let sumFcDurAtLbRate = 0;   // sum of projected FC durations at LB rate
+        let actCount = 0;
+        const perActivity = acts.map(a => {
+          if (!a.lb_start || !a.lb_end || !a.fc_start || (a.fc_qty || 0) <= 0) return null;
+          const lbS = new Date(a.lb_start+'T00:00:00');
+          const lbE = new Date(a.lb_end+'T00:00:00');
+          const lbDur = Math.round((lbE - lbS) / 86400000) + 1;
+          const lbRate = lbDur > 0 && a.lb_qty > 0 ? a.lb_qty / lbDur : 0;
+          if (lbRate <= 0) return null;
+
+          // Contractor's FC duration
+          const fcS = new Date(a.fc_start+'T00:00:00');
+          const fcE = a.fc_end ? new Date(a.fc_end+'T00:00:00') : null;
+          const fcDurContractor = fcE ? Math.round((fcE - fcS) / 86400000) + 1 : null;
+
+          // Projected FC duration at LB rate
+          const fcDurAtLbRate = Math.max(1, Math.round(a.fc_qty / lbRate));
+          // Projected FC end at LB rate
+          const fcEndAtLbRate = new Date(fcS);
+          fcEndAtLbRate.setDate(fcEndAtLbRate.getDate() + fcDurAtLbRate - 1);
+
+          if (fcDurContractor) { sumFcDurContractor += fcDurContractor; sumFcDurAtLbRate += fcDurAtLbRate; actCount++; }
+          return { id: a.id, lbRate, fcDurContractor, fcDurAtLbRate, fcEndAtLbRate, diff: fcDurContractor ? fcDurContractor - fcDurAtLbRate : null };
+        }).filter(Boolean);
+
+        // Global metrics
+        const lbDurGlobal = lbMinDate && lbMaxDate ? Math.round((lbMaxDate - lbMinDate) / 86400000) + 1 : 0;
+        const lbVelGlobal = lbDurGlobal > 0 ? lbTotalQty / lbDurGlobal : 0;
+
+        const fcDurContractorGlobal = fcMinDate && fcContractorMaxDate ? Math.round((fcContractorMaxDate - fcMinDate) / 86400000) + 1 : 0;
+
+        // If FC ran at LB's global rate, how long would the remaining take?
+        const fcDurAtLbRateGlobal = lbVelGlobal > 0 ? Math.round(fcTotalQty / lbVelGlobal) : 0;
+
+        // Projected FC end at LB rate (from FC start)
+        const fcEndAtLbRateGlobal = fcMinDate ? new Date(fcMinDate.getTime() + fcDurAtLbRateGlobal * 86400000) : null;
+
+        // SPI = LB velocity / FC velocity (FC vel implied from contractor duration)
+        const fcVelContractor = fcDurContractorGlobal > 0 ? fcTotalQty / fcDurContractorGlobal : 0;
+        const spi = fcVelContractor > 0 ? lbVelGlobal / fcVelContractor : 0;
+
+        // Excess days = contractor's claim - LB-projected
+        const excessDays = fcDurContractorGlobal - fcDurAtLbRateGlobal;
+
+        return {
+          lbTotalQty, fcTotalQty, fcAdvQty,
+          lbDurGlobal, lbVelGlobal,
+          fcDurContractorGlobal, fcVelContractor,
+          fcDurAtLbRateGlobal, fcEndAtLbRateGlobal,
+          spi, excessDays,
+          perActivity, actCount,
+          fcMinDate, fcContractorMaxDate,
+          lbMinDate, lbMaxDate
+        };
+      }, [processedSchedule]);
+
+      const isVisible = (row) => {
+        if (!row.parentId) return true;
+        if (collapsedIds.has(row.parentId)) return false;
+        const parent = rowsById[row.parentId];
+        if (!parent) return true;
+        return isVisible(parent);
+      };
+
+      const filterHeadersByDate = (headers) => {
+        if (processedSchedule.dates.length === 0) return headers;
+        const total = processedSchedule.dates.length;
+        const lo = Math.round(sliderRange[0] / 100 * (total - 1));
+        const hi = Math.round(sliderRange[1] / 100 * (total - 1));
+        const loKey = processedSchedule.dates[lo]?.key;
+        const hiKey = processedSchedule.dates[hi]?.key;
+        if (!loKey || !hiKey) return headers;
+        return headers.filter(h => h.key >= loKey && h.key <= hiKey);
+      };
+
+      const filteredDates = useMemo(() => filterHeadersByDate(processedSchedule.dates), [processedSchedule.dates, sliderRange, viewMode]);
+
+      const sliderLabels = useMemo(() => {
+        if (processedSchedule.dates.length === 0) return { from: '', to: '', total: 0 };
+        const total = processedSchedule.dates.length;
+        const lo = Math.round(sliderRange[0] / 100 * (total - 1));
+        const hi = Math.round(sliderRange[1] / 100 * (total - 1));
+        return {
+          from: processedSchedule.dates[lo]?.label || '',
+          to: processedSchedule.dates[hi]?.label || '',
+          total
+        };
+      }, [processedSchedule.dates, sliderRange]);
+
+      // ── Nivelación de recursos FC ────────────────────────────────────────────
+      // Algoritmo: C slots en paralelo (C = promedio LB). Cada slot es una "máquina".
+      // Para cada actividad (ordenadas por tramo → fc_start) se asigna al slot
+      // que quede libre más temprano y que sea ≥ fc_start del programa.
+      // Esto garantiza la fecha de fin más cercana posible respetando la capacidad.
+      const leveledSchedule = useMemo(() => {
+        if (processedSchedule.activities.length === 0) return { activities: [], projectEnd: null, capacity: 0 };
+
+        // 1. Capacidad = soldadoresDia (input) o promedio DIARIO LB
+        const capacity = (soldadoresDia != null && soldadoresDia >= 1) ? soldadoresDia : dailyLbCapacity.avg;
+
+        // 2. Actividades con remanente — prioridad de nivelación:
+        //    1° En ejecución a la fecha de corte (fc_start ≤ levelStart ≤ fc_end_orig)
+        //    2° Mayor duración primero (actividades largas se asignan antes)
+        //    3° Tramo (parentId) como desempate final
+        const cutoff = levelStart; // fecha de corte = levelStart configurable
+        const fcEndOrig = act => {
+          if (!act.fc_start) return null;
+          const s = new Date(act.fc_start + 'T00:00:00');
+          s.setDate(s.getDate() + act.fc_dur_calc - 1);
+          return s.toISOString().split('T')[0];
+        };
+        // ── Filtro por tramo y actividad ──
+        const toLevel = processedSchedule.activities
+          .filter(a => {
+            if (a.type !== 'activity' || a.fc_qty <= 0 || a.fc_dur_calc <= 0) return false;
+            if (niveladoFilterTramo !== '__all__' && (a.parentId || '') !== niveladoFilterTramo) return false;
+            if (niveladoFilterAct !== '__all__' && a.id !== niveladoFilterAct) return false;
+            return true;
+          })
+          .sort((a, b) => {
+            // Prioridad 1: en ejecución a la fecha de corte → primero
+            const aEnd = fcEndOrig(a), bEnd = fcEndOrig(b);
+            const aExec = a.fc_start && a.fc_start <= cutoff && aEnd && aEnd >= cutoff ? 0 : 1;
+            const bExec = b.fc_start && b.fc_start <= cutoff && bEnd && bEnd >= cutoff ? 0 : 1;
+            if (aExec !== bExec) return aExec - bExec;
+            // Prioridad 2: mayor duración primero
+            if (b.fc_dur_calc !== a.fc_dur_calc) return b.fc_dur_calc - a.fc_dur_calc;
+            // Prioridad 3: tramo
+            const pa = a.parentId || '', pb = b.parentId || '';
+            return pa < pb ? -1 : pa > pb ? 1 : 0;
+          });
+
+        // 3. C slots — todos arrancan desde levelStart (sin ancla por actividad)
+        const globalStart = new Date(levelStart + 'T00:00:00');
+        const slots = Array.from({ length: capacity }, () => new Date(globalStart));
+
+        // Helper: uniform qty distribution
+        const distributeFlat = (startStr, durDays, qty) => {
+          const spread = {};
+          const s = new Date(startStr + 'T00:00:00');
+          const daily = qty / durDays;
+          for (let i = 0; i < durDays; i++) {
+            const d = new Date(s); d.setDate(d.getDate() + i);
+            spread[d.toISOString().split('T')[0]] = daily;
+          }
+          return spread;
+        };
+
+        // 4. Asignación: elegir el slot con la fecha libre MÁS TEMPRANA
+        //    Si la actividad tiene restricción (fecha de liberación), no puede iniciar antes.
+        const leveledActs = toLevel.map(act => {
+          const dur = act.fc_dur_calc;
+
+          // Fecha mínima por restricción de liberación
+          const restrictionDate = restrictions[act.id] ? new Date(restrictions[act.id] + 'T00:00:00') : null;
+
+          // Slot más temprano disponible
+          let bestSlot = 0;
+          for (let i = 1; i < slots.length; i++) {
+            // Effective start = max(slot free date, restriction date)
+            const effI = restrictionDate && slots[i] < restrictionDate ? restrictionDate : slots[i];
+            const effB = restrictionDate && slots[bestSlot] < restrictionDate ? restrictionDate : slots[bestSlot];
+            if (effI < effB) bestSlot = i;
+          }
+
+          // Effective start date (respecting restriction)
+          let startDate = new Date(slots[bestSlot]);
+          if (restrictionDate && startDate < restrictionDate) startDate = new Date(restrictionDate);
+          const startStr  = startDate.toISOString().split('T')[0];
+          const endD = new Date(startDate); endD.setDate(endD.getDate() + dur - 1);
+          const endStr = endD.toISOString().split('T')[0];
+
+          // Slot libre al día siguiente del fin
+          const freeFrom = new Date(endD); freeFrom.setDate(freeFrom.getDate() + 1);
+          slots[bestSlot] = freeFrom;
+
+          return { ...act, fc_start_lv: startStr, fc_end_lv: endStr, fc_spread_lv: distributeFlat(startStr, dur, act.fc_qty) };
+        });
+
+        // 5. Fecha fin proyecto = max fc_end_lv
+        let projectEnd = null;
+        leveledActs.forEach(a => { if (!projectEnd || a.fc_end_lv > projectEnd) projectEnd = a.fc_end_lv; });
+
+        // 6. Reunir con resumen (summaries get nulls)
+        const lvMap = {};
+        leveledActs.forEach(a => { lvMap[a.id] = a; });
+        const allWithLv = processedSchedule.activities.map(act => ({
+          ...act,
+          fc_start_lv:  lvMap[act.id]?.fc_start_lv  ?? null,
+          fc_end_lv:    lvMap[act.id]?.fc_end_lv    ?? null,
+          fc_spread_lv: lvMap[act.id]?.fc_spread_lv ?? {}
+        }));
+
+        return { activities: allWithLv, projectEnd, capacity };
+      }, [processedSchedule, dailyLbCapacity, levelStart, soldadoresDia, restrictions, niveladoFilterTramo, niveladoFilterAct]);
+      // ─────────────────────────────────────────────────────────────────────────
+
+      // ──── Nivelado Data (pre-computed from leveled schedule) ──────────────
+      const niveladoData = useMemo(() => {
+        if (leveledSchedule.activities.length === 0) return null;
+        let lvMin = null, lvMax = null;
+        leveledSchedule.activities.forEach(act => {
+          if (act.type !== 'activity') return;
+          Object.keys(act.fc_spread_lv).forEach(d => {
+            if (!lvMin || d < lvMin) lvMin = d;
+            if (!lvMax || d > lvMax) lvMax = d;
+          });
+        });
+        if (!lvMin || !lvMax) return null;
+
+        const lvHeaders = [];
+        let cur = new Date(lvMin + 'T00:00:00');
+        if (viewMode === 'month') cur.setDate(1);
+        else if (viewMode === 'week') { const d = cur.getUTCDay()||7; cur.setUTCDate(cur.getUTCDate()-d+1); }
+        const lvMaxD = new Date(lvMax + 'T00:00:00');
+        while (cur <= lvMaxD) {
+          if (viewMode === 'day') {
+            lvHeaders.push({ key: cur.toISOString().split('T')[0], label: cur.toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'}) });
+            cur.setDate(cur.getDate()+1);
+          } else if (viewMode === 'week') {
+            const wk = getISOWeekInfo(cur);
+            if (!lvHeaders.find(t=>t.key===wk)) lvHeaders.push({ key:wk, label: getWeekLabel(cur) });
+            cur.setDate(cur.getDate()+1);
+          } else {
+            const mk = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}`;
+            if (!lvHeaders.find(t=>t.key===mk))
+              lvHeaders.push({ key:mk, label: cur.toLocaleDateString('es-ES',{month:'short',year:'numeric'}).toUpperCase() });
+            cur.setMonth(cur.getMonth()+1);
+          }
+        }
+
+        const lvPeriodTotals = {};
+        const lvParallel = {};
+        lvHeaders.forEach(h => { lvPeriodTotals[h.key] = 0; lvParallel[h.key] = 0; });
+        leveledSchedule.activities.forEach(act => {
+          if (act.type !== 'activity') return;
+          lvHeaders.forEach(h => {
+            const v = getQtyForPeriod(act.fc_spread_lv, h.key, viewMode);
+            lvPeriodTotals[h.key] += v;
+            if (v > 0) lvParallel[h.key]++;
+          });
+        });
+
+        const projEndLabel = leveledSchedule.projectEnd
+          ? new Date(leveledSchedule.projectEnd+'T00:00:00').toLocaleDateString('es-ES',{day:'2-digit',month:'long',year:'numeric'})
+          : '-';
+
+        const childSumsLv = {};
+        leveledSchedule.activities.forEach(act => {
+          if (act.type !== 'activity' || !act.parentId) return;
+          if (!childSumsLv[act.parentId]) childSumsLv[act.parentId] = { fc_qty:0, lb_qty:0, fc_start_lv:null, fc_end_lv:null, fc_spread_lv:{} };
+          const p = childSumsLv[act.parentId];
+          p.fc_qty += act.fc_qty; p.lb_qty += act.lb_qty;
+          Object.entries(act.fc_spread_lv).forEach(([d,v]) => { p.fc_spread_lv[d] = (p.fc_spread_lv[d]||0)+v; });
+          if (!p.fc_start_lv || act.fc_start_lv < p.fc_start_lv) p.fc_start_lv = act.fc_start_lv;
+          if (!p.fc_end_lv   || act.fc_end_lv   > p.fc_end_lv  ) p.fc_end_lv   = act.fc_end_lv;
+        });
+
+        return { lvHeaders, lvPeriodTotals, lvParallel, projEndLabel, childSumsLv };
+      }, [leveledSchedule, viewMode]);
+
+      // ──── Objection Metrics (nivelado-based) ──────────────────────────────
+      const objectionMetrics = useMemo(() => {
+        if (!earnedSchedule || !leveledSchedule.projectEnd) return null;
+        const nivEndDate = new Date(leveledSchedule.projectEnd + 'T00:00:00');
+        const nivStartDate = new Date(levelStart + 'T00:00:00');
+        const nivDurGlobal = Math.round((nivEndDate - nivStartDate) / 86400000) + 1;
+        const fcContractorMaxDate = earnedSchedule.fcContractorMaxDate;
+        const excessDaysNiv = fcContractorMaxDate
+          ? Math.round((fcContractorMaxDate - nivEndDate) / 86400000)
+          : 0;
+        return {
+          nivEndDate, nivDurGlobal, excessDaysNiv,
+          nivCapacity: leveledSchedule.capacity,
+          projEndLabel: nivEndDate.toLocaleDateString('es-ES',{day:'2-digit',month:'long',year:'numeric'}),
+          fcContractorEndLabel: fcContractorMaxDate
+            ? fcContractorMaxDate.toLocaleDateString('es-ES',{day:'2-digit',month:'long',year:'numeric'})
+            : '-'
+        };
+      }, [earnedSchedule, leveledSchedule, levelStart]);
+
+      const exportTable1 = () => {
+        if (!window.XLSX) return;
+        const hdrs = ['Actividad / Tramo', 'Q Total', 'Tipo', ...processedSchedule.dates.map(h => h.label)];
+        const rows = [hdrs];
+        processedSchedule.activities.forEach(act => {
+          if (act.type === 'summary') {
+            rows.push([act.id, '', 'WBS', ...processedSchedule.dates.map(() => '')]);
+          } else {
+            // LB row
+            rows.push([
+              act.id, parseFloat(act.lb_qty.toFixed(1)), 'Línea Base',
+              ...processedSchedule.dates.map(h => {
+                const v = getQtyForPeriod(act.lb_spread, h.key, viewMode);
+                return v > 0 ? parseFloat(v.toFixed(1)) : '';
+              })
+            ]);
+            // FC row
+            rows.push([
+              `  Avance:${act.fc_qty_adv.toFixed(0)} Rem:${act.fc_qty.toFixed(1)}${act.fc_dur_calc!=null?' Dur.calc:'+act.fc_dur_calc+'d':''}`,
+              parseFloat(act.fc_qty.toFixed(1)), 'Forecast',
+              ...processedSchedule.dates.map(h => {
+                const v = getQtyForPeriod(act.fc_spread, h.key, viewMode);
+                return v > 0 ? parseFloat(v.toFixed(1)) : '';
+              })
+            ]);
+          }
+        });
+        // totals
+        rows.push(['TOTAL LÍNEA BASE', parseFloat(globalTotals.lb.toFixed(0)), '',
+          ...processedSchedule.dates.map(h => periodTotals[h.key].lb > 0 ? parseFloat(periodTotals[h.key].lb.toFixed(1)) : '')]);
+        rows.push(['TOTAL FORECAST (Remanente)', parseFloat(globalTotals.fc.toFixed(0)), '',
+          ...processedSchedule.dates.map(h => periodTotals[h.key].fc > 0 ? parseFloat(periodTotals[h.key].fc.toFixed(1)) : '')]);
+        // parallelism
+        rows.push(['ACTIVIDADES EN PARALELO (LB)', '', '',
+          ...processedSchedule.dates.map(h => parallelCounts[h.key].lb > 0 ? parallelCounts[h.key].lb : '')]);
+        rows.push(['ACTIVIDADES EN PARALELO (FC)', '', '',
+          ...processedSchedule.dates.map(h => parallelCounts[h.key].fc > 0 ? parallelCounts[h.key].fc : '')]);
+
+        const ws = window.XLSX.utils.aoa_to_sheet(rows);
+        const wb = window.XLSX.utils.book_new();
+        window.XLSX.utils.book_append_sheet(wb, ws, 'LB vs Forecast');
+        window.XLSX.writeFile(wb, 'Tabla_LB_vs_Forecast.xlsx');
+      };
+
+      const exportTable2 = (fcHeaders, fcPeriodTotals) => {
+        if (!window.XLSX) return;
+        const hdrs = ['Actividad / Tramo', 'Dur. Línea Base (d)', 'Rend. Línea Base (u/d)', 'Q Remanente', 'Dur. Forecast Calc. (d)', ...fcHeaders.map(h => h.label)];
+        const rows = [hdrs];
+        processedSchedule.activities.forEach(act => {
+          if (act.type === 'summary') {
+            rows.push([act.id, '', '', '', 'WBS', ...fcHeaders.map(() => '')]);
+          } else {
+            const lbS = act.lb_start ? new Date(act.lb_start+'T00:00:00') : null;
+            const lbE = act.lb_end   ? new Date(act.lb_end  +'T00:00:00') : null;
+            const lbDur  = lbS && lbE ? Math.round((lbE-lbS)/86400000)+1 : null;
+            const lbRate = lbDur && act.lb_qty>0 ? parseFloat((act.lb_qty/lbDur).toFixed(2)) : null;
+            rows.push([
+              act.id, lbDur ?? '', lbRate ?? '',
+              parseFloat(act.fc_qty.toFixed(1)),
+              act.fc_dur_calc ?? (act.fc_qty===0?0:''),
+              ...fcHeaders.map(h => {
+                const v = getQtyForPeriod(act.fc_spread, h.key, viewMode);
+                return v > 0 ? parseFloat(v.toFixed(1)) : '';
+              })
+            ]);
+          }
+        });
+        rows.push(['TOTAL FORECAST', '', '', '', '',
+          ...fcHeaders.map(h => fcPeriodTotals[h.key]>0 ? parseFloat(fcPeriodTotals[h.key].toFixed(1)) : '')]);
+
+        const ws = window.XLSX.utils.aoa_to_sheet(rows);
+        const wb2 = window.XLSX.utils.book_new();
+        window.XLSX.utils.book_append_sheet(wb2, ws, 'Forecast Rendimiento Línea Base');
+        window.XLSX.writeFile(wb2, 'Tabla_Forecast_RendimientoLB.xlsx');
+      };
+
+      const exportTable3 = (lvHeaders, lvPeriodTotals, lvParallel) => {
+        if (!window.XLSX) return;
+        const hdrs = ['Actividad / Tramo', 'Tramo (WBS)', 'Dur. Línea Base (d)', 'Rend. Línea Base (u/d)', 'Q Remanente', 'Dur. Contratista (d)', 'Dur@Línea Base (d)', 'Exceso (d)', 'Inicio Nivelado', 'Fin Nivelado', ...lvHeaders.map(h => h.label)];
+        const rows = [hdrs];
+        leveledSchedule.activities.forEach(act => {
+          if (act.type === 'summary') {
+            rows.push([act.id, '', '', '', '', '', '', '', '', 'WBS', ...lvHeaders.map(() => '')]);
+          } else {
+            const lbS = act.lb_start ? new Date(act.lb_start+'T00:00:00') : null;
+            const lbE = act.lb_end   ? new Date(act.lb_end  +'T00:00:00') : null;
+            const lbDur  = lbS && lbE ? Math.round((lbE-lbS)/86400000)+1 : null;
+            const lbRate = lbDur && act.lb_qty>0 ? parseFloat((act.lb_qty/lbDur).toFixed(2)) : null;
+            const fcS = act.fc_start ? new Date(act.fc_start+'T00:00:00') : null;
+            const fcE = act.fc_end   ? new Date(act.fc_end  +'T00:00:00') : null;
+            const fcDurContr = fcS && fcE ? Math.round((fcE-fcS)/86400000)+1 : null;
+            const excess = (fcDurContr != null && act.fc_dur_calc != null) ? fcDurContr - act.fc_dur_calc : null;
+            rows.push([
+              act.id, act.parentId || '',
+              lbDur ?? '', lbRate ?? '',
+              parseFloat(act.fc_qty.toFixed(1)),
+              fcDurContr ?? '',
+              act.fc_dur_calc ?? '',
+              excess ?? '',
+              act.fc_start_lv ?? '', act.fc_end_lv ?? '',
+              ...lvHeaders.map(h => {
+                const v = getQtyForPeriod(act.fc_spread_lv, h.key, viewMode);
+                return v > 0 ? parseFloat(v.toFixed(1)) : '';
+              })
+            ]);
+          }
+        });
+        rows.push([`TOTAL FORECAST NIVELADO (cap.${leveledSchedule.capacity}/d)`, '', '', '', '', '', '', '', '', '',
+          ...lvHeaders.map(h => lvPeriodTotals[h.key]>0 ? parseFloat(lvPeriodTotals[h.key].toFixed(1)) : '')]);
+        rows.push(['ACTIVIDADES EN PARALELO', '', '', '', '', '', '', '', '', '',
+          ...lvHeaders.map(h => lvParallel[h.key]>0 ? lvParallel[h.key] : '')]);
+        rows.push([`FECHA FIN PROYECTO FC: ${leveledSchedule.projectEnd ?? '-'}`]);
+        const ws = window.XLSX.utils.aoa_to_sheet(rows);
+        const wb3 = window.XLSX.utils.book_new();
+        window.XLSX.utils.book_append_sheet(wb3, ws, 'Forecast Nivelado');
+        window.XLSX.writeFile(wb3, 'Tabla_Forecast_Nivelado.xlsx');
+      };
+      // ────────────────────────────────────────────────────────────────────────
+
+      // Curva S
+      useEffect(() => {
+        if (!window.Chart || !chartRef.current || processedSchedule.dates.length === 0) return;
+        if (chartInstance.current) chartInstance.current.destroy();
+        const _allLbl=[], _allLb=[], _allFc=[], _allLbPer=[], _allFcPer=[];
+        let accLb=0, accFc=0;
+        processedSchedule.dates.forEach(h => {
+          _allLbl.push(h.label);
+          const pLb = periodTotals[h.key].lb;
+          const pFc = periodTotals[h.key].fc;
+          _allLbPer.push(pLb); _allFcPer.push(pFc);
+          accLb += pLb; accFc += pFc;
+          _allLb.push(accLb); _allFc.push(accFc);
+        });
+        // Slice to slider visible range
+        const _tot = processedSchedule.dates.length;
+        const _lo = Math.round(sliderRange[0] / 100 * (_tot - 1));
+        const _hi = Math.round(sliderRange[1] / 100 * (_tot - 1));
+        const labels = _allLbl.slice(_lo, _hi+1);
+        const lbCum = _allLb.slice(_lo, _hi+1);
+        const fcCum = _allFc.slice(_lo, _hi+1);
+        const lbPer = _allLbPer.slice(_lo, _hi+1);
+        const fcPer = _allFcPer.slice(_lo, _hi+1);
+
+        // Compute days per period for rate calculation
+        const slicedKeys = processedSchedule.dates.slice(_lo, _hi+1).map(h => h.key);
+        const daysPerPeriod = slicedKeys.map(k => {
+          if (viewMode === 'day') return 1;
+          if (viewMode === 'week') return 7;
+          const [yy,mm] = k.split('-').map(Number);
+          return new Date(yy, mm, 0).getDate();
+        });
+
+        // Compute cumulative days at each period boundary
+        const cumDays = [];
+        let totalDaysCum = 0;
+        for (let i = 0; i < slicedKeys.length; i++) {
+          totalDaysCum += daysPerPeriod[i];
+          cumDays.push(totalDaysCum);
+        }
+
+        // FC cumulative days starting from first period with FC progress
+        const fcStartIdx = fcPer.findIndex(v => v > 0);
+        const cumDaysFc = [];
+        let totalDaysFc = 0;
+        for (let i = 0; i < slicedKeys.length; i++) {
+          if (i >= fcStartIdx && fcStartIdx >= 0) totalDaysFc += daysPerPeriod[i];
+          cumDaysFc.push(totalDaysFc);
+        }
+
+        // Interpolation: given a target qty, find cumulative days where curve reaches it
+        const findDayAtQty = (cumArr, target, daysArr) => {
+          if (target <= 0) return 0;
+          if (target >= cumArr[cumArr.length-1]) return null;
+          for (let i = 0; i < cumArr.length; i++) {
+            if (cumArr[i] >= target) {
+              if (i === 0) {
+                const frac = cumArr[i] > 0 ? target / cumArr[i] : 0;
+                return frac * daysArr[i];
+              }
+              const prev = cumArr[i-1];
+              const span = cumArr[i] - prev;
+              const frac = span > 0 ? (target - prev) / span : 0;
+              const dPrev = daysArr[i-1];
+              const dPeriod = daysArr[i] - daysArr[i-1];
+              return dPrev + frac * dPeriod;
+            }
+          }
+          return null;
+        };
+
+        // Find fractional X-pixel for a curve at a given Y value
+        const findPixelX = (cumArr, target, xScale) => {
+          if (target <= 0) return xScale.getPixelForValue(0);
+          for (let i = 0; i < cumArr.length; i++) {
+            if (cumArr[i] >= target) {
+              if (i === 0) {
+                const frac = cumArr[i] > 0 ? target / cumArr[i] : 0;
+                return xScale.getPixelForValue(frac);
+              }
+              const prev = cumArr[i-1];
+              const span = cumArr[i] - prev;
+              const frac = span > 0 ? (target - prev) / span : 0;
+              return xScale.getPixelForValue((i-1) + frac);
+            }
+          }
+          return null;
+        };
+
+        let _mouseY = null;
+        let _needsRedraw = false;
+        const interceptPlugin = {
+          id: 'interceptGuide',
+          afterEvent(chart, args) {
+            const evt = args.event;
+            if (evt.type === 'mousemove') {
+              _mouseY = evt.y;
+              _needsRedraw = true;
+              requestAnimationFrame(() => { if (_needsRedraw) { _needsRedraw = false; chart.draw(); } });
+            }
+            if (evt.type === 'mouseout') {
+              _mouseY = null;
+              _needsRedraw = true;
+              requestAnimationFrame(() => { if (_needsRedraw) { _needsRedraw = false; chart.draw(); } });
+            }
+          },
+          afterDraw(chart) {
+            if (_mouseY === null) return;
+            const {ctx: c, scales: {x, y}, chartArea} = chart;
+            if (!x || !y || _mouseY < chartArea.top || _mouseY > chartArea.bottom) return;
+            const qtyVal = y.getValueForPixel(_mouseY);
+            if (qtyVal < 0) return;
+
+            const lbDay = findDayAtQty(lbCum, qtyVal, cumDays);
+            const fcDay = findDayAtQty(fcCum, qtyVal, cumDaysFc);
+            const lbPx = findPixelX(lbCum, qtyVal, x);
+            const fcPx = findPixelX(fcCum, qtyVal, x);
+
+            c.save();
+            // Horizontal guide at qty level
+            c.beginPath(); c.setLineDash([5,3]);
+            c.strokeStyle = 'rgba(250,204,21,0.6)'; c.lineWidth = 1.5;
+            c.moveTo(chartArea.left, _mouseY); c.lineTo(chartArea.right, _mouseY); c.stroke();
+
+            // Qty label on left
+            c.setLineDash([]); c.font = 'bold 10px sans-serif'; c.textAlign = 'right';
+            c.fillStyle = 'rgba(250,204,21,0.9)';
+            c.fillText(qtyVal.toFixed(0) + ' m', chartArea.left - 4, _mouseY + 3);
+
+            // Vertical guide + dot for LB intersection
+            if (lbPx !== null && lbPx >= chartArea.left && lbPx <= chartArea.right) {
+              c.beginPath(); c.setLineDash([3,3]);
+              c.strokeStyle = 'rgba(29,78,216,0.6)'; c.lineWidth = 1;
+              c.moveTo(lbPx, chartArea.top); c.lineTo(lbPx, chartArea.bottom); c.stroke();
+              c.setLineDash([]); c.beginPath();
+              c.arc(lbPx, _mouseY, 5, 0, Math.PI*2);
+              c.fillStyle = '#3b82f6'; c.fill(); c.strokeStyle='#fff'; c.lineWidth=1.5; c.stroke();
+            }
+            // Vertical guide + dot for FC intersection
+            if (fcPx !== null && fcPx >= chartArea.left && fcPx <= chartArea.right) {
+              c.beginPath(); c.setLineDash([3,3]);
+              c.strokeStyle = 'rgba(5,150,105,0.6)'; c.lineWidth = 1;
+              c.moveTo(fcPx, chartArea.top); c.lineTo(fcPx, chartArea.bottom); c.stroke();
+              c.setLineDash([]); c.beginPath();
+              c.arc(fcPx, _mouseY, 5, 0, Math.PI*2);
+              c.fillStyle='#10b981'; c.fill(); c.strokeStyle='#fff'; c.lineWidth=1.5; c.stroke();
+            }
+
+            // Tooltip box
+            const fcTotal = fcCum[fcCum.length - 1];
+            const lbTotal = lbCum[lbCum.length - 1];
+            const lbTotalDays = cumDays[cumDays.length - 1];
+
+            const lines = ['-- ' + qtyVal.toFixed(0) + ' metros --'];
+            if (lbDay !== null) lines.push('Línea Base: ' + lbDay.toFixed(0) + ' días');
+            else lines.push('Línea Base: no alcanza');
+            if (fcDay !== null) lines.push('Forecast Contratista: ' + fcDay.toFixed(0) + ' días');
+            else lines.push('Forecast: no alcanza');
+
+            // LB velocity at this quantity level (the OBJECTIVE reference)
+            let velLb = 0;
+            if (lbDay !== null && lbDay > 0) velLb = qtyVal / lbDay;
+
+            if (velLb > 0) {
+              lines.push('');
+              lines.push('Vel. Línea Base: ' + velLb.toFixed(1) + ' m/día');
+
+              // FC total projected at LB rate
+              const fcDaysAtLbRate = fcTotal / velLb;
+              lines.push('');
+              lines.push('=== OBJECIÓN ===');
+              lines.push('Forecast total: ' + fcTotal.toFixed(0) + ' m');
+              lines.push('Dur. Forecast @ Línea Base: ' + fcDaysAtLbRate.toFixed(0) + ' días');
+
+              // Remaining from cursor
+              const fcRemaining = fcTotal - qtyVal;
+              if (fcRemaining > 0) {
+                const daysRem = fcRemaining / velLb;
+                lines.push('Resta: ' + fcRemaining.toFixed(0) + 'm');
+                lines.push('  @ vel. Línea Base: ' + daysRem.toFixed(0) + 'd');
+              }
+
+              // Show delta vs contractor
+              if (fcDay !== null && fcDay > 0) {
+                const velFc = qtyVal / fcDay;
+                const fcDaysContractor = fcTotal / velFc;
+                const excess = fcDaysContractor - fcDaysAtLbRate;
+                lines.push('');
+                lines.push('Dur FC Contrat: ' + fcDaysContractor.toFixed(0) + 'd');
+                lines.push('Exceso: ' + (excess > 0 ? '+' : '') + excess.toFixed(0) + 'd');
+              }
+            }
+
+            const pad = 10, lineH = 15, boxW = 230;
+            const boxH = lines.length * lineH + pad * 2;
+            let bx = Math.min(chartArea.right - boxW - 10, Math.max(chartArea.left + 10, ((lbPx !== null ? lbPx : fcPx !== null ? fcPx : chartArea.left + 50))));
+            let by = Math.max(chartArea.top + 4, _mouseY - boxH - 12);
+            if (by + boxH > chartArea.bottom) by = chartArea.top + 4;
+
+            c.setLineDash([]);
+            // Draw rounded rect manually for compatibility
+            const r = 6;
+            c.fillStyle = 'rgba(15,23,42,0.92)'; c.strokeStyle = '#334155'; c.lineWidth = 1;
+            c.beginPath();
+            c.moveTo(bx + r, by); c.lineTo(bx + boxW - r, by); c.quadraticCurveTo(bx + boxW, by, bx + boxW, by + r);
+            c.lineTo(bx + boxW, by + boxH - r); c.quadraticCurveTo(bx + boxW, by + boxH, bx + boxW - r, by + boxH);
+            c.lineTo(bx + r, by + boxH); c.quadraticCurveTo(bx, by + boxH, bx, by + boxH - r);
+            c.lineTo(bx, by + r); c.quadraticCurveTo(bx, by, bx + r, by);
+            c.closePath(); c.fill(); c.stroke();
+
+            c.font = '11px Consolas, monospace'; c.textAlign = 'left';
+            lines.forEach((ln, li) => {
+              c.fillStyle = li === 0 ? '#fbbf24'
+                : ln.startsWith('===') ? '#f59e0b'
+                : ln.startsWith('LB') ? '#60a5fa'
+                : ln.startsWith('FC') ? '#34d399'
+                : ln.startsWith('Dur FC@LB') || ln.startsWith('Resta') || ln.startsWith('  @vel') ? '#60a5fa'
+                : ln.startsWith('Dur FC Contrat') ? '#f87171'
+                : ln.startsWith('Exceso') ? '#fbbf24'
+                : ln.startsWith('Vel') ? '#f59e0b'
+                : '#cbd5e1';
+              c.fillText(ln, bx + pad, by + pad + (li + 1) * lineH - 2);
+            });
+            c.restore();
+          }
+        };
+
+        const ctx = chartRef.current.getContext('2d');
+        chartInstance.current = new window.Chart(ctx, {
+          type: 'line',
+          data: { labels, datasets: [
+            { label:'Curva S: Línea Base (Acumulado)', data:lbCum, borderColor:'#1d4ed8', backgroundColor:'rgba(29,78,216,0.1)', fill:true, tension:0.3, borderWidth:2, pointRadius:3 },
+            { label:'Curva S: Forecast (Acumulado Remanente)', data:fcCum, borderColor:'#059669', backgroundColor:'rgba(5,150,105,0.1)', fill:true, tension:0.3, borderWidth:2, pointRadius:3 }
+          ]},
+          plugins: [interceptPlugin],
+          options: {
+            responsive:true, maintainAspectRatio:false,
+            interaction:{ mode:'index', intersect:false },
+            plugins:{
+              tooltip:{ enabled: false },
+              legend:{ labels:{ color:'#ffffff' } }
+            },
+            scales:{
+              y:{ beginAtZero:true, grid:{ color:'#334155' }, ticks:{ color:'#94a3b8' }, title:{ display:true, text:'Cantidad Acumulada', color:'#64748b' } },
+              x:{ grid:{ color:'#334155' }, ticks:{ color:'#94a3b8' }, title:{ display:true, text: viewMode==='day'?'Días':viewMode==='week'?'Semanas':'Meses', color:'#64748b' } }
+            }
+          }
+        });
+        return () => { if (chartInstance.current) chartInstance.current.destroy(); };
+      }, [periodTotals, processedSchedule.dates, viewMode, sliderRange]);
+
+      // Curva S — Forecast Nivelado
+      useEffect(() => {
+        if (!window.Chart || !chartRef2.current || leveledSchedule.activities.length === 0) return;
+        if (chartInstance2.current) chartInstance2.current.destroy();
+
+        // Build sorted period headers from leveled spreads
+        const daySet = new Set();
+        leveledSchedule.activities.forEach(act => {
+          if (act.type !== 'activity') return;
+          Object.keys(act.fc_spread_lv).forEach(d => daySet.add(d));
+        });
+        if (daySet.size === 0) return;
+        const sortedDays = Array.from(daySet).sort();
+
+        // Build period buckets (same viewMode)
+        const buckets = [];
+        sortedDays.forEach(d => {
+          let key, label;
+          if (viewMode === 'day') {
+            key = d;
+            label = new Date(d+'T00:00:00').toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'});
+          } else if (viewMode === 'week') {
+            key = getISOWeekInfo(new Date(d+'T00:00:00'));
+            label = getWeekLabel(new Date(d+'T00:00:00'));
+          } else {
+            key = d.slice(0,7);
+            label = new Date(d+'T00:00:00').toLocaleDateString('es-ES',{month:'short',year:'numeric'}).toUpperCase();
+          }
+          if (!buckets.find(b => b.key === key)) buckets.push({ key, label, lv: 0 });
+          const b = buckets.find(b => b.key === key);
+          leveledSchedule.activities.forEach(act => {
+            if (act.type !== 'activity') return;
+            b.lv += act.fc_spread_lv[d] || 0;
+          });
+        });
+
+        const _allLbl2 = [], _allLvCum = [];
+        let acc = 0;
+        buckets.forEach(b => { _allLbl2.push(b.label); acc += b.lv; _allLvCum.push(parseFloat(acc.toFixed(1))); });
+        // Filter to slider visible range
+        const _fBuck2 = filterHeadersByDate(buckets);
+        let labels, lvCum;
+        if (_fBuck2.length > 0 && _fBuck2.length < buckets.length) {
+          const _si2 = buckets.findIndex(b => b.key === _fBuck2[0].key);
+          const _ei2 = buckets.findIndex(b => b.key === _fBuck2[_fBuck2.length-1].key);
+          labels = _allLbl2.slice(_si2, _ei2+1); lvCum = _allLvCum.slice(_si2, _ei2+1);
+        } else { labels = _allLbl2; lvCum = _allLvCum; }
+
+        const ctx2 = chartRef2.current.getContext('2d');
+        chartInstance2.current = new window.Chart(ctx2, {
+          type: 'line',
+          data: { labels, datasets: [
+            { label:'Forecast Nivelado (Acumulado)', data:lvCum, borderColor:'#d97706', backgroundColor:'rgba(217,119,6,0.12)', fill:true, tension:0.3, borderWidth:2.5, pointRadius:3 }
+          ]},
+          options: {
+            responsive:true, maintainAspectRatio:false,
+            interaction:{ mode:'index', intersect:false },
+            plugins:{
+              tooltip:{ callbacks:{ label: c => `${c.dataset.label}: ${c.parsed.y.toFixed(1)}` } },
+              legend:{ labels:{ color:'#ffffff', font:{ weight:'bold' } } }
+            },
+            scales:{
+              y:{ beginAtZero:true, grid:{ color:'#334155' }, ticks:{ color:'#94a3b8' }, title:{ display:true, text:'Cantidad Acumulada (Remanente)', color:'#64748b' } },
+              x:{ grid:{ color:'#334155' }, ticks:{ color:'#94a3b8' }, title:{ display:true, text: viewMode==='day'?'Días':viewMode==='week'?'Semanas':'Meses', color:'#64748b' } }
+            }
+          }
+        });
+        return () => { if (chartInstance2.current) chartInstance2.current.destroy(); };
+      }, [leveledSchedule, viewMode, sliderRange]);
+
+      // Diagrama Tiempo-Camino (velocity) — Forecast Nivelado por tramo
+      useEffect(() => {
+        if (!window.Chart || !chartRef3.current || leveledSchedule.activities.length === 0) return;
+        if (chartInstance3.current) chartInstance3.current.destroy();
+
+        // 1. Tramos que son padre directo de actividades niveladas (orden de aparición)
+        const tramosInfo = [];
+        const seen = new Set();
+        leveledSchedule.activities.forEach(act => {
+          if (act.type === 'activity' && act.parentId && !seen.has(act.parentId) &&
+              Object.keys(act.fc_spread_lv).length > 0) {
+            seen.add(act.parentId);
+            tramosInfo.push({ id: act.parentId });
+          }
+        });
+        if (tramosInfo.length === 0) return;
+
+        // 2. Actividades por tramo
+        const actsByTramo = {};
+        tramosInfo.forEach(t => { actsByTramo[t.id] = []; });
+        leveledSchedule.activities.forEach(act => {
+          if (act.type === 'activity' && act.parentId && actsByTramo[act.parentId] &&
+              Object.keys(act.fc_spread_lv).length > 0)
+            actsByTramo[act.parentId].push(act);
+        });
+
+        // 3. Qty total por tramo (para offsets en eje X)
+        const tramoQty = {};
+        tramosInfo.forEach(t => {
+          tramoQty[t.id] = actsByTramo[t.id].reduce((s, a) => s + (a.fc_qty || 0), 0);
+        });
+
+        // 4. Offsets horizontales
+        const TC_OFFSET = {};
+        let off = 0;
+        tramosInfo.forEach(t => { TC_OFFSET[t.id] = off; off += tramoQty[t.id]; });
+        const totalDist = off;
+        tcTotalDist.current = totalDist;
+
+        // 5. Build period buckets (include both leveled + contractor FC dates)
+        const daySet = new Set();
+        leveledSchedule.activities.forEach(act => {
+          if (act.type !== 'activity') return;
+          Object.keys(act.fc_spread_lv).forEach(d => daySet.add(d));
+          Object.keys(act.fc_spread).forEach(d => daySet.add(d));
+        });
+        if (daySet.size === 0) return;
+        const sortedDays = Array.from(daySet).sort();
+
+        // Add 1 month padding before first and after last
+        const padBefore = new Date(sortedDays[0] + 'T00:00:00');
+        padBefore.setMonth(padBefore.getMonth() - 1);
+        const padAfter = new Date(sortedDays[sortedDays.length - 1] + 'T00:00:00');
+        padAfter.setMonth(padAfter.getMonth() + 1);
+        const paddedDays = [padBefore.toISOString().split('T')[0], ...sortedDays, padAfter.toISOString().split('T')[0]];
+
+        const buckets = [];
+        paddedDays.forEach(d => {
+          let key, label;
+          if (viewMode === 'day') {
+            key = d;
+            label = new Date(d+'T00:00:00').toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'});
+          } else if (viewMode === 'week') {
+            key = getISOWeekInfo(new Date(d+'T00:00:00'));
+            label = getWeekLabel(new Date(d+'T00:00:00'));
+          } else {
+            key = d.slice(0,7);
+            label = new Date(d+'T00:00:00').toLocaleDateString('es-ES',{month:'short',year:'numeric'}).toUpperCase();
+          }
+          if (!buckets.find(b => b.key === key)) buckets.push({ key, label });
+        });
+        if (buckets.length === 0) return;
+        const yLabels = buckets.map(b => b.label);
+
+        // 6. Dataset por tramo (línea scatter acumulada)
+        const TC_COLORS = ['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6','#f97316','#84cc16'];
+        const shortLbl = id => { const m = id.match(/TRAMO\s+([A-Z0-9]+)/i); return m ? 'T-'+m[1] : id.slice(0,8); };
+
+        const datasets = tramosInfo.map((t, ti) => {
+          const color = TC_COLORS[ti % TC_COLORS.length];
+          const acts = actsByTramo[t.id];
+          let cumQty = 0;
+          const data = [];
+          for (let i = 0; i < buckets.length; i++) {
+            const b = buckets[i];
+            let periodTotal = 0;
+            acts.forEach(act => { periodTotal += getQtyForPeriod(act.fc_spread_lv, b.key, viewMode); });
+            if (periodTotal > 0 || cumQty > 0) {
+              cumQty += periodTotal;
+              data.push({ x: TC_OFFSET[t.id] + cumQty, y: i, delta: periodTotal });
+            }
+          }
+          // Trim trailing points with no progress (don't extend lines past activity end)
+          while (data.length > 0 && data[data.length - 1].delta === 0) data.pop();
+          return {
+            label: shortLbl(t.id),
+            _tramoId: t.id,
+            data,
+            borderColor: color,
+            backgroundColor: 'transparent',
+            borderWidth: 2.5,
+            pointRadius: viewMode === 'day' ? 2 : 3,
+            pointHoverRadius: 6,
+            showLine: true, spanGaps: true, tension: 0
+          };
+        });
+
+        // 6b. Contractor FC datasets (dashed) for comparison
+        const datasetsContr = tramosInfo.map((t, ti) => {
+          const color = TC_COLORS[ti % TC_COLORS.length];
+          const acts = actsByTramo[t.id];
+          let cumQty = 0;
+          const data = [];
+          for (let i = 0; i < buckets.length; i++) {
+            const b = buckets[i];
+            let periodTotal = 0;
+            acts.forEach(act => {
+              periodTotal += getQtyForPeriod(act.fc_spread, b.key, viewMode);
+            });
+            if (periodTotal > 0 || cumQty > 0) {
+              cumQty += periodTotal;
+              data.push({ x: TC_OFFSET[t.id] + cumQty, y: i, delta: periodTotal });
+            }
+          }
+          while (data.length > 0 && data[data.length - 1].delta === 0) data.pop();
+          return {
+            label: shortLbl(t.id) + ' Contr.',
+            _tramoId: t.id,
+            data,
+            borderColor: color,
+            backgroundColor: 'transparent',
+            borderWidth: 1.5,
+            borderDash: [6, 4],
+            pointRadius: viewMode === 'day' ? 1 : 2,
+            pointStyle: 'circle',
+            pointHoverRadius: 5,
+            showLine: true, spanGaps: true, tension: 0
+          };
+        });
+
+        // Plugin: líneas divisorias entre tramos + etiquetas
+        const tramoBorderPlugin = {
+          id: 'tramoBordersLvTC',
+          afterDraw(chart) {
+            const {ctx: c, scales: {x, y}} = chart;
+            if (!x || !y) return;
+            c.save();
+            tramosInfo.forEach((t, ti) => {
+              const pxIni = x.getPixelForValue(TC_OFFSET[t.id]);
+              c.setLineDash([3,4]); c.strokeStyle = '#475569'; c.lineWidth = 1;
+              c.beginPath(); c.moveTo(pxIni, y.top); c.lineTo(pxIni, y.bottom); c.stroke();
+              const pxMid = x.getPixelForValue(TC_OFFSET[t.id] + tramoQty[t.id] / 2);
+              c.setLineDash([]);
+              c.fillStyle = TC_COLORS[ti % TC_COLORS.length];
+              c.font = 'bold 10px sans-serif';
+              c.textAlign = 'center';
+              c.fillText(shortLbl(t.id), pxMid, y.top + 14);
+            });
+            c.restore();
+          }
+        };
+
+        const ctx3 = chartRef3.current.getContext('2d');
+        chartInstance3.current = new window.Chart(ctx3, {
+          type: 'scatter',
+          data: { datasets: [...datasets, ...datasetsContr] },
+          plugins: [tramoBorderPlugin],
+          options: {
+            responsive: true, maintainAspectRatio: false, animation: false,
+            interaction: { mode: 'nearest', intersect: false },
+            plugins: {
+              legend: {
+                display: true, position: 'top',
+                labels: {
+                  color:'#94a3b8', boxWidth:20, font:{size:10}, usePointStyle:false,
+                  generateLabels: chart => {
+                    return chart.data.datasets.map((ds, i) => ({
+                      text: ds.label,
+                      strokeStyle: ds.borderColor,
+                      fillStyle: 'transparent',
+                      lineDash: ds.borderDash || [],
+                      lineWidth: ds.borderWidth || 2,
+                      hidden: !chart.isDatasetVisible(i),
+                      datasetIndex: i
+                    }));
+                  }
+                }
+              },
+              tooltip: {
+                callbacks: {
+                  title: items => yLabels[Math.round(items[0].parsed.y)] || '',
+                  label: item => {
+                    const delta = item.raw.delta || 0;
+                    const acumLocal = ((item.parsed.x - TC_OFFSET[item.dataset._tramoId]) || 0).toFixed(1);
+                    return ` ${item.dataset.label}  ·  Período: ${delta.toFixed(1)}  |  Acum: ${acumLocal}`;
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                type: 'linear', position: 'top',
+                min: Math.round(tcQtyRange[0] / 100 * totalDist),
+                max: Math.max(Math.round(tcQtyRange[1] / 100 * totalDist), 1),
+                title: { display: true, text: 'Cantidad Acumulada por Tramo (m)', color:'#64748b', font:{size:10} },
+                ticks: {
+                  color:'#94a3b8', font:{size:9},
+                  stepSize: (() => {
+                    const span = Math.round(tcQtyRange[1] / 100 * totalDist) - Math.round(tcQtyRange[0] / 100 * totalDist);
+                    if (span <= 200) return 10;
+                    if (span <= 500) return 25;
+                    if (span <= 1000) return 50;
+                    if (span <= 2000) return 100;
+                    if (span <= 5000) return 250;
+                    return 500;
+                  })()
+                },
+                grid: { color:'#334155' }
+              },
+              y: {
+                type: 'linear', min: (() => { const fb=filterHeadersByDate(buckets); if(fb.length>0&&fb.length<buckets.length){const i=buckets.findIndex(b=>b.key===fb[0].key); return i>=0?i:0;} return 0; })(), max: (() => { const fb=filterHeadersByDate(buckets); if(fb.length>0&&fb.length<buckets.length){const i=buckets.findIndex(b=>b.key===fb[fb.length-1].key); return i>=0?i:buckets.length-1;} return buckets.length-1; })(), reverse: true,
+                ticks: {
+                  color:'#94a3b8', font:{size:9}, stepSize:1,
+                  callback: v => { const i=Math.round(v); return (i>=0&&i<yLabels.length)?yLabels[i]:''; }
+                },
+                grid: { color:'#334155' }
+              }
+            }
+          }
+        });
+        return () => { if (chartInstance3.current) chartInstance3.current.destroy(); };
+      }, [leveledSchedule, viewMode, sliderRange, tcQtyRange]);
+
+      // Resize TC chart when height changes
+      useEffect(() => {
+        if (chartInstance3.current) setTimeout(() => chartInstance3.current?.resize(), 50);
+      }, [tcChartHeight]);
+
+      // Resize chart 1 when height changes
+      useEffect(() => {
+        if (chartInstance.current) setTimeout(() => chartInstance.current?.resize(), 50);
+      }, [chart1Height]);
+
+      // Resize chart 2 when height changes
+      useEffect(() => {
+        if (chartInstance2.current) setTimeout(() => chartInstance2.current?.resize(), 50);
+      }, [chart2Height]);
+
+      return (
+        <div className="min-h-screen bg-[#0f172a] p-2 font-sans text-[#e2e8f0]">
+          <div className="mx-auto space-y-6" style={{maxWidth:'80%'}}>
+
+            {/* Cabecera */}
+            <div className="bg-slate-800 text-white p-5 rounded-xl shadow-md flex flex-col md:flex-row justify-between items-center gap-4">
+              <div>
+                <h1 className="text-xl font-bold">Panel de Rendimiento: Montec</h1>
+                <p className="text-sm text-slate-300 mt-1">Comparativa, Totales y Curva de Avance</p>
+                {fileName && <p className="text-xs text-emerald-400 mt-2">Archivo: {fileName}</p>}
+              </div>
+              <div className="flex flex-col md:flex-row gap-4 items-center">
+                <div className="flex bg-slate-700 rounded-lg p-1">
+                  {['day','week','month'].map(mode => (
+                    <button key={mode} onClick={() => setViewMode(mode)}
+                      className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${viewMode===mode?'bg-blue-500 text-white shadow-sm':'text-slate-300 hover:text-white hover:bg-slate-600'}`}>
+                      {mode==='day'?'Días':mode==='week'?'Semanas':'Meses'}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <button onClick={() => setSliderRange([0,100])}
+                    className={`text-xs border border-slate-600 rounded px-2 py-1 ${sliderRange[0]===0&&sliderRange[1]===100?'text-slate-500':'text-red-400 hover:text-red-300'}`}
+                    disabled={sliderRange[0]===0&&sliderRange[1]===100}>Todo</button>
+                </div>
+                <label className="cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2 shadow-sm">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Cargar Archivo Excel
+                  <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileUpload} />
+                </label>
+              </div>
+            </div>
+
+            {/* Timeline slider */}
+            {processedSchedule.dates.length > 1 && (
+              <div className="bg-[#1e293b] rounded-xl border border-[#334155] px-5 py-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] text-slate-400 font-medium">Línea de Tiempo</span>
+                  <span className="text-[11px] text-slate-500">
+                    <span className="text-cyan-400 font-semibold">{sliderLabels.from}</span>
+                    <span className="mx-2 text-slate-600">—</span>
+                    <span className="text-cyan-400 font-semibold">{sliderLabels.to}</span>
+                    <span className="ml-2 text-slate-600">({filteredDates.length} de {sliderLabels.total})</span>
+                  </span>
+                </div>
+                <div className="timeline-container" style={{position:'relative', height:'24px', display:'flex', alignItems:'center'}}>
+                  <div className="timeline-track" style={{width:'100%'}}>
+                    <div className="fill" style={{left: sliderRange[0]+'%', width: (sliderRange[1]-sliderRange[0])+'%'}}></div>
+                  </div>
+                  <input type="range" min="0" max="100" value={sliderRange[0]}
+                    onChange={e => { const v = Math.min(Number(e.target.value), sliderRange[1]-1); setSliderRange([v, sliderRange[1]]); }} />
+                  <input type="range" min="0" max="100" value={sliderRange[1]}
+                    onChange={e => { const v = Math.max(Number(e.target.value), sliderRange[0]+1); setSliderRange([sliderRange[0], v]); }} />
+                </div>
+                <div className="flex justify-between mt-1">
+                  <span className="text-[10px] text-slate-600">{processedSchedule.dates[0]?.label}</span>
+                  <span className="text-[10px] text-slate-600">{processedSchedule.dates[processedSchedule.dates.length-1]?.label}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Panel Objeción al Forecast — Simulación Nivelada */}
+            {earnedSchedule && (
+              <div className="bg-[#1e293b] p-4 rounded-xl border border-amber-700/40">
+                <h2 className="text-lg font-semibold text-[#e2e8f0] mb-2 flex items-center gap-2 cursor-pointer select-none" onClick={() => toggleSection('earned')}>
+                  <span className="text-[#64748b] text-sm">{collapsedSections.has('earned') ? '\u25B6' : '\u25BC'}</span>
+                  <span className="text-amber-400">&#9888;</span>
+                  Objeción al Forecast — Simulación Nivelada con Rendimiento Línea Base
+                </h2>
+
+                {/* Controls inline */}
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-300 mb-3">
+                  <span>Duraciones con <strong className="text-blue-300">rendimiento Línea Base</strong> (Cantidad remanente ÷ velocidad Línea Base)</span>
+                  <label className="flex items-center gap-1">
+                    <span className="text-amber-300 font-semibold">Soldadores/día:</span>
+                    <input type="number" min="1" max="50" step="1"
+                      value={soldadoresDia != null ? soldadoresDia : dailyLbCapacity.avg}
+                      onChange={e => {
+                        const v = parseInt(e.target.value);
+                        setSoldadoresDia(isNaN(v) || v < 1 ? null : v);
+                      }}
+                      className="w-14 bg-slate-700 text-amber-300 font-bold border border-amber-600/50 rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:border-amber-400" />
+                    <span className="text-slate-500">(prom. LB: {dailyLbCapacity.avg})</span>
+                  </label>
+                  <label className="flex items-center gap-1">
+                    <span>Inicio:</span>
+                    <input type="date" value={levelStart} onChange={e => setLevelStart(e.target.value)}
+                      className="bg-slate-700 text-white border border-slate-500 rounded px-1 py-0.5 text-xs cursor-pointer" />
+                  </label>
+                  <span className="text-slate-500">Cap: <strong className="text-amber-300">{leveledSchedule.capacity}</strong> slots</span>
+                </div>
+
+                {!collapsedSections.has('earned') && <>
+
+                {/* KPI Cards - 5 columns */}
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+                  {/* LB */}
+                  <div className="bg-[#0f172a] rounded-lg p-3 border border-blue-800/40">
+                    <div className="text-[10px] uppercase text-blue-400 font-bold tracking-wider mb-1">Línea Base</div>
+                    <div className="text-xl font-bold text-blue-300">{earnedSchedule.lbTotalQty.toLocaleString('es-CL')} m</div>
+                    <div className="text-xs text-slate-400 mt-1">{earnedSchedule.lbDurGlobal} días</div>
+                    <div className="text-xs text-blue-200 font-semibold">{earnedSchedule.lbVelGlobal.toFixed(1)} m/día</div>
+                  </div>
+                  {/* FC Pendiente */}
+                  <div className="bg-[#0f172a] rounded-lg p-3 border border-emerald-800/40">
+                    <div className="text-[10px] uppercase text-emerald-400 font-bold tracking-wider mb-1">Forecast Pendiente</div>
+                    <div className="text-xl font-bold text-emerald-300">{earnedSchedule.fcTotalQty.toLocaleString('es-CL')} m</div>
+                    <div className="text-xs text-slate-400 mt-1">{earnedSchedule.actCount} actividades</div>
+                  </div>
+                  {/* FC Contratista */}
+                  <div className="bg-[#0f172a] rounded-lg p-3 border border-red-800/40">
+                    <div className="text-[10px] uppercase text-red-400 font-bold tracking-wider mb-1">Forecast Contratista</div>
+                    <div className="text-xl font-bold text-red-300">{earnedSchedule.fcDurContractorGlobal} días</div>
+                    <div className="text-xs text-red-200 font-semibold">{earnedSchedule.fcVelContractor.toFixed(1)} m/día</div>
+                    {earnedSchedule.fcContractorMaxDate && (
+                      <div className="text-xs text-red-200">Fin: {earnedSchedule.fcContractorMaxDate.toLocaleDateString('es-CL',{day:'2-digit',month:'2-digit',year:'2-digit'})}</div>
+                    )}
+                  </div>
+                  {/* FC Nivelado */}
+                  <div className="bg-[#0f172a] rounded-lg p-3 border border-amber-800/40">
+                    <div className="text-[10px] uppercase text-amber-400 font-bold tracking-wider mb-1">Forecast Nivelado (vel. Línea Base)</div>
+                    {objectionMetrics ? (
+                      <>
+                        <div className="text-xl font-bold text-amber-300">{objectionMetrics.nivDurGlobal} días</div>
+                        <div className="text-xs text-slate-400 mt-1">Capacidad: {objectionMetrics.nivCapacity} soldadores/día</div>
+                        <div className="text-xs text-amber-200 font-semibold">Fin: {objectionMetrics.nivEndDate.toLocaleDateString('es-CL',{day:'2-digit',month:'2-digit',year:'2-digit'})}</div>
+                      </>
+                    ) : (
+                      <div className="text-xs text-slate-500">Cargando...</div>
+                    )}
+                  </div>
+                  {/* Objeción */}
+                  {objectionMetrics && (
+                    <div className={`bg-[#0f172a] rounded-lg p-3 border ${objectionMetrics.excessDaysNiv > 0 ? 'border-amber-600/60' : 'border-emerald-600/60'}`}>
+                      <div className="text-[10px] uppercase text-amber-400 font-bold tracking-wider mb-1">Objeción</div>
+                      <div className={`text-xl font-bold ${objectionMetrics.excessDaysNiv > 0 ? 'text-amber-300' : 'text-emerald-300'}`}>
+                        {objectionMetrics.excessDaysNiv > 0 ? '+' : ''}{objectionMetrics.excessDaysNiv} días
+                      </div>
+                      <div className="text-xs text-slate-400 mt-1">SPI: {earnedSchedule.spi.toFixed(2)}</div>
+                      <div className="text-xs text-amber-200 font-semibold">
+                        {objectionMetrics.excessDaysNiv > 0 ? 'Contratista sobreestima' : 'FC razonable'}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Banner: Fin FC Nivelado vs Fin FC Contratista */}
+                {objectionMetrics && (
+                  <div className="flex flex-wrap items-center gap-x-6 gap-y-1 px-4 py-3 mb-4 bg-[#1c1505] rounded-lg border border-[#92400e]/50">
+                    <div className="flex items-center gap-2">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-amber-500 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
+                      </svg>
+                      <span className="text-sm text-amber-300">
+                        <strong>Fin Forecast Nivelado (vel. Línea Base):</strong>
+                        &nbsp;<span className="text-lg font-bold text-emerald-400">{objectionMetrics.projEndLabel}</span>
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-slate-400">vs</span>
+                      <span className="text-sm text-red-300">
+                        <strong>Fin Forecast Contratista:</strong>
+                        &nbsp;<span className="text-lg font-bold text-red-400">{objectionMetrics.fcContractorEndLabel}</span>
+                      </span>
+                      {objectionMetrics.excessDaysNiv > 0
+                        ? <span className="ml-2 px-2 py-0.5 bg-amber-900/50 text-amber-300 text-xs font-bold rounded">{objectionMetrics.excessDaysNiv} días de exceso del contratista</span>
+                        : <span className="ml-2 px-2 py-0.5 bg-emerald-900/50 text-emerald-300 text-xs font-bold rounded">FC razonable</span>}
+                    </div>
+                  </div>
+                )}
+
+                {/* Methodology */}
+                <div className="bg-[#0f172a]/60 rounded-lg p-3 text-xs text-slate-300 space-y-1 border border-slate-700/30">
+                  <p className="font-semibold text-amber-300">Metodología:</p>
+                  <p>La Línea Base establece un rendimiento de <span className="text-blue-300 font-bold">{earnedSchedule.lbVelGlobal.toFixed(1)} m/día</span> ({earnedSchedule.lbTotalQty.toLocaleString('es-CL')}m / {earnedSchedule.lbDurGlobal}d).</p>
+                  <p>El Forecast del contratista tiene <span className="text-emerald-300 font-bold">{earnedSchedule.fcTotalQty.toLocaleString('es-CL')}m</span> pendientes. Usando el rendimiento de la Línea Base por actividad y limitando a <span className="text-amber-300 font-bold">{leveledSchedule.capacity} soldadores/día</span> en paralelo, la simulación nivelada completa el Forecast en {objectionMetrics ? <span className="text-amber-300 font-bold">{objectionMetrics.nivDurGlobal} días</span> : '...'} (Fin: {objectionMetrics ? <span className="text-amber-300 font-bold">{objectionMetrics.projEndLabel}</span> : '...'}).</p>
+                  <p>El contratista propone <span className="text-red-300 font-bold">{earnedSchedule.fcDurContractorGlobal} días</span>, es decir {objectionMetrics && objectionMetrics.excessDaysNiv > 0 ? <><span className="font-bold text-amber-300">{objectionMetrics.excessDaysNiv} días de exceso</span> sin justificación técnica basada en los rendimientos pactados.</> : <span className="font-bold text-emerald-300">dentro de lo razonable</span>}.</p>
+                  {earnedSchedule.spi < 1 && <p className="text-amber-200">El SPI de {earnedSchedule.spi.toFixed(2)} indica que el contratista opera al <span className="font-bold">{(earnedSchedule.spi*100).toFixed(0)}%</span> de la eficiencia establecida en la Línea Base.</p>}
+                </div>
+
+                {/* Per-activity table */}
+                <details className="mt-3">
+                  <summary className="text-xs text-cyan-400 cursor-pointer hover:text-cyan-300 font-semibold">Ver detalle por actividad ({earnedSchedule.actCount} actividades)</summary>
+                  <div className="overflow-x-auto mt-2 max-h-[300px]">
+                    <table className="w-full text-[11px] border-collapse">
+                      <thead className="bg-[#0f172a] text-[10px] text-slate-500 uppercase sticky top-0">
+                        <tr>
+                          <th className="px-2 py-1 text-left border-b border-slate-700">Actividad</th>
+                          <th className="px-2 py-1 text-right border-b border-slate-700">Vel. Línea Base (m/d)</th>
+                          <th className="px-2 py-1 text-right border-b border-slate-700">Duración Forecast Contratista</th>
+                          <th className="px-2 py-1 text-right border-b border-slate-700">Duración Forecast @ vel. Línea Base</th>
+                          <th className="px-2 py-1 text-right border-b border-slate-700">Exceso (días)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {earnedSchedule.perActivity.map(pa => (
+                          <tr key={pa.id} className={`border-b border-slate-800 ${pa.diff > 0 ? 'bg-amber-950/20' : ''}`}>
+                            <td className="px-2 py-1 text-slate-300">{pa.id}</td>
+                            <td className="px-2 py-1 text-right text-blue-300">{pa.lbRate.toFixed(1)}</td>
+                            <td className="px-2 py-1 text-right text-red-300">{pa.fcDurContractor ?? '-'}</td>
+                            <td className="px-2 py-1 text-right text-emerald-300">{pa.fcDurAtLbRate}</td>
+                            <td className={`px-2 py-1 text-right font-bold ${pa.diff > 0 ? 'text-amber-300' : 'text-emerald-300'}`}>{pa.diff !== null ? (pa.diff > 0 ? '+' : '') + pa.diff : '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+                </>
+                }
+              </div>
+            )}
+
+            {/* Curva S */}
+            <div className="bg-[#1e293b] p-4 rounded-xl border border-[#334155]">
+              <h2 className="text-lg font-semibold text-[#e2e8f0] mb-2 flex items-center gap-2 cursor-pointer select-none" onClick={() => toggleSection('scurve')}>
+                <span className="text-[#64748b] text-sm">{collapsedSections.has('scurve') ? '\u25B6' : '\u25BC'}</span>
+                Curvas de Avance (S-Curve)
+              </h2>
+              {!collapsedSections.has('scurve') && <>
+              <div style={{height: chart1Height+'px', position:'relative', transition:'height 0.2s'}} className="w-full">
+                {processedSchedule.dates.length > 0
+                  ? <canvas ref={chartRef}></canvas>
+                  : <div className="absolute inset-0 flex items-center justify-center text-gray-400">
+                      {loading ? 'Procesando datos...' : 'Sube un archivo para ver la curva de avance.'}
+                    </div>
+                }
+              </div>
+              <div
+                onMouseDown={e => {
+                  const startY = e.clientY; const startH = chart1Height;
+                  const onMove = mv => setChart1Height(Math.max(100, startH + mv.clientY - startY));
+                  const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); if (chartInstance.current) chartInstance.current.resize(); };
+                  document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
+                }}
+                style={{height:'10px', cursor:'ns-resize', display:'flex', alignItems:'center', justifyContent:'center', userSelect:'none'}}
+                title="Arrastra para cambiar altura">
+                <div style={{width:'48px', height:'3px', background:'#334155', borderRadius:'2px'}}></div>
+              </div>
+              </>}
+            </div>
+
+            {/* ═══════════════════════════════════════════════════════════════
+                 GRÁFICOS DE ANÁLISIS DE OBJECIÓN
+                 ═══════════════════════════════════════════════════════════════ */}
+            {earnedSchedule && earnedSchedule.perActivity.length > 0 && (
+              <div className="bg-[#1e293b] p-4 rounded-xl border border-[#334155]">
+                <h2 className="text-lg font-semibold text-[#e2e8f0] mb-3 flex items-center gap-2 cursor-pointer select-none" onClick={() => toggleSection('objCharts')}>
+                  <span className="text-[#64748b] text-sm">{collapsedSections.has('objCharts') ? '\u25B6' : '\u25BC'}</span>
+                  <span className="text-rose-400">&#9888;</span>
+                  Análisis de Objeción al Forecast del Contratista
+                </h2>
+                {!collapsedSections.has('objCharts') && (() => {
+                  const paAll = earnedSchedule.perActivity;
+
+                  // ── WBS groups (parent tramos) ──
+                  const wbsGroups = [...new Set(paAll.map(a => {
+                    const act = processedSchedule.activities.find(x => x.id === a.id);
+                    return act?.parentId || 'Sin Tramo';
+                  }))].sort();
+
+                  // ── Filter ──
+                  const pa = paAll.filter(a => {
+                    const act = processedSchedule.activities.find(x => x.id === a.id);
+                    const wbs = act?.parentId || 'Sin Tramo';
+                    if (objFilterWbs !== '__all__' && wbs !== objFilterWbs) return false;
+                    if (objExcessFilter === 'conExceso' && (a.diff || 0) <= 0) return false;
+                    if (objExcessFilter === 'sinExceso' && (a.diff || 0) > 0) return false;
+                    return true;
+                  });
+
+                  // ── Label helper ──
+                  const shortLabel = id => {
+                    const s = id.replace(/^REPROGRAMADO\s*/i, '');
+                    return s.length > 28 ? s.substring(0, 26) + '…' : s;
+                  };
+
+                  // ── Rates for KPIs ──
+                  const lbRatesAll = paAll.map(a => a.lbRate);
+                  const fcRatesAll = paAll.map(a => a.fcDurContractor && a.fcDurContractor > 0
+                    ? (processedSchedule.activities.find(x => x.id === a.id)?.fc_qty || 0) / a.fcDurContractor : 0);
+
+                  // ── Counts for KPIs ──
+                  const countExceso = paAll.filter(a => (a.diff || 0) > 0).length;
+                  const countAdelanto = paAll.filter(a => (a.diff || 0) < 0).length;
+                  const countIguales = paAll.filter(a => (a.diff || 0) === 0).length;
+                  const totalExcesoBruto = paAll.reduce((s, a) => s + Math.max(0, a.diff || 0), 0);
+                  const totalAdelantoKpi = Math.abs(paAll.reduce((s, a) => s + Math.min(0, a.diff || 0), 0));
+                  const totalExcesoNeto = totalExcesoBruto - totalAdelantoKpi;
+
+                  return <>
+                  {/* ───── KPIs Resumen (arriba) ───── */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+                    <div className="bg-[#0f172a] rounded-lg p-3 border border-amber-800/40 text-center">
+                      <div className="text-[10px] uppercase text-amber-400 font-bold tracking-wider mb-1">Actividades con exceso</div>
+                      <div className="text-2xl font-bold text-amber-300">{countExceso}</div>
+                      <div className="text-xs text-slate-400">de {paAll.length} actividades</div>
+                    </div>
+                    <div className="bg-[#0f172a] rounded-lg p-3 border border-emerald-800/40 text-center">
+                      <div className="text-[10px] uppercase text-emerald-400 font-bold tracking-wider mb-1">Actividades con adelanto</div>
+                      <div className="text-2xl font-bold text-emerald-300">{countAdelanto}</div>
+                      <div className="text-xs text-slate-400">de {paAll.length} actividades</div>
+                    </div>
+                    <div className="bg-[#0f172a] rounded-lg p-3 border border-slate-600/40 text-center">
+                      <div className="text-[10px] uppercase text-slate-400 font-bold tracking-wider mb-1">Iguales a Línea Base</div>
+                      <div className="text-2xl font-bold text-slate-300">{countIguales}</div>
+                      <div className="text-xs text-slate-400">de {paAll.length} actividades</div>
+                    </div>
+                    <div className="bg-[#0f172a] rounded-lg p-3 border border-red-800/40 text-center">
+                      <div className="text-[10px] uppercase text-red-400 font-bold tracking-wider mb-1">Objeción neta (días)</div>
+                      <div className="text-2xl font-bold text-red-300">{totalExcesoNeto >= 0 ? '+' : ''}{totalExcesoNeto}</div>
+                      <div className="text-[10px] text-slate-500">Exceso: +{totalExcesoBruto} — Adelantos: −{totalAdelantoKpi}</div>
+                    </div>
+                    <div className="bg-[#0f172a] rounded-lg p-3 border border-rose-800/40 text-center">
+                      <div className="text-[10px] uppercase text-rose-400 font-bold tracking-wider mb-1">Peor actividad</div>
+                      <div className="text-sm font-bold text-rose-300 truncate">{[...paAll].sort((a,b) => (b.diff||0) - (a.diff||0))[0]?.id.replace(/^REPROGRAMADO\s*/i, '').substring(0, 30) || '-'}</div>
+                      <div className="text-xs text-slate-400">+{Math.max(0, [...paAll].sort((a,b) => (b.diff||0) - (a.diff||0))[0]?.diff || 0)} días</div>
+                    </div>
+                    <div className="bg-[#0f172a] rounded-lg p-3 border border-blue-800/40 text-center">
+                      <div className="text-[10px] uppercase text-blue-400 font-bold tracking-wider mb-1">Eficiencia promedio</div>
+                      <div className="text-2xl font-bold text-blue-300">{(fcRatesAll.reduce((a,b)=>a+b,0) / (lbRatesAll.reduce((a,b)=>a+b,0) || 1) * 100).toFixed(0)}%</div>
+                      <div className="text-xs text-slate-400">vel. Forecast / vel. Línea Base</div>
+                    </div>
+                  </div>
+
+                  {/* ── Filtros ── */}
+                  <div className="flex flex-wrap items-center gap-3 mb-4 bg-[#0f172a]/60 rounded-lg p-3 border border-slate-700/30">
+                    <label className="flex items-center gap-1.5 text-xs text-slate-300">
+                      <span className="text-slate-500 font-semibold">Tramo:</span>
+                      <select value={objFilterWbs} onChange={e => setObjFilterWbs(e.target.value)}
+                        className="bg-slate-700 text-white border border-slate-500 rounded px-2 py-1 text-xs cursor-pointer">
+                        <option value="__all__">Todos los tramos ({paAll.length} actividades)</option>
+                        {wbsGroups.map(w => {
+                          const cnt = paAll.filter(a => (processedSchedule.activities.find(x => x.id === a.id)?.parentId || 'Sin Tramo') === w).length;
+                          return <option key={w} value={w}>{shortLabel(w)} ({cnt})</option>;
+                        })}
+                      </select>
+                    </label>
+                    <div className="flex items-center gap-1">
+                      {[['all','Todas'],['sinExceso','Sin exceso o menor'],['conExceso','Con exceso']].map(([val,lbl]) => (
+                        <button key={val} onClick={() => setObjExcessFilter(val)}
+                          className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
+                            objExcessFilter === val
+                              ? 'bg-amber-600 text-white shadow'
+                              : 'bg-slate-700/60 text-slate-400 hover:bg-slate-600 hover:text-slate-200'
+                          }`}>{lbl}</button>
+                      ))}
+                    </div>
+                    <span className="text-[10px] text-slate-500 ml-auto">
+                      Mostrando <strong className="text-slate-300">{pa.length}</strong> de {paAll.length} actividades
+                    </span>
+                  </div>
+
+                  {pa.length === 0 ? (
+                    <div className="text-center text-slate-500 py-8">No hay actividades que cumplan el filtro seleccionado.</div>
+                  ) : (<>
+
+                  {/* ───── 1. Scatter: Duración LB vs FC Contratista ───── */}
+                  <div className="mb-6">
+                    <h3 className="text-sm font-semibold text-slate-300 mb-2">
+                      <span className="text-cyan-400 mr-1">●</span>
+                      Dispersión: Duración Línea Base vs Forecast Contratista (por actividad)
+                    </h3>
+                    <p className="text-[10px] text-slate-500 mb-2">Puntos sobre la línea diagonal (45°) indican que el contratista solicita más plazo que el comprometido en la Línea Base. Cuanto más lejos de la línea, mayor es la objeción. Pase el mouse sobre cada punto para ver el detalle.</p>
+                    <div style={{height:'420px', position:'relative'}}>
+                      <canvas ref={canvas => {
+                        if (!canvas || !window.Chart) return;
+                        const existing = canvas.__chartObj;
+                        if (existing) existing.destroy();
+                        const ctx = canvas.getContext('2d');
+
+                        const lbDurs = pa.map(a => a.fcDurAtLbRate);
+                        const fcDurs = pa.map(a => a.fcDurContractor || 0);
+                        const maxVal = Math.max(...lbDurs, ...fcDurs) * 1.12;
+                        const maxD = Math.ceil(maxVal / 10) * 10;
+
+                        const scatterData = pa.map(a => ({
+                          x: a.fcDurAtLbRate,
+                          y: a.fcDurContractor || 0,
+                          id: a.id,
+                          label: shortLabel(a.id),
+                          diff: a.diff || 0
+                        }));
+
+                        const labelPlugin = {
+                          id: 'scatterLabels',
+                          afterDatasetsDraw: (chart) => {
+                            const ds = chart.data.datasets[0];
+                            if (!ds) return;
+                            const meta = chart.getDatasetMeta(0);
+                            const ctxL = chart.ctx;
+                            ctxL.save();
+                            ctxL.font = '9px sans-serif';
+                            ctxL.textBaseline = 'bottom';
+                            meta.data.forEach((point, i) => {
+                              const d = ds.data[i];
+                              if (!d) return;
+                              if (d.diff > 5 || d.x > maxD * 0.4 || d.y > maxD * 0.4) {
+                                ctxL.fillStyle = d.diff > 0 ? '#fbbf24' : '#6ee7b7';
+                                ctxL.fillText(d.label.substring(0, 18), point.x + 6, point.y - 4);
+                              }
+                            });
+                            ctxL.restore();
+                          }
+                        };
+
+                        canvas.__chartObj = new window.Chart(ctx, {
+                          type: 'scatter',
+                          plugins: [labelPlugin],
+                          data: {
+                            datasets: [
+                              {
+                                label: 'Actividades',
+                                data: scatterData,
+                                backgroundColor: scatterData.map(d => d.diff > 0 ? 'rgba(251,146,60,0.85)' : 'rgba(52,211,153,0.85)'),
+                                borderColor: scatterData.map(d => d.diff > 0 ? '#f97316' : '#10b981'),
+                                borderWidth: 1.5,
+                                pointRadius: scatterData.map(d => Math.min(12, Math.max(5, Math.abs(d.diff) * 0.4 + 5))),
+                                pointHoverRadius: 13
+                              },
+                              {
+                                label: 'Línea 45° (sin exceso)',
+                                data: [{ x: 0, y: 0 }, { x: maxD, y: maxD }],
+                                type: 'line',
+                                borderColor: 'rgba(100,116,139,0.6)',
+                                borderWidth: 1.5,
+                                borderDash: [6, 4],
+                                pointRadius: 0,
+                                fill: false
+                              }
+                            ]
+                          },
+                          options: {
+                            responsive: true, maintainAspectRatio: false,
+                            animation: { duration: 300 },
+                            plugins: {
+                              legend: { display: false },
+                              tooltip: {
+                                backgroundColor: '#1e293b',
+                                borderColor: '#334155',
+                                borderWidth: 1,
+                                titleFont: { size: 11, weight: 'bold' },
+                                bodyFont: { size: 11 },
+                                padding: 10,
+                                callbacks: {
+                                  title: ctx => ctx[0]?.raw?.label || '',
+                                  label: ctx => {
+                                    const p = ctx.raw;
+                                    if (!p) return '';
+                                    const diff = p.y - p.x;
+                                    return [
+                                      `Dur. @ vel. Línea Base: ${p.x} días`,
+                                      `Dur. Forecast Contratista: ${p.y} días`,
+                                      `${diff > 0 ? '⚠ Exceso: +' + diff + ' días' : '✓ Sin exceso: ' + diff + ' días'}`
+                                    ];
+                                  }
+                                }
+                              }
+                            },
+                            scales: {
+                              x: {
+                                title: { display: true, text: 'Duración @ vel. Línea Base (días)', color: '#94a3b8', font: { size: 11 } },
+                                grid: { color: 'rgba(51,65,85,0.5)' },
+                                ticks: { color: '#94a3b8', stepSize: maxD > 100 ? 20 : 10 },
+                                min: 0, max: maxD
+                              },
+                              y: {
+                                title: { display: true, text: 'Duración Forecast Contratista (días)', color: '#94a3b8', font: { size: 11 } },
+                                grid: { color: 'rgba(51,65,85,0.5)' },
+                                ticks: { color: '#94a3b8', stepSize: maxD > 100 ? 20 : 10 },
+                                min: 0, max: maxD
+                              }
+                            }
+                          }
+                        });
+                      }}></canvas>
+                    </div>
+                    <div className="flex gap-4 mt-2 text-[10px] text-slate-400 justify-center">
+                      <span><span className="inline-block w-3 h-3 rounded-full bg-orange-400 mr-1 align-middle"></span>Con exceso (contratista pide más)</span>
+                      <span><span className="inline-block w-3 h-3 rounded-full bg-emerald-400 mr-1 align-middle"></span>Sin exceso o menor</span>
+                      <span><span className="inline-block w-8 border-b border-dashed border-slate-500 mr-1 align-middle"></span>Línea 45° (referencia)</span>
+                      <span className="text-slate-500 italic">Tamaño del punto = magnitud del exceso</span>
+                    </div>
+                  </div>
+
+                  {/* ───── 2. Waterfall: Exceso de días por actividad ───── */}
+                  <div className="mb-6">
+                    <h3 className="text-sm font-semibold text-slate-300 mb-2">
+                      <span className="text-amber-400 mr-1">●</span>
+                      Exceso de Plazo por Actividad (Waterfall)
+                    </h3>
+                    <p className="text-[10px] text-slate-500 mb-2">Días adicionales que solicita el contratista por encima del rendimiento comprometido en la Línea Base. Ordenado de mayor a menor exceso.</p>
+                    <div style={{height: Math.max(340, pa.length * 26 + 60) + 'px', position:'relative'}}>
+                      <canvas ref={canvas => {
+                        if (!canvas || !window.Chart) return;
+                        const existing = canvas.__chartObj;
+                        if (existing) existing.destroy();
+                        const ctx = canvas.getContext('2d');
+
+                        const sorted = pa.map(a => ({
+                          label: shortLabel(a.id),
+                          fullLabel: a.id.replace(/^REPROGRAMADO\s*/i, ''),
+                          diff: a.diff || 0,
+                          durLB: a.fcDurAtLbRate,
+                          durFC: a.fcDurContractor
+                        })).sort((a, b) => b.diff - a.diff);
+
+                        const sLabels = sorted.map(s => s.label);
+                        const sDiffs = sorted.map(s => s.diff);
+                        const totalBruto = sDiffs.reduce((a, b) => a + Math.max(0, b), 0);
+                        const totalAdelanto = Math.abs(sDiffs.reduce((a, b) => a + Math.min(0, b), 0));
+                        const totalNeto = totalBruto - totalAdelanto; // net objection
+
+                        sLabels.push('TOTAL ADELANTO');
+                        sLabels.push('OBJECIÓN NETA');
+                        const barData = [...sDiffs, -totalAdelanto, totalNeto];
+                        const barColors = barData.map((d, i) =>
+                          i === barData.length - 1 ? 'rgba(239,68,68,0.85)' :
+                          i === barData.length - 2 ? 'rgba(52,211,153,0.75)' :
+                          d > 0 ? 'rgba(251,191,36,0.7)' : 'rgba(52,211,153,0.5)');
+                        const barBorders = barData.map((d, i) =>
+                          i === barData.length - 1 ? '#ef4444' :
+                          i === barData.length - 2 ? '#10b981' :
+                          d > 0 ? '#fbbf24' : '#10b981');
+
+                        canvas.__chartObj = new window.Chart(ctx, {
+                          type: 'bar',
+                          data: {
+                            labels: sLabels,
+                            datasets: [{
+                              label: 'Exceso (días)',
+                              data: barData,
+                              backgroundColor: barColors,
+                              borderColor: barBorders,
+                              borderWidth: 1,
+                              barPercentage: 0.75,
+                              categoryPercentage: 0.85
+                            }]
+                          },
+                          options: {
+                            indexAxis: 'y',
+                            responsive: true, maintainAspectRatio: false,
+                            animation: { duration: 300 },
+                            plugins: {
+                              legend: { display: false },
+                              tooltip: {
+                                backgroundColor: '#1e293b',
+                                borderColor: '#334155',
+                                borderWidth: 1,
+                                titleFont: { size: 11, weight: 'bold' },
+                                bodyFont: { size: 11 },
+                                padding: 10,
+                                callbacks: {
+                                  title: ctx => {
+                                    const i = ctx[0].dataIndex;
+                                    const n = sLabels.length;
+                                    return i === n - 1 ? 'OBJECIÓN NETA (Exceso − Adelantos)' : i === n - 2 ? 'TOTAL ADELANTO (descuento)' : sorted[i]?.fullLabel || sLabels[i];
+                                  },
+                                  label: ctx => {
+                                    const i = ctx.dataIndex;
+                                    const n = sLabels.length;
+                                    if (i === n - 1) return [
+                                      `Exceso bruto: +${totalBruto} días`,
+                                      `Adelantos: −${totalAdelanto} días`,
+                                      `Objeción neta: ${totalNeto >= 0 ? '+' : ''}${totalNeto} días`
+                                    ];
+                                    if (i === n - 2) return `Total adelantos: −${totalAdelanto} días`;
+                                    const s = sorted[i];
+                                    return [
+                                      `Exceso: ${s.diff > 0 ? '+' : ''}${s.diff} días`,
+                                      `Dur. @ Línea Base: ${s.durLB}d — Dur. Contratista: ${s.durFC ?? '-'}d`
+                                    ];
+                                  }
+                                }
+                              }
+                            },
+                            scales: {
+                              x: {
+                                title: { display: true, text: 'Días de exceso', color: '#94a3b8' },
+                                grid: { color: 'rgba(51,65,85,0.5)' },
+                                ticks: { color: '#94a3b8' }
+                              },
+                              y: {
+                                grid: { display: false },
+                                ticks: { color: '#cbd5e1', font: { size: 10 }, mirror: false }
+                              }
+                            }
+                          }
+                        });
+                      }}></canvas>
+                    </div>
+                    <div className="flex gap-4 mt-2 text-[10px] text-slate-400 justify-center">
+                      <span><span className="inline-block w-3 h-3 bg-amber-400 mr-1 align-middle"></span>Exceso positivo</span>
+                      <span><span className="inline-block w-3 h-3 bg-emerald-400 mr-1 align-middle"></span>Adelanto (descuento)</span>
+                      <span><span className="inline-block w-3 h-3 bg-red-500 mr-1 align-middle"></span>Objeción neta</span>
+                    </div>
+                  </div>
+
+                  </>)}
+                  </>;
+                })()}
+              </div>
+            )}
+
+            {/* ── Forecast Nivelado ───────────────────────────────────────────── */}
+            {niveladoData && (() => {
+              const { lvHeaders, lvPeriodTotals, lvParallel, projEndLabel, childSumsLv } = niveladoData;
+              const filteredLvHeaders = filterHeadersByDate(lvHeaders);
+
+              return (
+                <div className="bg-[#1e293b] rounded-xl border border-[#334155] overflow-hidden">
+                  {/* Header */}
+                  <div className="px-4 py-3 border-b border-[#334155] bg-[#0f172a] flex items-center justify-between">
+                    <div>
+                      <h2 className="text-lg font-semibold text-white flex items-center gap-2 cursor-pointer select-none" onClick={() => toggleSection('nivelado')}>
+                        <span className="text-[#64748b] text-sm">{collapsedSections.has('nivelado') ? '\u25B6' : '\u25BC'}</span>
+                        Forecast Nivelado — Basado en Rendimiento Línea Base
+                      </h2>
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-300 mt-1">
+                        <span>
+                          Duraciones con <strong className="text-blue-300">rendimiento Línea Base</strong> (Q rem. ÷ vel. Línea Base)
+                        </span>
+                        <label className="flex items-center gap-1">
+                          <span className="text-amber-300 font-semibold">Soldadores/día:</span>
+                          <input type="number" min="1" max="50" step="1"
+                            value={soldadoresDia != null ? soldadoresDia : dailyLbCapacity.avg}
+                            onChange={e => {
+                              const v = parseInt(e.target.value);
+                              setSoldadoresDia(isNaN(v) || v < 1 ? null : v);
+                            }}
+                            className="w-14 bg-slate-700 text-amber-300 font-bold border border-amber-600/50 rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:border-amber-400" />
+                          <span className="text-slate-500">(prom. Línea Base: {dailyLbCapacity.avg})</span>
+                        </label>
+                        <label className="flex items-center gap-1">
+                          <span>Inicio:</span>
+                          <input type="date" value={levelStart} onChange={e => setLevelStart(e.target.value)}
+                            className="bg-slate-700 text-white border border-slate-500 rounded px-1 py-0.5 text-xs cursor-pointer" />
+                        </label>
+                        <span className="text-slate-500">Capacidad: <strong className="text-amber-300">{leveledSchedule.capacity}</strong> slots</span>
+                        {Object.keys(restrictions).length > 0 && (
+                          <span className="text-rose-400 font-semibold" title={Object.entries(restrictions).map(([k,v]) => k + ' → ' + v).join('\n')}>
+                            🔒 {Object.keys(restrictions).length} restricciones aplicadas
+                          </span>
+                        )}
+                      </div>
+                      {/* ── Filtro por tramo y actividad ── */}
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2">
+                        <label className="flex items-center gap-1 text-xs text-slate-300">
+                          <span className="text-slate-500 font-semibold">Tramo:</span>
+                          <select value={niveladoFilterTramo} onChange={e => { setNiveladoFilterTramo(e.target.value); setNiveladoFilterAct('__all__'); }}
+                            className="bg-slate-700 text-white border border-slate-500 rounded px-2 py-0.5 text-xs cursor-pointer">
+                            <option value="__all__">Todos</option>
+                            {[...new Set(processedSchedule.activities.filter(a => a.type === 'summary').map(a => a.id))].sort().map(t =>
+                              <option key={t} value={t}>{t.replace(/^REPROGRAMADO\s*/i, '').substring(0, 35)}</option>
+                            )}
+                          </select>
+                        </label>
+                        <label className="flex items-center gap-1 text-xs text-slate-300">
+                          <span className="text-slate-500 font-semibold">Actividad:</span>
+                          <select value={niveladoFilterAct} onChange={e => setNiveladoFilterAct(e.target.value)}
+                            className="bg-slate-700 text-white border border-slate-500 rounded px-2 py-0.5 text-xs cursor-pointer max-w-[280px]">
+                            <option value="__all__">Todas</option>
+                            {processedSchedule.activities
+                              .filter(a => a.type === 'activity' && a.fc_qty > 0 && a.fc_dur_calc > 0 && (niveladoFilterTramo === '__all__' || (a.parentId || '') === niveladoFilterTramo))
+                              .map(a => <option key={a.id} value={a.id}>{a.id.replace(/^REPROGRAMADO\s*/i, '').substring(0, 45)}</option>)}
+                          </select>
+                        </label>
+                        {(niveladoFilterTramo !== '__all__' || niveladoFilterAct !== '__all__') && (
+                          <button onClick={() => { setNiveladoFilterTramo('__all__'); setNiveladoFilterAct('__all__'); }}
+                            className="text-[10px] text-red-400 hover:text-red-300 border border-red-800/40 rounded px-2 py-0.5">
+                            ✕ Limpiar filtro
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <button onClick={() => exportTable3(lvHeaders, lvPeriodTotals, lvParallel)}
+                      className="flex items-center gap-1.5 bg-green-700 hover:bg-green-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow transition-colors ml-4 shrink-0">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                      Exportar Excel
+                    </button>
+                  </div>
+
+                  {/* Curva S nivelada */}
+                  {!collapsedSections.has('nivelado') && <>
+                  <div className="px-4 pt-4 pb-2 border-b border-[#334155] bg-[#150e05]">
+                    <p className="text-xs font-semibold text-amber-500 mb-2">Curva de Avance — Forecast Nivelado (Acumulado)</p>
+                    <div style={{height: chart2Height+'px', position:'relative', transition:'height 0.2s'}}>
+                      <canvas ref={chartRef2}></canvas>
+                    </div>
+                    <div
+                      onMouseDown={e => {
+                        const startY = e.clientY; const startH = chart2Height;
+                        const onMove = mv => setChart2Height(Math.max(100, startH + mv.clientY - startY));
+                        const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); if (chartInstance2.current) chartInstance2.current.resize(); };
+                        document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
+                      }}
+                      style={{height:'10px', cursor:'ns-resize', display:'flex', alignItems:'center', justifyContent:'center', userSelect:'none'}}
+                      title="Arrastra para cambiar altura">
+                      <div style={{width:'48px', height:'3px', background:'#334155', borderRadius:'2px'}}></div>
+                    </div>
+                  </div>
+                  </>}
+                </div>
+              );
+            })()}
+
+            {/* Diagrama Tiempo-Cantidad — card separada */}
+            <div className="bg-[#1e293b] rounded-xl border border-[#334155] overflow-hidden">
+              <div className="px-4 py-3 border-b border-[#334155] bg-[#0f172a] flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-[#94a3b8] flex items-center gap-2 cursor-pointer select-none" onClick={() => toggleSection('tcChart')}>
+                    <span className="text-[#64748b] text-sm">{collapsedSections.has('tcChart') ? '\u25B6' : '\u25BC'}</span>
+                    Diagrama Tiempo – Cantidad &nbsp;<span className="font-normal text-[#64748b]">(línea sólida = vel. Línea Base nivelado · línea punteada = Forecast contratista)</span>
+                  </p>
+                </div>
+                <button onClick={() => setTcChartHeight(h => h < 400 ? h + 100 : 260)}
+                  className="text-[10px] text-[#64748b] hover:text-[#94a3b8] border border-[#334155] rounded px-2 py-0.5 ml-2 shrink-0">
+                  {tcChartHeight < 400 ? '▼ ampliar' : '▲ reducir'}
+                </button>
+              </div>
+              {!collapsedSections.has('tcChart') && <>
+              {/* Slider de distancia (eje X) — dual handle */}
+              <div className="px-5 py-2 border-b border-[#334155] bg-[#0f172a]">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] text-slate-400 font-medium">Distancia (m)</span>
+                  <span className="text-[11px] text-slate-500">
+                    <span className="text-emerald-400 font-semibold font-mono">{Math.round(tcQtyRange[0]/100*tcTotalDist.current)}</span>
+                    <span className="mx-1 text-slate-600">—</span>
+                    <span className="text-emerald-400 font-semibold font-mono">{Math.round(tcQtyRange[1]/100*tcTotalDist.current)} m</span>
+                    <button onClick={() => setTcQtyRange([0,100])}
+                      className={`ml-2 text-[10px] border border-slate-600 rounded px-1.5 py-0.5 ${tcQtyRange[0]===0&&tcQtyRange[1]===100?'text-slate-600':'text-red-400 hover:text-red-300'}`}
+                      disabled={tcQtyRange[0]===0&&tcQtyRange[1]===100}>Todo</button>
+                  </span>
+                </div>
+                <div className="timeline-container" style={{position:'relative', height:'24px', display:'flex', alignItems:'center'}}>
+                  <div className="timeline-track" style={{width:'100%'}}>
+                    <div className="fill" style={{left: tcQtyRange[0]+'%', width: (tcQtyRange[1]-tcQtyRange[0])+'%', background:'linear-gradient(90deg,#10b981,#06b6d4)'}}></div>
+                  </div>
+                  <input type="range" min="0" max="100" value={tcQtyRange[0]}
+                    onChange={e => { const v = Math.min(Number(e.target.value), tcQtyRange[1]-2); setTcQtyRange([v, tcQtyRange[1]]); }} />
+                  <input type="range" min="0" max="100" value={tcQtyRange[1]}
+                    onChange={e => { const v = Math.max(Number(e.target.value), tcQtyRange[0]+2); setTcQtyRange([tcQtyRange[0], v]); }} />
+                </div>
+                <div className="flex justify-between mt-0.5">
+                  <span className="text-[10px] text-slate-600">0 m</span>
+                  <span className="text-[10px] text-slate-600">{Math.round(tcTotalDist.current)} m</span>
+                </div>
+              </div>
+              {/* Slider de tiempo (eje Y) — sincronizado con el principal */}
+              {processedSchedule.dates.length > 1 && (
+                <div className="px-5 py-2 border-b border-[#334155] bg-[#0f172a]">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] text-slate-400 font-medium">Tiempo</span>
+                    <span className="text-[11px] text-slate-500">
+                      <span className="text-cyan-400 font-semibold">{sliderLabels.from}</span>
+                      <span className="mx-1 text-slate-600">—</span>
+                      <span className="text-cyan-400 font-semibold">{sliderLabels.to}</span>
+                      <button onClick={() => setSliderRange([0,100])}
+                        className={`ml-2 text-[10px] border border-slate-600 rounded px-1.5 py-0.5 ${sliderRange[0]===0&&sliderRange[1]===100?'text-slate-600':'text-red-400 hover:text-red-300'}`}
+                        disabled={sliderRange[0]===0&&sliderRange[1]===100}>Todo</button>
+                    </span>
+                  </div>
+                  <div className="timeline-container" style={{position:'relative', height:'24px', display:'flex', alignItems:'center'}}>
+                    <div className="timeline-track" style={{width:'100%'}}>
+                      <div className="fill" style={{left: sliderRange[0]+'%', width: (sliderRange[1]-sliderRange[0])+'%'}}></div>
+                    </div>
+                    <input type="range" min="0" max="100" value={sliderRange[0]}
+                      onChange={e => { const v = Math.min(Number(e.target.value), sliderRange[1]-1); setSliderRange([v, sliderRange[1]]); }} />
+                    <input type="range" min="0" max="100" value={sliderRange[1]}
+                      onChange={e => { const v = Math.max(Number(e.target.value), sliderRange[0]+1); setSliderRange([sliderRange[0], v]); }} />
+                  </div>
+                  <div className="flex justify-between mt-0.5">
+                    <span className="text-[10px] text-slate-600">{processedSchedule.dates[0]?.label}</span>
+                    <span className="text-[10px] text-slate-600">{processedSchedule.dates[processedSchedule.dates.length-1]?.label}</span>
+                  </div>
+                </div>
+              )}
+              <div className="px-4 pt-2 pb-0">
+                <div style={{height: tcChartHeight+'px', position:'relative', transition:'height 0.2s'}}>
+                  <canvas ref={chartRef3}></canvas>
+                </div>
+                <div
+                  onMouseDown={e => {
+                    const startY = e.clientY;
+                    const startH = tcChartHeight;
+                    const onMove = mv => { setTcChartHeight(Math.max(150, startH + mv.clientY - startY)); };
+                    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); if (chartInstance3.current) chartInstance3.current.resize(); };
+                    document.addEventListener('mousemove', onMove);
+                    document.addEventListener('mouseup', onUp);
+                  }}
+                  style={{height:'12px', cursor:'ns-resize', display:'flex', alignItems:'center', justifyContent:'center', marginBottom:'4px', userSelect:'none'}}
+                  title="Arrastra para cambiar altura">
+                  <div style={{width:'48px', height:'3px', background:'#334155', borderRadius:'2px'}}></div>
+                </div>
+              </div>
+              </>}
+            </div>
+
+            {/* Comparativo Actividades en Paralelo: LB vs FC Nivelado — DIARIO */}
+            {(() => {
+              if (leveledSchedule.activities.length === 0) return null;
+              // ── Collect LB and FC Nivelado activity date ranges ──
+              const lbActs = processedSchedule.activities.filter(a => a.type === 'activity' && a.lb_start && a.lb_end);
+              const fcActs = leveledSchedule.activities.filter(a => a.type === 'activity' && a.fc_start_lv && a.fc_end_lv);
+              if (lbActs.length === 0 && fcActs.length === 0) return null;
+
+              // Global date span (union of LB + FC Nivelado)
+              let globalMin = null, globalMax = null;
+              const touch = d => { if (!globalMin || d < globalMin) globalMin = d; if (!globalMax || d > globalMax) globalMax = d; };
+              lbActs.forEach(a => { touch(a.lb_start); touch(a.lb_end); });
+              fcActs.forEach(a => { touch(a.fc_start_lv); touch(a.fc_end_lv); });
+              if (!globalMin) return null;
+
+              // ── Count parallel per DAY ──
+              const dailyLb = {}, dailyFcNiv = {};
+              const cur = new Date(globalMin + 'T00:00:00');
+              const endD = new Date(globalMax + 'T00:00:00');
+              while (cur <= endD) {
+                const dStr = cur.toISOString().split('T')[0];
+                let lbC = 0, fcC = 0;
+                lbActs.forEach(a => { if (a.lb_start <= dStr && a.lb_end >= dStr) lbC++; });
+                fcActs.forEach(a => { if (a.fc_start_lv <= dStr && a.fc_end_lv >= dStr) fcC++; });
+                dailyLb[dStr] = lbC;
+                dailyFcNiv[dStr] = fcC;
+                cur.setDate(cur.getDate() + 1);
+              }
+
+              // ── Aggregate to MONTHLY: max daily parallel per month ──
+              const monthMap = {}; // key YYYY-MM → { lbMax, fcMax, lbSum, fcSum, days }
+              Object.keys(dailyLb).sort().forEach(dStr => {
+                const mk = dStr.substring(0, 7); // YYYY-MM
+                if (!monthMap[mk]) monthMap[mk] = { lbMax:0, fcMax:0, lbSum:0, fcSum:0, days:0 };
+                const m = monthMap[mk];
+                m.lbMax = Math.max(m.lbMax, dailyLb[dStr]);
+                m.fcMax = Math.max(m.fcMax, dailyFcNiv[dStr]);
+                m.lbSum += dailyLb[dStr];
+                m.fcSum += dailyFcNiv[dStr];
+                m.days++;
+              });
+              const months = Object.keys(monthMap).sort();
+              const labels = months.map(mk => {
+                const d = new Date(mk + '-01T00:00:00');
+                return d.toLocaleDateString('es-ES',{month:'short',year:'numeric'}).toUpperCase();
+              });
+              const lbPar = months.map(mk => monthMap[mk].lbMax);
+              const fcNivPar = months.map(mk => monthMap[mk].fcMax);
+
+              // ── KPIs from actual daily data ──
+              const allDailyLb = Object.values(dailyLb).filter(n => n > 0);
+              const allDailyFc = Object.values(dailyFcNiv).filter(n => n > 0);
+              const cap = leveledSchedule.capacity;
+              const maxLb = allDailyLb.length > 0 ? Math.max(...allDailyLb) : 0;
+              const maxFc = allDailyFc.length > 0 ? Math.max(...allDailyFc) : 0;
+              const maxVal = Math.max(...lbPar, ...fcNivPar, cap);
+              const avgLb = allDailyLb.length > 0 ? (allDailyLb.reduce((a,b)=>a+b,0) / allDailyLb.length) : 0;
+              const avgFcNiv = allDailyFc.length > 0 ? (allDailyFc.reduce((a,b)=>a+b,0) / allDailyFc.length) : 0;
+              const exceedDays = Object.values(dailyFcNiv).filter(n => n > cap).length;
+
+              // Draw chart
+              const refCb = (canvas) => {
+                if (!canvas || !window.Chart) return;
+                chartRef4.current = canvas;
+                if (chartInstance4.current) chartInstance4.current.destroy();
+                const ctx = canvas.getContext('2d');
+                chartInstance4.current = new window.Chart(ctx, {
+                  type: 'bar',
+                  data: {
+                    labels,
+                    datasets: [
+                      {
+                        label: 'Paralelo Línea Base',
+                        data: lbPar,
+                        backgroundColor: 'rgba(59,130,246,0.5)',
+                        borderColor: '#3b82f6',
+                        borderWidth: 1,
+                        barPercentage: 0.85,
+                        categoryPercentage: 0.7
+                      },
+                      {
+                        label: 'Paralelo Forecast Nivelado',
+                        data: fcNivPar,
+                        backgroundColor: 'rgba(251,191,36,0.5)',
+                        borderColor: '#fbbf24',
+                        borderWidth: 1,
+                        barPercentage: 0.85,
+                        categoryPercentage: 0.7
+                      },
+                      {
+                        label: 'Capacidad (prom. Línea Base: ' + cap + ')',
+                        data: labels.map(() => cap),
+                        type: 'line',
+                        borderColor: '#ef4444',
+                        borderWidth: 2,
+                        borderDash: [6, 4],
+                        pointRadius: 0,
+                        fill: false,
+                        tension: 0
+                      }
+                    ]
+                  },
+                  options: {
+                    responsive: true, maintainAspectRatio: false, animation: false,
+                    plugins: {
+                      legend: { display: true, position: 'top', labels: { color:'#94a3b8', font:{size:10}, boxWidth:14 } },
+                      tooltip: { callbacks: { label: item => ` ${item.dataset.label}: ${item.parsed.y}` } }
+                    },
+                    scales: {
+                      x: { ticks: { color:'#94a3b8', font:{size:9}, maxRotation:45 }, grid: { color:'#334155' } },
+                      y: { min: 0, max: maxVal + 2, ticks: { color:'#94a3b8', font:{size:9}, stepSize:1 }, grid: { color:'#334155' }, title: { display:true, text:'Máx. Diario Actividades en Paralelo', color:'#64748b', font:{size:10} } }
+                    }
+                  }
+                });
+              };
+
+              return (
+                <div className="bg-[#1e293b] p-4 rounded-xl border border-[#334155]">
+                  <h2 className="text-lg font-semibold text-[#e2e8f0] mb-2 flex items-center gap-2 cursor-pointer select-none" onClick={() => toggleSection('parallel')}>
+                    <span className="text-[#64748b] text-sm">{collapsedSections.has('parallel') ? '\u25B6' : '\u25BC'}</span>
+                    <span className="text-blue-400">&#9776;</span>
+                    Comparativo Actividades en Paralelo (diario): Línea Base vs Forecast Nivelado
+                  </h2>
+                  {!collapsedSections.has('parallel') && <>
+
+                  {/* KPI cards */}
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+                    <div className="bg-[#0f172a] rounded-lg p-3 border border-blue-800/40">
+                      <div className="text-[10px] uppercase text-blue-400 font-bold tracking-wider mb-1">Máximo Línea Base</div>
+                      <div className="text-xl font-bold text-blue-300">{maxLb}</div>
+                      <div className="text-xs text-slate-400">activ. simult.</div>
+                    </div>
+                    <div className="bg-[#0f172a] rounded-lg p-3 border border-blue-800/40">
+                      <div className="text-[10px] uppercase text-blue-400 font-bold tracking-wider mb-1">Promedio Línea Base</div>
+                      <div className="text-xl font-bold text-blue-300">{avgLb.toFixed(1)}</div>
+                      <div className="text-xs text-slate-400">activ. simult.</div>
+                    </div>
+                    <div className="bg-[#0f172a] rounded-lg p-3 border border-amber-800/40">
+                      <div className="text-[10px] uppercase text-amber-400 font-bold tracking-wider mb-1">Máximo Forecast Nivelado</div>
+                      <div className="text-xl font-bold text-amber-300">{maxFc}</div>
+                      <div className="text-xs text-slate-400">activ. simult.</div>
+                    </div>
+                    <div className="bg-[#0f172a] rounded-lg p-3 border border-amber-800/40">
+                      <div className="text-[10px] uppercase text-amber-400 font-bold tracking-wider mb-1">Promedio Forecast Nivelado</div>
+                      <div className="text-xl font-bold text-amber-300">{avgFcNiv.toFixed(1)}</div>
+                      <div className="text-xs text-slate-400">activ. simult.</div>
+                    </div>
+                    <div className={`bg-[#0f172a] rounded-lg p-3 border ${exceedDays > 0 ? 'border-red-700/60' : maxFc <= cap ? 'border-emerald-700/60' : 'border-slate-700/40'}`}>
+                      <div className="text-[10px] uppercase text-emerald-400 font-bold tracking-wider mb-1">Resultado</div>
+                      <div className={`text-lg font-bold ${maxFc <= cap ? 'text-emerald-400' : 'text-amber-400'}`}>
+                        {maxFc <= cap ? '✓ No excede cap.' : 'Excede cap.'}
+                      </div>
+                      <div className="text-xs text-slate-400">
+                        {exceedDays > 0 ? exceedDays + ' días sobre cap.' : 'Dentro de capacidad'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bar chart */}
+                  <div style={{height: parallelChartHeight+'px', position:'relative', transition:'height 0.2s'}} className="w-full">
+                    <canvas ref={refCb}></canvas>
+                  </div>
+                  <div
+                    onMouseDown={e => {
+                      const startY = e.clientY; const startH = parallelChartHeight;
+                      const onMove = mv => setParallelChartHeight(Math.max(100, startH + mv.clientY - startY));
+                      const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); if (chartInstance4.current) chartInstance4.current.resize(); };
+                      document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
+                    }}
+                    style={{height:'10px', cursor:'ns-resize', display:'flex', alignItems:'center', justifyContent:'center', userSelect:'none'}}
+                    title="Arrastra para cambiar altura">
+                    <div style={{width:'48px', height:'3px', background:'#334155', borderRadius:'2px'}}></div>
+                  </div>
+
+                  {/* Explanation */}
+                  <div className="bg-[#0f172a]/60 rounded-lg p-3 text-xs text-slate-300 space-y-1 border border-slate-700/30 mt-2">
+                    <p className="font-semibold text-blue-300">Análisis (conteo diario):</p>
+                    <p>La Línea Base tiene un máximo <strong>diario</strong> de <span className="text-blue-300 font-bold">{maxLb}</span> actividades en paralelo (promedio diario <span className="text-blue-300 font-bold">{avgLb.toFixed(1)}</span>).</p>
+                    <p>El Forecast Nivelado tiene un máximo <strong>diario</strong> de <span className="text-amber-300 font-bold">{maxFc}</span> actividades en paralelo (promedio diario <span className="text-amber-300 font-bold">{avgFcNiv.toFixed(1)}</span>).</p>
+                    <p>La capacidad (slots) = <span className="text-red-300 font-bold">{cap}</span> soldadores simultáneos (promedio diario Línea Base).</p>
+                    <p>{maxFc <= cap ? <span className="text-emerald-400 font-bold">El Forecast Nivelado nunca supera la capacidad de {cap} actividades simultáneas. No se están aumentando los recursos respecto a lo comprometido en la Línea Base.</span> : <span className="text-amber-400 font-bold">El Forecast Nivelado excede la capacidad en {exceedDays} días.</span>}</p>
+                    <p className="text-slate-500 text-[10px] mt-1">Barras = máx. diario por mes · KPIs = valores diarios reales</p>
+                  </div>
+                  </>}
+                </div>
+              );
+            })()}
+
+            {/* Tabla LB vs FC */}
+            <div className="bg-[#1e293b] rounded-xl border border-[#334155] overflow-hidden">
+              <div className="px-4 py-2 border-b border-[#334155] flex items-center justify-between bg-[#0f172a]">
+                <span className="text-sm font-semibold text-[#e2e8f0] flex items-center gap-2 cursor-pointer select-none" onClick={() => toggleSection('tabla1')}>
+                  <span className="text-[#64748b] text-xs">{collapsedSections.has('tabla1') ? '\u25B6' : '\u25BC'}</span>
+                  Comparativa Línea Base vs Forecast
+                </span>
+                <button onClick={exportTable1}
+                  disabled={processedSchedule.activities.length === 0}
+                  className="flex items-center gap-1.5 bg-green-700 hover:bg-green-600 disabled:opacity-40 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow transition-colors">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                  Exportar Excel
+                </button>
+              </div>
+              {!collapsedSections.has('tabla1') && (
+              <div className="overflow-x-auto relative max-h-[68vh]">
+                {loading
+                  ? <div className="p-10 text-center text-[#64748b] font-medium">Leyendo archivo y calculando distribución...</div>
+                  : (
+                    <table className="w-full text-xs text-left border-collapse">
+                      <thead className="text-[10px] text-[#64748b] uppercase bg-[#0f172a] sticky top-0 z-30 shadow-sm">
+                        <tr>
+                          <th className="px-2 py-1.5 border-b border-[#334155] sticky left-0 bg-[#0f172a] z-40 min-w-[200px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.4)]">Actividad / Tramo</th>
+                          <th className="px-2 py-1.5 border-b border-[#334155] min-w-[58px] text-center border-r bg-[#0f172a]">Q Total</th>
+                          <th className="px-2 py-1.5 border-b border-[#334155] min-w-[58px] text-center border-r bg-[#0f172a]">Tipo</th>
+                          {filteredDates.map(h => (
+                            <th key={h.key} className="px-1.5 py-1.5 border-b border-[#334155] border-r min-w-[50px] text-center whitespace-nowrap bg-[#0f172a]">{h.label}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {processedSchedule.activities.length === 0
+                          ? <tr><td colSpan={100} className="p-8 text-center text-[#64748b]">Sube tu archivo Excel para visualizar los datos.</td></tr>
+                          : processedSchedule.activities.map((act, idx) => {
+                              if (!isVisible(act)) return null;
+                              const isSummary = act.type === 'summary';
+                              const isCollapsed = collapsedIds.has(act.id);
+
+                              if (isSummary) {
+                                const sums = childSums[act.id] || { lb_qty:0, fc_qty:0, lb_spread:{}, fc_spread:{} };
+                                return (
+                                  <React.Fragment key={idx}>
+                                    <tr className="bg-[#1d3451] border-t-2 border-[#2d5a8e] cursor-pointer hover:bg-[#22405e] select-none"
+                                      onClick={() => toggleCollapse(act.id)}>
+                                      <td className="py-1 font-bold text-xs text-[#93c5fd] sticky left-0 bg-[#1d3451] z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)] truncate max-w-[200px]" style={{paddingLeft:(act.wbsLevel||1)*12+'px',paddingRight:'8px'}}>
+                                        <span className="mr-1 text-[#64748b] inline-block w-3 text-center">{isCollapsed ? '▶' : '▼'}</span>
+                                        {act.id}
+                                      </td>
+                                      <td className="px-2 py-1 text-center font-bold text-blue-300 border-r border-[#2d5a8e]">{sums.lb_qty.toFixed(1)}</td>
+                                      <td className="px-2 py-1 border-r border-[#2d5a8e] text-center font-bold text-blue-400">LB</td>
+                                      {filteredDates.map(h => {
+                                        const val = getQtyForPeriod(sums.lb_spread, h.key, viewMode);
+                                        return (
+                                          <td key={`s-lb-${h.key}`} className={`px-1 py-0.5 text-center border-r border-[#2d5a8e] text-[10px] ${val>0?'text-blue-300 font-semibold':'text-[#475569]'}`}>
+                                            {val>0?val.toFixed(1):'-'}
+                                          </td>
+                                        );
+                                      })}
+                                    </tr>
+                                    <tr className="bg-[#162c1f] border-b border-[#1e4730] cursor-pointer hover:bg-[#1a3525] select-none"
+                                      onClick={() => toggleCollapse(act.id)}>
+                                      <td className="py-0.5 sticky left-0 bg-[#162c1f] z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)] text-xs text-emerald-400" style={{paddingLeft:((act.wbsLevel||1)*12+12)+'px',paddingRight:'8px'}}>
+                                        Rem: <strong>{sums.fc_qty.toFixed(1)}</strong>
+                                      </td>
+                                      <td className="px-2 py-0.5 text-center font-bold text-emerald-400 border-r border-[#1e4730]">{sums.fc_qty.toFixed(1)}</td>
+                                      <td className="px-2 py-0.5 border-r border-[#1e4730] text-center font-bold text-emerald-400">FC</td>
+                                      {filteredDates.map(h => {
+                                        const val = getQtyForPeriod(sums.fc_spread, h.key, viewMode);
+                                        return (
+                                          <td key={`s-fc-${h.key}`} className={`px-1 py-0.5 text-center border-r border-[#1e4730] text-[10px] ${val>0?'text-emerald-400 font-semibold':'text-[#475569]'}`}>
+                                            {val>0?val.toFixed(1):'-'}
+                                          </td>
+                                        );
+                                      })}
+                                    </tr>
+                                  </React.Fragment>
+                                );
+                              }
+
+                              // Activity — two rows (LB + FC)
+                              return (
+                                <React.Fragment key={idx}>
+                                  {/* Línea Base */}
+                                  <tr className="bg-[#1e293b] hover:bg-[#263348]">
+                                    <td className="py-1 font-normal text-xs text-[#cbd5e1] sticky left-0 bg-[#1e293b] z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.4)] truncate max-w-[200px]" style={{paddingLeft:(act.wbsLevel||6)*12+'px',paddingRight:'8px'}} title={act.id}>{act.id}</td>
+                                    <td className="px-2 py-1 text-center text-[#94a3b8] border-r border-[#334155]">{act.lb_qty.toFixed(1)}</td>
+                                    <td className="px-2 py-1 border-r border-[#334155] text-center text-blue-400 bg-blue-900/20">LB</td>
+                                    {filteredDates.map(h => {
+                                      const val = getQtyForPeriod(act.lb_spread, h.key, viewMode);
+                                      return (
+                                        <td key={`lb-${h.key}`} className={`px-1 py-1 text-center border-r border-[#334155] ${val>0?'bg-blue-900/30 text-blue-300 font-medium':'text-[#475569]'}`}>
+                                          {val>0?val.toFixed(1):'-'}
+                                        </td>
+                                      );
+                                    })}
+                                  </tr>
+                                  {/* Forecast */}
+                                  <tr className="bg-[#182030] hover:bg-[#1e2a3e] border-b border-[#334155]">
+                                    <td className="sticky left-0 bg-[#182030] z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.4)] text-xs text-[#94a3b8] py-0.5" style={{paddingLeft:((act.wbsLevel||6)*12+8)+'px'}}>
+                                      <span>Av:{act.fc_qty_adv.toFixed(0)} | Rem:<strong className="text-emerald-400">{act.fc_qty.toFixed(1)}</strong>{act.fc_dur_calc != null && <span className="ml-1 text-indigo-400">| <strong>{act.fc_dur_calc}d</strong></span>}</span>
+                                    </td>
+                                    <td className="px-2 py-1 text-center text-emerald-400 border-r border-[#334155]"
+                                      title={`Q Total LB: ${act.lb_qty.toFixed(1)} − Avance: ${act.fc_qty_adv.toFixed(1)}`}>{act.fc_qty.toFixed(1)}</td>
+                                    <td className="px-2 py-1 border-r border-[#334155] text-center text-emerald-400 bg-emerald-900/20">FC</td>
+                                    {filteredDates.map(h => {
+                                      const val = getQtyForPeriod(act.fc_spread, h.key, viewMode);
+                                      return (
+                                        <td key={`fc-${h.key}`} className={`px-1 py-1 text-center border-r border-[#334155] ${val>0?'bg-emerald-900/30 text-emerald-300 font-medium':'text-[#475569]'}`}>
+                                          {val>0?val.toFixed(1):'-'}
+                                        </td>
+                                      );
+                                    })}
+                                  </tr>
+                                </React.Fragment>
+                              );
+                            })
+                        }
+                      </tbody>
+                      {processedSchedule.activities.length > 0 && (
+                        <tfoot className="sticky bottom-0 z-30 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.5)]">
+                          <tr className="bg-[#1e3a5f] border-t-2 border-[#2563eb]">
+                            <td className="px-2 py-1.5 font-bold text-blue-300 sticky left-0 bg-[#1e3a5f] z-40 text-right uppercase shadow-[2px_0_5px_-2px_rgba(0,0,0,0.4)]">TOTAL LÍNEA BASE</td>
+                            <td className="px-2 py-1.5 text-center font-bold text-blue-300 border-r border-[#2563eb]/50">{globalTotals.lb.toFixed(0)}</td>
+                            <td className="border-r border-[#2563eb]/50 bg-[#1e3a5f]"></td>
+                            {filteredDates.map(h => (
+                              <td key={`tot-lb-${h.key}`} className="px-1 py-1.5 text-center font-bold text-blue-300 border-r border-[#2563eb]/50">
+                                {periodTotals[h.key].lb>0?periodTotals[h.key].lb.toFixed(1):'-'}
+                              </td>
+                            ))}
+                          </tr>
+                          <tr className="bg-[#14362a] border-t border-[#059669]/50">
+                            <td className="px-2 py-1.5 font-bold text-emerald-400 sticky left-0 bg-[#14362a] z-40 text-right uppercase shadow-[2px_0_5px_-2px_rgba(0,0,0,0.4)]">TOTAL FORECAST (Rem.)</td>
+                            <td className="px-2 py-1.5 text-center font-bold text-emerald-400 border-r border-[#059669]/50">{globalTotals.fc.toFixed(0)}</td>
+                            <td className="border-r border-[#059669]/50 bg-[#14362a]"></td>
+                            {filteredDates.map(h => (
+                              <td key={`tot-fc-${h.key}`} className="px-1 py-1.5 text-center font-bold text-emerald-400 border-r border-[#059669]/50">
+                                {periodTotals[h.key].fc>0?periodTotals[h.key].fc.toFixed(1):'-'}
+                              </td>
+                            ))}
+                          </tr>
+                          <tr className="bg-[#0c2233] border-t border-[#0284c7]/50">
+                            <td className="px-2 py-1 font-bold text-sky-400 sticky left-0 bg-[#0c2233] z-40 text-right uppercase shadow-[2px_0_5px_-2px_rgba(0,0,0,0.4)] text-[10px]">PARALELO (LÍNEA BASE)</td>
+                            <td className="border-r border-[#0284c7]/50 bg-[#0c2233]" colSpan={2}></td>
+                            {filteredDates.map(h => {
+                              const n = parallelCounts[h.key].lb;
+                              return (
+                                <td key={`par-lb-${h.key}`} className={`px-1 py-1 text-center font-bold border-r border-[#0284c7]/50 ${n>1?'text-sky-300 bg-sky-900/40':'text-[#475569]'}`}>
+                                  {n>0?n:'-'}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                          <tr className="bg-[#1a1033] border-t border-[#7c3aed]/50">
+                            <td className="px-2 py-1 font-bold text-violet-400 sticky left-0 bg-[#1a1033] z-40 text-right uppercase shadow-[2px_0_5px_-2px_rgba(0,0,0,0.4)] text-[10px]">PARALELO (FORECAST)</td>
+                            <td className="border-r border-[#7c3aed]/50 bg-[#1a1033]" colSpan={2}></td>
+                            {filteredDates.map(h => {
+                              const n = parallelCounts[h.key].fc;
+                              return (
+                                <td key={`par-fc-${h.key}`} className={`px-1 py-1 text-center font-bold border-r border-[#7c3aed]/50 ${n>1?'text-violet-300 bg-violet-900/40':'text-[#475569]'}`}>
+                                  {n>0?n:'-'}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        </tfoot>
+                      )}
+                    </table>
+                  )
+                }
+              </div>
+              )}
+            </div>
+
+
+
+            {/* ── Tabla Nivelada ───────────────────────────────────────────── */}
+            {niveladoData && (() => {
+              const { lvHeaders, lvPeriodTotals, lvParallel, childSumsLv } = niveladoData;
+              const filteredLvHeaders = filterHeadersByDate(lvHeaders);
+
+              return (
+                <div className="bg-[#1e293b] rounded-xl border border-[#334155] overflow-hidden">
+                  <div className="px-4 py-2 border-b border-[#334155] bg-[#0f172a]">
+                    <span className="text-sm font-semibold text-amber-400 flex items-center gap-2 cursor-pointer select-none" onClick={() => toggleSection('niveladoTable')}>
+                      <span className="text-[#64748b] text-xs">{collapsedSections.has('niveladoTable') ? '\u25B6' : '\u25BC'}</span>
+                      Tabla Forecast Nivelado
+                    </span>
+                  </div>
+                  {!collapsedSections.has('niveladoTable') && (
+                  <div className="overflow-x-auto relative max-h-[68vh]">
+                    <table className="w-full text-xs text-left border-collapse">
+                      <thead className="text-[10px] text-[#64748b] uppercase bg-[#0f172a] sticky top-0 z-30 shadow-sm">
+                        <tr>
+                          <th className="px-2 py-1.5 border-b border-[#334155] sticky left-0 bg-[#0f172a] z-40 min-w-[200px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.4)]">Actividad / Tramo</th>
+                          <th className="px-2 py-1.5 border-b border-[#334155] min-w-[50px] text-center border-r bg-[#0f172a] whitespace-nowrap">Dur. Línea Base</th>
+                          <th className="px-2 py-1.5 border-b border-[#334155] min-w-[54px] text-center border-r bg-[#0f172a] whitespace-nowrap">Rend. Línea Base</th>
+                          <th className="px-2 py-1.5 border-b border-[#334155] min-w-[54px] text-center border-r bg-[#0f172a] whitespace-nowrap">Q Rem.</th>
+                          <th className="px-2 py-1.5 border-b border-[#334155] min-w-[52px] text-center border-r bg-red-900/30 whitespace-nowrap text-red-400" title="Duración Forecast del contratista">Dur. Contratista</th>
+                          <th className="px-2 py-1.5 border-b border-[#334155] min-w-[52px] text-center border-r bg-blue-900/30 whitespace-nowrap text-blue-400" title="Duración Forecast calculada a rendimiento Línea Base">Dur@Línea Base</th>
+                          <th className="px-2 py-1.5 border-b border-[#334155] min-w-[46px] text-center border-r bg-amber-900/30 whitespace-nowrap text-amber-400" title="Días de exceso del contratista">Δ d</th>
+                          <th className="px-2 py-1.5 border-b border-[#334155] min-w-[72px] text-center border-r bg-amber-900/30 whitespace-nowrap text-amber-400">Inicio Nivelado</th>
+                          <th className="px-2 py-1.5 border-b border-[#334155] min-w-[72px] text-center border-r bg-amber-900/30 whitespace-nowrap text-amber-400">Fin Nivelado</th>
+                          {filteredLvHeaders.map(h => (
+                            <th key={h.key} className="px-1.5 py-1.5 border-b border-[#334155] border-r min-w-[50px] text-center whitespace-nowrap bg-[#0f172a]">{h.label}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {leveledSchedule.activities.map((act, idx) => {
+                          if (!isVisible(act)) return null;
+                          const isSummary = act.type === 'summary';
+                          const isCollapsed = collapsedIds.has(act.id);
+
+                          if (isSummary) {
+                            const sumsLv = childSumsLv[act.id] || { fc_qty:0, lb_qty:0, fc_start_lv:null, fc_end_lv:null, fc_spread_lv:{} };
+                            return (
+                              <tr key={`lv-s-${idx}`} className="bg-[#1d3451] border-t-2 border-[#2d5a8e] cursor-pointer hover:bg-[#22405e] select-none"
+                                onClick={() => toggleCollapse(act.id)}>
+                                <td className="py-1 font-bold text-xs text-[#93c5fd] sticky left-0 bg-[#1d3451] z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)] truncate max-w-[200px]" style={{paddingLeft:(act.wbsLevel||1)*12+'px',paddingRight:'8px'}}>
+                                  <span className="mr-1 text-[#64748b] inline-block w-3 text-center">{isCollapsed ? '\u25B6' : '\u25BC'}</span>
+                                  {act.id}
+                                </td>
+                                <td className="px-2 py-1 text-center text-[#64748b] border-r border-[#2d5a8e]">—</td>
+                                <td className="px-2 py-1 text-center text-[#64748b] border-r border-[#2d5a8e]">—</td>
+                                <td className="px-2 py-1 text-center font-bold text-emerald-400 border-r border-[#2d5a8e]">{sumsLv.fc_qty.toFixed(1)}</td>
+                                <td className="px-2 py-1 text-center text-[#64748b] border-r border-[#2d5a8e]">—</td>
+                                <td className="px-2 py-1 text-center text-[#64748b] border-r border-[#2d5a8e]">—</td>
+                                <td className="px-2 py-1 text-center text-[#64748b] border-r border-[#2d5a8e]">—</td>
+                                <td className="px-2 py-1 text-center text-amber-400 border-r border-[#2d5a8e] whitespace-nowrap text-xs">{fmtDate(sumsLv.fc_start_lv)}</td>
+                                <td className="px-2 py-1 text-center font-bold text-amber-400 border-r border-[#2d5a8e] whitespace-nowrap text-xs">{fmtDate(sumsLv.fc_end_lv)}</td>
+                                {filteredLvHeaders.map(h => {
+                                  const val = getQtyForPeriod(sumsLv.fc_spread_lv, h.key, viewMode);
+                                  return (
+                                    <td key={`lv-sh-${h.key}`} className={`px-1 py-0.5 text-center border-r border-[#2d5a8e] text-[10px] ${val>0?'text-amber-400 font-semibold':'text-[#475569]'}`}>
+                                      {val>0?val.toFixed(1):'-'}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            );
+                          }
+
+                          const lbS = act.lb_start ? new Date(act.lb_start+'T00:00:00') : null;
+                          const lbE = act.lb_end   ? new Date(act.lb_end  +'T00:00:00') : null;
+                          const lbDur  = lbS && lbE ? Math.round((lbE-lbS)/86400000)+1 : null;
+                          const lbRate = lbDur && act.lb_qty>0 ? (act.lb_qty/lbDur).toFixed(2) : null;
+                          const fcS = act.fc_start ? new Date(act.fc_start+'T00:00:00') : null;
+                          const fcE = act.fc_end   ? new Date(act.fc_end  +'T00:00:00') : null;
+                          const fcDurContr = fcS && fcE ? Math.round((fcE-fcS)/86400000)+1 : null;
+                          const excessDays = (fcDurContr != null && act.fc_dur_calc != null) ? fcDurContr - act.fc_dur_calc : null;
+
+                          return (
+                            <tr key={`lv-a-${idx}`} className="bg-[#1e293b] hover:bg-[#1f2e1a] border-b border-[#334155]">
+                              <td className="py-1 font-normal text-xs text-[#cbd5e1] sticky left-0 bg-[#1e293b] z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.4)] truncate max-w-[200px]" style={{paddingLeft:(act.wbsLevel||6)*12+'px',paddingRight:'8px'}} title={act.id + (restrictions[act.id] ? ' | 🔒 Liberación: ' + restrictions[act.id] : '')}>
+                                {restrictions[act.id] && <span className="text-rose-400 mr-1" title={'Liberación: ' + restrictions[act.id]}>🔒</span>}
+                                {act.id}
+                              </td>
+                              <td className="px-2 py-1 text-center text-[#94a3b8] border-r border-[#334155]">{lbDur ?? '-'}</td>
+                              <td className="px-2 py-1 text-center text-[#94a3b8] border-r border-[#334155]">{lbRate ?? '-'}</td>
+                              <td className="px-2 py-1 text-center font-semibold text-emerald-400 border-r border-[#334155]">{act.fc_qty > 0 ? act.fc_qty.toFixed(1) : <span className="text-[#475569]">✓</span>}</td>
+                              <td className={`px-2 py-1 text-center font-semibold border-r border-[#334155] bg-red-900/20 ${excessDays > 0 ? 'text-red-400' : 'text-[#94a3b8]'}`}>{fcDurContr ?? '-'}</td>
+                              <td className="px-2 py-1 text-center font-bold text-blue-400 bg-blue-900/20 border-r border-[#334155]">{act.fc_dur_calc ?? '-'}</td>
+                              <td className={`px-2 py-1 text-center font-bold border-r border-[#334155] ${excessDays > 0 ? 'text-amber-400 bg-amber-900/30' : excessDays != null ? 'text-emerald-400 bg-emerald-900/20' : 'text-[#475569]'}`}>{excessDays != null ? (excessDays > 0 ? '+' : '') + excessDays : '-'}</td>
+                              <td className="px-2 py-1 text-center text-amber-400 bg-amber-900/20 border-r border-[#334155] whitespace-nowrap">{fmtDate(act.fc_start_lv)}</td>
+                              <td className="px-2 py-1 text-center font-semibold text-amber-300 bg-amber-900/30 border-r border-[#334155] whitespace-nowrap">{fmtDate(act.fc_end_lv)}</td>
+                              {filteredLvHeaders.map(h => {
+                                const val = getQtyForPeriod(act.fc_spread_lv, h.key, viewMode);
+                                return (
+                                  <td key={`lv-ah-${h.key}`} className={`px-1 py-1 text-center border-r border-[#334155] ${val>0?'bg-amber-900/30 text-amber-300 font-medium':'text-[#475569]'}`}>
+                                    {val>0?val.toFixed(1):'-'}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot className="sticky bottom-0 z-30 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.5)]">
+                        <tr className="bg-[#1c1505] border-t-2 border-[#d97706]">
+                          <td className="px-2 py-1.5 font-bold text-amber-400 sticky left-0 bg-[#1c1505] z-40 text-right uppercase text-[10px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.4)]">
+                            TOTAL FC NIV. <span className="font-normal text-amber-600">(cap.{leveledSchedule.capacity}/d)</span>
+                          </td>
+                          <td className="border-r border-[#d97706]/50" colSpan={8}></td>
+                          {filteredLvHeaders.map(h => (
+                            <td key={`lv-tot-${h.key}`} className="px-1 py-1.5 text-center font-bold text-amber-400 border-r border-[#d97706]/50">
+                              {lvPeriodTotals[h.key]>0?lvPeriodTotals[h.key].toFixed(1):'-'}
+                            </td>
+                          ))}
+                        </tr>
+                        <tr className="bg-[#111827] border-t border-[#334155]">
+                          <td className="px-2 py-1 font-bold text-[#94a3b8] sticky left-0 bg-[#111827] z-40 text-right uppercase text-[10px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.4)]">
+                            PARALELO (NIVELADO)
+                          </td>
+                          <td className="border-r border-[#334155]" colSpan={8}></td>
+                          {filteredLvHeaders.map(h => {
+                            const n = lvParallel[h.key];
+                            return (
+                              <td key={`lv-par-${h.key}`} className={`px-1 py-1 text-center font-bold border-r border-[#334155] ${n>leveledSchedule.capacity?'bg-red-900/50 text-red-400':n>0?'bg-[#1e293b] text-[#94a3b8]':'text-[#475569]'}`}>
+                                {n>0?n:'-'}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                  )}
+                </div>
+              );
+            })()}
+
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

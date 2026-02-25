@@ -38,7 +38,7 @@ export default function LookAheadPage() {
   const { state } = useGantt();
   const [activeTab, setActiveTab] = useState<SubTab>('plan');
   const [weeksAhead, setWeeksAhead] = useState(3);
-  const [startOffset, setStartOffset] = useState(0);
+  const [dayOffset, setDayOffset] = useState(0);
 
   const statusDate = useMemo(() => {
     if (state.statusDate) return state.statusDate;
@@ -47,11 +47,13 @@ export default function LookAheadPage() {
 
   const windowStart = useMemo(() => {
     const d = new Date(statusDate!.getTime());
-    d.setDate(d.getDate() + startOffset * 7);
+    // Snap to Monday of the current week first
     const day = d.getDay();
     d.setDate(d.getDate() - ((day + 6) % 7));
+    // Then shift by dayOffset (1 day per click)
+    d.setDate(d.getDate() + dayOffset);
     return d;
-  }, [statusDate, startOffset]);
+  }, [statusDate, dayOffset]);
 
   const windowEnd = useMemo(() => {
     const d = new Date(windowStart);
@@ -71,18 +73,18 @@ export default function LookAheadPage() {
 
         {/* Window navigation */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 16 }}>
-          <button onClick={() => setStartOffset(o => o - 1)}
+          <button onClick={() => setDayOffset(o => o - 1)}
             style={{ background: 'var(--bg-input)', border: '1px solid var(--border-secondary)', borderRadius: 6, padding: '4px 8px', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
             <ChevronLeft size={14} />
           </button>
           <span style={{ fontSize: 12, color: 'var(--text-secondary)', minWidth: 180, textAlign: 'center' }}>
             {fmtDate(windowStart)} — {fmtDate(windowEnd)}
           </span>
-          <button onClick={() => setStartOffset(o => o + 1)}
+          <button onClick={() => setDayOffset(o => o + 1)}
             style={{ background: 'var(--bg-input)', border: '1px solid var(--border-secondary)', borderRadius: 6, padding: '4px 8px', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
             <ChevronRight size={14} />
           </button>
-          <button onClick={() => setStartOffset(0)}
+          <button onClick={() => setDayOffset(0)}
             style={{ background: 'var(--bg-input)', border: '1px solid var(--border-secondary)', borderRadius: 6, padding: '4px 8px', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 11 }}>
             Hoy
           </button>

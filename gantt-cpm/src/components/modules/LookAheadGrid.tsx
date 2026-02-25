@@ -2,9 +2,9 @@
 // LookAheadGrid – Weekly planning grid (Last Planner System)
 // Features: inline editing · column reorder/resize/hide · % Progr.
 // ═══════════════════════════════════════════════════════════════════
-import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useGantt } from '../../store/GanttContext';
-import { isoDate, fmtDate, parseDate, addDays } from '../../utils/cpm';
+import { isoDate, fmtDate, parseDate, addDays, getExactElapsedRatio, getExactWorkDays } from '../../utils/cpm';
 import { predsToStr } from '../../utils/helpers';
 import type { Activity, LeanRestriction, RestrictionCategory, RestrictionStatus } from '../../types/gantt';
 import { AlertTriangle, CheckCircle2, Clock, User, ShieldAlert, Settings2, Ruler, CalendarCheck2, Network } from 'lucide-react';
@@ -40,7 +40,7 @@ const COL_DEFS: ColDef[] = [
   /* ── Last Planner ── */
   { key: 'encargado', label: 'Encargado',   defaultWidth: 100, minWidth: 60,  align: 'left'   },
   { key: 'pct',       label: 'Avance',      defaultWidth: 60,  minWidth: 40,  align: 'center' },
-  { key: 'pctProgr',  label: '% Progr.',    defaultWidth: 65,  minWidth: 45,  align: 'center' },
+  { key: 'pctProgr',  label: '% Progr. LH', defaultWidth: 75,  minWidth: 50,  align: 'center' },
   { key: 'estado',    label: 'Estado',      defaultWidth: 70,  minWidth: 50,  align: 'center' },
   { key: 'tipoRestr', label: 'Tipo Restr.', defaultWidth: 100, minWidth: 70,  align: 'left'   },
   { key: 'estRestr',  label: 'Est. Restr.', defaultWidth: 80,  minWidth: 55,  align: 'center' },
@@ -189,6 +189,11 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
   }, [containerW, fixedColsWidth, days.length]);
 
   const activitiesInWindow = useMemo<ActEx[]>(() => {
+    const defCal = state.defCal || 5;
+    const activeBlIdx = state.activeBaselineIdx;
+    // Target date = end of windowEnd (start of next day, so windowEnd is fully inclusive)
+    const targetDate = addDays(windowEnd, 1);
+
     return state.activities
       .filter(a => {
         if (a.type === 'summary' || a._isProjRow) return false;
@@ -198,10 +203,49 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
       .map(a => {
         // EF is exclusive (day after last work day) for non-milestone tasks → subtract 1 day for visual end
         const visualEnd = a.type === 'milestone' ? a.EF! : addDays(a.EF!, -1);
-        return { ...a, _start: a.ES!, _end: visualEnd } as ActEx;
+
+        // ── Calculate % Progr. LH: programmed progress at end of Look Ahead window ──
+        const activeBl = (a.baselines || [])[activeBlIdx] || null;
+        const start = a.blES || a.ES;
+        const end = a.blEF || a.EF;
+        let pctProgrLH = 0;
+        if (start && end) {
+          const stObj = new Date(start); stObj.setHours(0, 0, 0, 0);
+          const endObj = new Date(end); endObj.setHours(0, 0, 0, 0);
+          if (targetDate <= stObj) {
+            pctProgrLH = 0;
+          } else if (targetDate >= endObj) {
+            pctProgrLH = 100;
+          } else if (activeBl && activeBl.pct != null && activeBl.statusDate) {
+            // Two-segment interpolation using baseline saved progress
+            const blStatusEnd = new Date(activeBl.statusDate);
+            blStatusEnd.setHours(0, 0, 0, 0);
+            blStatusEnd.setDate(blStatusEnd.getDate() + 1);
+            const blPct = activeBl.pct;
+            if (blPct === 0) {
+              pctProgrLH = getExactElapsedRatio(start, end, targetDate, a.cal || defCal) * 100;
+            } else if (targetDate <= blStatusEnd) {
+              const totalWdSeg1 = getExactWorkDays(stObj, blStatusEnd, a.cal || defCal);
+              const elapsedWd = getExactWorkDays(stObj, targetDate <= stObj ? stObj : new Date(targetDate), a.cal || defCal);
+              const ratioSeg1 = totalWdSeg1 > 0 ? elapsedWd / totalWdSeg1 : 1;
+              pctProgrLH = ratioSeg1 * blPct;
+            } else {
+              const totalWdSeg2 = getExactWorkDays(blStatusEnd, endObj, a.cal || defCal);
+              const elapsedWd = getExactWorkDays(blStatusEnd, new Date(targetDate), a.cal || defCal);
+              const ratioSeg2 = totalWdSeg2 > 0 ? elapsedWd / totalWdSeg2 : 1;
+              pctProgrLH = blPct + ratioSeg2 * (100 - blPct);
+            }
+          } else {
+            pctProgrLH = getExactElapsedRatio(start, end, targetDate, a.cal || defCal) * 100;
+          }
+        }
+
+        const act = { ...a, _start: a.ES!, _end: visualEnd } as ActEx;
+        (act as any)._pctProgrLH = pctProgrLH;
+        return act;
       })
       .sort((a, b) => a._start.getTime() - b._start.getTime());
-  }, [state.activities, windowStart, windowEnd]);
+  }, [state.activities, windowStart, windowEnd, state.defCal, state.activeBaselineIdx]);
 
   const primaryRestriction = useMemo(() => {
     const map: Record<string, LeanRestriction> = {};
@@ -267,16 +311,6 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
       dispatch({ type: 'ADD_RESTRICTION', restriction: r });
     });
   }, [activitiesInWindow, state.leanRestrictions, dispatch]);
-
-  /* ── % Progr. — committed progress within the look-ahead window ── */
-  const calcPctProgr = useCallback((act: ActEx): number => {
-    const overlapStart = Math.max(act._start.getTime(), windowStart.getTime());
-    const overlapEnd = Math.min(act._end.getTime(), windowEnd.getTime());
-    if (overlapEnd < overlapStart) return 0;
-    const overlapDays = (overlapEnd - overlapStart) / 86400000 + 1;
-    const totalDays = (act._end.getTime() - act._start.getTime()) / 86400000 + 1;
-    return totalDays <= 0 ? 100 : Math.round((overlapDays / totalDays) * 100);
-  }, [windowStart, windowEnd]);
 
   /* ── encargado edit ── */
   const commitEncargado = (actId: string) => {
@@ -428,11 +462,13 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
         </div>;
 
       case 'pctProgr': {
-        const pp = calcPctProgr(act);
+        const pp = (act as any)._pctProgrLH ?? 0;
+        const ppRound = Math.round(pp * 10) / 10;
+        const ppBar = Math.min(ppRound, 100);
         return <div style={{ background: 'var(--bg-input)', borderRadius: 4, height: 14, position: 'relative', overflow: 'hidden' }}
-          title={`${pp}% de la actividad cae en esta ventana`}>
-          <div style={{ width: `${pp}%`, height: '100%', background: '#8b5cf6', borderRadius: 4, transition: 'width .3s' }} />
-          <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 600, color: 'white' }}>{pp}%</span>
+          title={`${ppRound}% programado al ${fmtDate(windowEnd)}`}>
+          <div style={{ width: `${ppBar}%`, height: '100%', background: '#8b5cf6', borderRadius: 4, transition: 'width .3s' }} />
+          <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 600, color: 'white' }}>{ppRound}%</span>
         </div>;
       }
 
@@ -861,8 +897,9 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
                         )}
                         {/* Baseline bar (thin bar at bottom) */}
                         {act.blES && act.blEF && !isMilestone && (() => {
+                          const blVisualEnd = addDays(act.blEF!, -1); // blEF is exclusive like EF
                           const blStartIdx = days.findIndex(dd => dd.iso === isoDate(act.blES!));
-                          const blEndIdx = days.findIndex(dd => dd.iso === isoDate(act.blEF!));
+                          const blEndIdx = days.findIndex(dd => dd.iso === isoDate(blVisualEnd));
                           if (blStartIdx < 0 && blEndIdx < 0) return null;
                           const blStart = Math.max(blStartIdx, 0);
                           if (di !== blStart) return null;
