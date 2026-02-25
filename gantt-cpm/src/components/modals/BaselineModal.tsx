@@ -16,6 +16,7 @@ export default function BaselineModal() {
     const [slotIdx, setSlotIdx] = useState(0);
     const [blName, setBlName] = useState('');
     const [blDesc, setBlDesc] = useState('');
+    const [overwritePrompt, setOverwritePrompt] = useState(false);
 
     const { ref: resizeRef, style: resizeStyle } = useResizable({ initW: 720, minW: 450, minH: 300 });
 
@@ -44,12 +45,44 @@ export default function BaselineModal() {
         if (!state.activities.length) { alert('No hay actividades para guardar.'); return; }
         const existsInSlot = state.activities.some(a => a.baselines?.[slotIdx]);
         if (existsInSlot) {
-            if (!confirm(`La Línea Base ${slotIdx} ya existe. ¿Desea sobrescribirla?`)) return;
+            // Show custom overwrite dialog instead of simple confirm
+            setOverwritePrompt(true);
+            return;
         }
+        // New slot — save for entire project
         dispatch({ type: 'PUSH_UNDO' });
         dispatch({ type: 'SAVE_BASELINE', index: slotIdx, name: blName.trim() || `Línea Base ${slotIdx}`, description: blDesc.trim() });
         setBlName('');
         setBlDesc('');
+        setTab('list');
+    };
+
+    const doSaveAll = () => {
+        dispatch({ type: 'PUSH_UNDO' });
+        dispatch({ type: 'SAVE_BASELINE', index: slotIdx, name: blName.trim() || `Línea Base ${slotIdx}`, description: blDesc.trim() });
+        setBlName('');
+        setBlDesc('');
+        setOverwritePrompt(false);
+        setTab('list');
+    };
+
+    const doSaveSelected = () => {
+        if (!state.selIndices || state.selIndices.size === 0) {
+            alert('No hay actividades seleccionadas. Seleccione al menos una fila en la tabla.');
+            return;
+        }
+        dispatch({ type: 'PUSH_UNDO' });
+        dispatch({
+            type: 'SAVE_BASELINE',
+            index: slotIdx,
+            name: blName.trim() || `Línea Base ${slotIdx}`,
+            description: blDesc.trim(),
+            selectedOnly: true,
+            selectedIndices: new Set(state.selIndices),
+        });
+        setBlName('');
+        setBlDesc('');
+        setOverwritePrompt(false);
         setTab('list');
     };
 
@@ -78,7 +111,7 @@ export default function BaselineModal() {
 
     return (
         <div className="modal-overlay open" onClick={e => { if (e.target === e.currentTarget) close(); }}>
-            <div className="modal" ref={resizeRef} style={{ ...resizeStyle, maxWidth: '95vw', minWidth: 450, display: 'flex', flexDirection: 'column', maxHeight: '92vh' }}>
+            <div className="modal" ref={resizeRef} style={{ ...resizeStyle, maxWidth: '95vw', minWidth: 450, display: 'flex', flexDirection: 'column', maxHeight: '92vh', position: 'relative' }}>
                 <h2 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     📊 Administrador de Líneas Base
                 </h2>
@@ -255,6 +288,58 @@ export default function BaselineModal() {
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16, flexShrink: 0 }}>
                     <button className="btn btn-ghost" onClick={close}>Cerrar</button>
                 </div>
+
+                {/* Overwrite choice dialog */}
+                {overwritePrompt && (
+                    <div style={{
+                        position: 'absolute', inset: 0, background: 'rgba(0,0,0,.55)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        borderRadius: 'inherit', zIndex: 50,
+                    }}>
+                        <div style={{
+                            background: '#1e293b', border: '1px solid #334155', borderRadius: 10,
+                            padding: '20px 24px', maxWidth: 420, width: '90%',
+                            boxShadow: '0 8px 32px rgba(0,0,0,.5)',
+                        }}>
+                            <h3 style={{ margin: '0 0 6px', fontSize: 14, color: '#f1f5f9' }}>
+                                ⚠️ La Línea Base {slotIdx} ya existe
+                            </h3>
+                            <p style={{ fontSize: 11, color: '#94a3b8', margin: '0 0 16px', lineHeight: 1.5 }}>
+                                Elija cómo desea sobrescribir esta línea base:
+                            </p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                <button
+                                    className="btn btn-primary"
+                                    style={{ width: '100%', justifyContent: 'flex-start', gap: 8, fontSize: 12, padding: '10px 14px' }}
+                                    onClick={doSaveAll}
+                                >
+                                    🔄 Actualizar Línea Base para todo el proyecto
+                                </button>
+                                <button
+                                    className="btn btn-primary"
+                                    style={{
+                                        width: '100%', justifyContent: 'flex-start', gap: 8, fontSize: 12, padding: '10px 14px',
+                                        background: 'rgba(16,185,129,.15)', border: '1px solid rgba(16,185,129,.4)', color: '#34d399',
+                                    }}
+                                    onClick={doSaveSelected}
+                                >
+                                    ✅ Actualizar solo actividades seleccionadas
+                                    {state.selIndices && state.selIndices.size > 0
+                                        ? ` (${state.selIndices.size})`
+                                        : ' (ninguna)'}
+                                </button>
+                                <p style={{ fontSize: 10, color: '#64748b', margin: '2px 0 0', lineHeight: 1.4, fontStyle: 'italic' }}>
+                                    Las actividades no seleccionadas mantendrán su línea base anterior.
+                                </p>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
+                                <button className="btn btn-ghost" onClick={() => setOverwritePrompt(false)} style={{ fontSize: 11 }}>
+                                    Cancelar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

@@ -310,6 +310,30 @@ export default function GanttTable() {
         if (c.key === 'constraint') return a.constraint || '';
         if (c.key === 'constraintDate') return a.constraintDate || '';
         if (c.key === 'notes') return (a.notes || '').substring(0, 40);
+        // ── Last Planner columns ──
+        if (c.key === 'encargado') return a.encargado || '';
+        if (c.key === 'lpEstado') {
+            const p = a.pct || 0;
+            return p === 100 ? 'Completada' : p > 0 ? 'En curso' : 'Pendiente';
+        }
+        if (c.key === 'tipoRestr' || c.key === 'estRestr' || c.key === 'lpDias' || c.key === 'fPrevista' || c.key === 'fLiberado') {
+            const rList = (state as any).leanRestrictions as any[] | undefined;
+            if (!rList) return '';
+            const byAct = rList.filter((r: any) => r.activityId === a.id);
+            const pr = byAct.find((r: any) => r.status !== 'Liberada') || byAct[0];
+            if (!pr) return '—';
+            if (c.key === 'tipoRestr') return pr.category || '—';
+            if (c.key === 'estRestr') return pr.status || '—';
+            if (c.key === 'fPrevista') return pr.plannedReleaseDate ? fmtDate(new Date(pr.plannedReleaseDate)) : '—';
+            if (c.key === 'fLiberado') return pr.actualReleaseDate ? fmtDate(new Date(pr.actualReleaseDate)) : '—';
+            if (c.key === 'lpDias') {
+                if (pr.status === 'Liberada') return '✓';
+                if (!pr.plannedReleaseDate) return 'S/F';
+                const pd = new Date(pr.plannedReleaseDate);
+                const diff = Math.ceil((pd.getTime() - Date.now()) / 86400000);
+                return diff + 'd';
+            }
+        }
         return a[c.key] != null ? String(a[c.key]) : '';
     }, [activities, defCal, state.collapsed, state.statusDate, isUsageView, state.expResources]);
 

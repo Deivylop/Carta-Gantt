@@ -7,6 +7,7 @@ import DetailContextMenu from './DetailContextMenu';
 const LINE_H = 16;      // height per metric line inside a row
 const MIN_ROW_H = 26;   // minimum row height (single line)
 const HDR_H = 36;
+const HDR_H_DAY = 50;
 const DETAIL_W = 100;   // "Detalles" column width
 
 function th(light: boolean): ThemeColors {
@@ -58,6 +59,7 @@ export default function TaskUsageGrid() {
 
     const PX = pxPerDay;
     const activeZoom = usageZoom || 'week';
+    const hdrH = activeZoom === 'day' ? HDR_H_DAY : HDR_H;
     const modes = usageModes.length > 0 ? usageModes : ['Trabajo'];
 
     const hdrRef = useRef<HTMLCanvasElement>(null);
@@ -92,13 +94,13 @@ export default function TaskUsageGrid() {
         const el = containerRef.current; if (!el) return;
         const measure = () => {
             const rect = el.getBoundingClientRect();
-            setContainerSize({ w: Math.max(rect.width, 400), h: Math.max(rect.height - HDR_H, 200) });
+            setContainerSize({ w: Math.max(rect.width, 400), h: Math.max(rect.height - hdrH, 200) });
         };
         measure();
         const ro = new ResizeObserver(measure);
         ro.observe(el);
         return () => ro.disconnect();
-    }, []);
+    }, [hdrH]);
 
     // Time intervals
     const getIntervals = useCallback(() => {
@@ -139,20 +141,20 @@ export default function TaskUsageGrid() {
         // ── Detail Header (fixed left) ──
         const hdC = hdrDetailRef.current;
         if (hdC) {
-            hdC.width = DETAIL_W; hdC.height = HDR_H;
+            hdC.width = DETAIL_W; hdC.height = hdrH;
             const dh = hdC.getContext('2d')!;
-            dh.clearRect(0, 0, DETAIL_W, HDR_H);
+            dh.clearRect(0, 0, DETAIL_W, hdrH);
             dh.fillStyle = t.hdrTopBg; dh.fillRect(0, 0, DETAIL_W, 17);
             dh.strokeStyle = t.hdrTopBorder; dh.strokeRect(0, 0, DETAIL_W, 17);
-            dh.fillStyle = t.hdrBotBg; dh.fillRect(0, 17, DETAIL_W, 19);
-            dh.strokeStyle = t.hdrBotBorder; dh.strokeRect(0, 17, DETAIL_W, 19);
+            dh.fillStyle = t.hdrBotBg; dh.fillRect(0, 17, DETAIL_W, hdrH - 17);
+            dh.strokeStyle = t.hdrBotBorder; dh.strokeRect(0, 17, DETAIL_W, hdrH - 17);
             dh.fillStyle = t.hdrTopText; dh.font = 'bold 10px Segoe UI';
-            dh.fillText('Detalles', 6, 30);
+            dh.fillText('Detalles', 6, hdrH - 6);
             // Small dropdown triangle
             dh.beginPath();
-            dh.moveTo(DETAIL_W - 16, 27);
-            dh.lineTo(DETAIL_W - 10, 27);
-            dh.lineTo(DETAIL_W - 13, 31);
+            dh.moveTo(DETAIL_W - 16, hdrH - 9);
+            dh.lineTo(DETAIL_W - 10, hdrH - 9);
+            dh.lineTo(DETAIL_W - 13, hdrH - 5);
             dh.closePath();
             dh.fillStyle = t.hdrTopText;
             dh.fill();
@@ -160,10 +162,10 @@ export default function TaskUsageGrid() {
 
         // ── Time Header (scrollable) ──
         const hdrC = hdrRef.current; if (!hdrC) return;
-        hdrC.width = W; hdrC.height = HDR_H;
-        hdrC.style.width = W + 'px'; hdrC.style.height = HDR_H + 'px';
+        hdrC.width = W; hdrC.height = hdrH;
+        hdrC.style.width = W + 'px'; hdrC.style.height = hdrH + 'px';
         const hCtx = hdrC.getContext('2d')!;
-        hCtx.clearRect(0, 0, W, HDR_H);
+        hCtx.clearRect(0, 0, W, hdrH);
 
         // Top header row (months/years)
         let cur = new Date(projStart);
@@ -194,16 +196,43 @@ export default function TaskUsageGrid() {
         }
 
         // Bottom header (intervals)
-        intervals.forEach(inv => {
-            const x = dayDiff(projStart, inv.start) * PX;
-            hCtx.fillStyle = inv.isWeekend ? t.hdrWeekend : t.hdrBotBg;
-            hCtx.fillRect(x, 17, inv.w, 19);
+        if (activeZoom === 'day') {
+            // Day zoom: 3-row header — day number (row 2) + day letter (row 3)
+            intervals.forEach(inv => {
+                const x = dayDiff(projStart, inv.start) * PX;
+                const wkndFill = inv.isWeekend ? t.hdrWeekend : t.hdrBotBg;
+                const wkndText = inv.isWeekend ? (lightMode ? '#94a3b8' : '#374151') : t.hdrBotText;
+                // Row 2: day number (17-33)
+                hCtx.fillStyle = wkndFill; hCtx.fillRect(x, 17, inv.w, 16);
+                // Row 3: day letter (33-50)
+                hCtx.fillStyle = wkndFill; hCtx.fillRect(x, 33, inv.w, 17);
+                // Vertical grid
+                hCtx.strokeStyle = t.hdrBotBorder;
+                hCtx.beginPath(); hCtx.moveTo(x, 17); hCtx.lineTo(x, hdrH); hCtx.stroke();
+                // Centered day number
+                hCtx.fillStyle = wkndText; hCtx.font = '9px Segoe UI';
+                hCtx.textAlign = 'center';
+                if (PX >= 14) hCtx.fillText(inv.label, x + inv.w / 2, 29);
+                // Centered day letter
+                const days = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
+                if (PX >= 10) hCtx.fillText(days[inv.start.getDay()], x + inv.w / 2, 46);
+                hCtx.textAlign = 'left';
+            });
+            // Horizontal separator between rows
             hCtx.strokeStyle = t.hdrBotBorder;
-            hCtx.beginPath(); hCtx.moveTo(x, 17); hCtx.lineTo(x, HDR_H); hCtx.stroke();
-            hCtx.fillStyle = inv.isWeekend ? (lightMode ? '#94a3b8' : '#374151') : t.hdrBotText;
-            hCtx.font = '9px Segoe UI';
-            hCtx.fillText(inv.label, x + 4, 30);
-        });
+            hCtx.beginPath(); hCtx.moveTo(0, 33); hCtx.lineTo(W, 33); hCtx.stroke();
+        } else {
+            intervals.forEach(inv => {
+                const x = dayDiff(projStart, inv.start) * PX;
+                hCtx.fillStyle = inv.isWeekend ? t.hdrWeekend : t.hdrBotBg;
+                hCtx.fillRect(x, 17, inv.w, 19);
+                hCtx.strokeStyle = t.hdrBotBorder;
+                hCtx.beginPath(); hCtx.moveTo(x, 17); hCtx.lineTo(x, hdrH); hCtx.stroke();
+                hCtx.fillStyle = inv.isWeekend ? (lightMode ? '#94a3b8' : '#374151') : t.hdrBotText;
+                hCtx.font = '9px Segoe UI';
+                hCtx.fillText(inv.label, x + 4, 30);
+            });
+        }
 
         // ── Detail Labels Column ──
         const dC = detailCanvasRef.current; if (!dC) return;
@@ -324,9 +353,9 @@ export default function TaskUsageGrid() {
             }
         });
 
-        // Status date line
+        // Status date line (end-of-day)
         if (statusDate) {
-            const sdX = dayDiff(projStart, statusDate) * PX;
+            const sdX = (dayDiff(projStart, statusDate) + 1) * PX;
             ctx.beginPath();
             ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 1.5;
             ctx.setLineDash([4, 4]);
@@ -334,6 +363,21 @@ export default function TaskUsageGrid() {
             ctx.stroke();
             ctx.setLineDash([]);
             ctx.lineWidth = 1;
+        }
+
+        // Today line (end-of-day)
+        {
+            const now = new Date();
+            const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const todayX = (dayDiff(projStart, todayStart) + 1) * PX;
+            if (todayX > 0 && todayX < W) {
+                ctx.beginPath();
+                ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 1.5;
+                ctx.setLineDash([]);
+                ctx.moveTo(todayX, 0); ctx.lineTo(todayX, H);
+                ctx.stroke();
+                ctx.lineWidth = 1;
+            }
         }
 
     }, [W, H, visRows, activities, activeZoom, PX, modes, projStart, totalDays, t, selIdx,
@@ -417,14 +461,14 @@ export default function TaskUsageGrid() {
             {ctxMenu && <DetailContextMenu x={ctxMenu.x} y={ctxMenu.y} onClose={() => setCtxMenu(null)} />}
 
             {/* Header row: fixed Detail header + scrollable time header */}
-            <div style={{ height: HDR_H, flexShrink: 0, display: 'flex', overflow: 'hidden' }}>
+            <div style={{ height: hdrH, flexShrink: 0, display: 'flex', overflow: 'hidden' }}>
                 {/* Fixed "Detalles" header — clickable */}
                 <div style={{ width: DETAIL_W, flexShrink: 0, overflow: 'hidden', cursor: 'pointer' }}
                     onClick={handleDetailHeaderClick}
                     onContextMenu={handleDetailContextMenu}
                     title="Clic para seleccionar campos de detalle">
                     <canvas ref={hdrDetailRef}
-                        style={{ display: 'block', width: DETAIL_W, height: HDR_H, pointerEvents: 'none' }}
+                        style={{ display: 'block', width: DETAIL_W, height: hdrH, pointerEvents: 'none' }}
                     />
                 </div>
                 {/* Scrollable time header */}

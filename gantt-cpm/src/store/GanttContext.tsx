@@ -61,6 +61,13 @@ export const DEFAULT_COLS: ColumnDef[] = [
     { key: 'lv', label: 'WBS/Nivel', w: 50, edit: false, cls: 'tcell-num', visible: false },
     { key: 'constraint', label: 'Restricción', w: 80, edit: false, cls: 'tcell-date', visible: false },
     { key: 'constraintDate', label: 'Fecha Restr.', w: 90, edit: false, cls: 'tcell-date', visible: false },
+    { key: 'encargado', label: 'Encargado', w: 100, edit: true, cls: 'tcell-name', visible: false },
+    { key: 'lpEstado', label: 'Estado (LP)', w: 80, edit: false, cls: 'tcell-num', visible: false },
+    { key: 'tipoRestr', label: 'Tipo Restricción', w: 110, edit: false, cls: 'tcell-name', visible: false },
+    { key: 'estRestr', label: 'Est. Restricción', w: 90, edit: false, cls: 'tcell-num', visible: false },
+    { key: 'lpDias', label: 'Días (LP)', w: 60, edit: false, cls: 'tcell-num', visible: false },
+    { key: 'fPrevista', label: 'F. Prevista', w: 90, edit: false, cls: 'tcell-date', visible: false },
+    { key: 'fLiberado', label: 'F. Liberado', w: 90, edit: false, cls: 'tcell-date', visible: false },
     { key: 'notes', label: 'Notas', w: 120, edit: true, cls: 'tcell-name', visible: false },
     { key: 'txt1', label: 'Texto 1', w: 100, edit: true, cls: 'tcell-name', visible: false },
     { key: 'txt2', label: 'Texto 2', w: 100, edit: true, cls: 'tcell-name', visible: false },
@@ -172,7 +179,7 @@ export type Action =
     | { type: 'CUT_ACTIVITY' }
     | { type: 'COPY_ACTIVITY' }
     | { type: 'PASTE_ACTIVITY' }
-    | { type: 'SAVE_BASELINE'; index?: number; name?: string; description?: string }
+    | { type: 'SAVE_BASELINE'; index?: number; name?: string; description?: string; selectedOnly?: boolean; selectedIndices?: Set<number> }
     | { type: 'SET_ACTIVE_BASELINE'; index: number }
     | { type: 'CLEAR_BASELINE'; index: number }
     | { type: 'OPEN_ACT_MODAL' }
@@ -610,7 +617,7 @@ function ensureProjRow(activities: Activity[], showProjRow: boolean, projName: s
     return acts;
 }
 
-function recalcInternal(state: GanttState, statusDate: Date | null): GanttState {
+function recalcInternal(state: GanttState, statusDate: Date | null, autoFit = false): GanttState {
     let acts = ensureProjRow([...state.activities], state.showProjRow, state.projName, state.defCal);
     const result = calcCPM(acts, state.projStart, state.defCal, statusDate, state.projName, state.activeBaselineIdx, state.customCalendars);
     // Multiple Float Paths
@@ -619,11 +626,13 @@ function recalcInternal(state: GanttState, statusDate: Date | null): GanttState 
     }
     computeOutlineNumbers(result.activities);
     const visRows = buildVisRows(result.activities, state.collapsed, state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes, state.activeCheckerFilter, state.checkerThresholds, state.statusDate, state.customFilters, state.filtersMatchAll);
-    // Auto-fit: pxPerDay based on PROJECT span (not totalDays) so project fills viewport
-    // but totalDays extends beyond for scrollable buffer
-    const timelineW = Math.max(400, (typeof window !== 'undefined' ? window.innerWidth : 1200) - state.tableW - 10);
-    const fitPx = timelineW / result.projectDays;
-    const pxPerDay = Math.max(0.5, Math.min(fitPx, 150));
+    // Only auto-fit pxPerDay on initial load (SET_ACTIVITIES) — preserve user's zoom otherwise
+    let pxPerDay = state.pxPerDay;
+    if (autoFit) {
+        const timelineW = Math.max(400, (typeof window !== 'undefined' ? window.innerWidth : 1200) - state.tableW - 10);
+        const fitPx = timelineW / result.projectDays;
+        pxPerDay = Math.max(0.5, Math.min(fitPx, 150));
+    }
     // Timeline rendering starts 30 days before project start
     const timelineStart = addDays(state.projStart, -30);
     return { ...state, activities: result.activities, totalDays: result.totalDays, visRows, pxPerDay, timelineStart, _cpmStatusDate: statusDate };
@@ -631,12 +640,22 @@ function recalcInternal(state: GanttState, statusDate: Date | null): GanttState 
 
 /** Recalc básico: forward/backward pass SIN retained logic. Usado en ediciones automáticas. */
 function recalc(state: GanttState): GanttState {
-    return recalcInternal(state, state._cpmStatusDate);
+    return recalcInternal(state, state._cpmStatusDate, false);
+}
+
+/** Recalc con auto-fit de zoom. Solo para carga inicial (SET_ACTIVITIES, LOAD_STATE). */
+function recalcAutoFit(state: GanttState): GanttState {
+    return recalcInternal(state, state._cpmStatusDate, true);
 }
 
 /** Recalc completo: forward/backward pass CON retained logic. Solo para botón "Calcular CPM". */
 function recalcFull(state: GanttState): GanttState {
-    return recalcInternal(state, state.statusDate);
+    return recalcInternal(state, state.statusDate, false);
+}
+
+/** Recalc completo con auto-fit. Solo para botón "Calcular CPM" + carga. */
+function recalcFullAutoFit(state: GanttState): GanttState {
+    return recalcInternal(state, state.statusDate, true);
 }
 
 /** Actualizar solo los datos sin recalcular CPM (para ediciones de avance, etc.) */
@@ -651,7 +670,7 @@ function refreshVisRows(state: GanttState): GanttState {
 function reducer(state: GanttState, action: Action): GanttState {
     switch (action.type) {
         case 'SET_ACTIVITIES':
-            return recalc({ ...state, activities: action.activities });
+            return recalcAutoFit({ ...state, activities: action.activities });
 
         case 'ADD_ACTIVITY': {
             const acts = [...state.activities];
@@ -1208,12 +1227,27 @@ function reducer(state: GanttState, action: Action): GanttState {
             const blName = action.name || `Línea Base ${blIdx}`;
             const blDesc = action.description || '';
             const now = new Date().toISOString();
+            const selOnly = !!action.selectedOnly;
+            const selSet = action.selectedIndices || new Set<number>();
             // Auto-activate the saved baseline
             const newActiveIdx = blIdx;
-            const acts = state.activities.map(a => {
+            const acts = state.activities.map((a, i) => {
                 const baselines = [...(a.baselines || [])];
                 // Ensure array has slots up to blIdx
                 while (baselines.length <= blIdx) baselines.push(null as any);
+                // If selectedOnly mode and this activity is NOT selected, keep existing baseline data
+                if (selOnly && !selSet.has(i)) {
+                    // Do not overwrite — keep whatever was in baselines[blIdx]
+                    const active = baselines[newActiveIdx];
+                    return {
+                        ...a,
+                        baselines,
+                        blDur: active ? active.dur : null,
+                        blES: active ? active.ES : null,
+                        blEF: active ? active.EF : null,
+                        blCal: active ? active.cal : null,
+                    };
+                }
                 baselines[blIdx] = {
                     dur: a.dur,
                     ES: a.ES ? new Date(a.ES) : null,
@@ -1423,7 +1457,7 @@ function reducer(state: GanttState, action: Action): GanttState {
         }
 
         case 'LOAD_STATE':
-            return recalcFull({ ...state, ...action.state });
+            return recalcFullAutoFit({ ...state, ...action.state });
 
         case 'SET_PROGRESS_HISTORY':
             return { ...state, progressHistory: action.history };

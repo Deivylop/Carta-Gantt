@@ -9,6 +9,7 @@ import type { ThemeColors } from '../types/gantt';
 
 const ROW_H = 26;
 const HDR_H = 36;
+const HDR_H_DAY = 50; // 3-row header for day zoom: month(17) + day-number(16) + day-letter(17)
 const CAL_F: Record<number, number> = { 5: 7 / 5, 6: 7 / 6, 7: 1 };
 
 function th(light: boolean): ThemeColors {
@@ -57,6 +58,7 @@ export default function GanttTimeline() {
     // For bar rendering, use the statusDate from last CPM calc (not the live one from the picker)
     const barStatusDate = _cpmStatusDate || statusDate;
     const PX = pxPerDay;
+    const hdrH = zoom === 'day' ? HDR_H_DAY : HDR_H;
     const hdrRef = useRef<HTMLCanvasElement>(null);
     const barRef = useRef<HTMLCanvasElement>(null);
     const bodyRef = useRef<HTMLDivElement>(null);
@@ -83,13 +85,13 @@ export default function GanttTimeline() {
         const el = containerRef.current; if (!el) return;
         const measure = () => {
             const rect = el.getBoundingClientRect();
-            setContainerSize({ w: Math.max(rect.width, 400), h: Math.max(rect.height - HDR_H, 200) });
+            setContainerSize({ w: Math.max(rect.width, 400), h: Math.max(rect.height - hdrH, 200) });
         };
         measure();
         const ro = new ResizeObserver(measure);
         ro.observe(el);
         return () => ro.disconnect();
-    }, []);
+    }, [hdrH]);
 
     const W = Math.max(totalDays * PX, containerSize.w);
     const H = Math.max(visRows.length * ROW_H + 20 * ROW_H, containerSize.h);
@@ -215,10 +217,10 @@ export default function GanttTimeline() {
     const draw = useCallback(() => {
         // ─── Header ─────────────────────────────────────────
         const hdrC = hdrRef.current; if (!hdrC) return;
-        hdrC.width = W; hdrC.height = HDR_H;
-        hdrC.style.width = W + 'px'; hdrC.style.height = HDR_H + 'px';
+        hdrC.width = W; hdrC.height = hdrH;
+        hdrC.style.width = W + 'px'; hdrC.style.height = hdrH + 'px';
         const hCtx = hdrC.getContext('2d')!;
-        hCtx.clearRect(0, 0, W, HDR_H);
+        hCtx.clearRect(0, 0, W, hdrH);
 
         // Month headers
         let cur = new Date(projStart);
@@ -241,31 +243,48 @@ export default function GanttTimeline() {
             if (zoom === 'month') {
                 const nm = new Date(cur.getFullYear(), cur.getMonth() + 1, 1); const w = dayDiff(cur, nm) * PX;
                 hCtx.fillStyle = t.hdrBotBg; hCtx.fillRect(x, 17, w, 19);
-                hCtx.strokeStyle = t.hdrBotBorder; hCtx.beginPath(); hCtx.moveTo(x, 17); hCtx.lineTo(x, HDR_H); hCtx.stroke();
+                hCtx.strokeStyle = t.hdrBotBorder; hCtx.beginPath(); hCtx.moveTo(x, 17); hCtx.lineTo(x, hdrH); hCtx.stroke();
                 cur = nm;
             } else if (zoom === 'week') {
                 const w = 7 * PX; hCtx.fillStyle = t.hdrBotBg; hCtx.fillRect(x, 17, w, 19);
-                hCtx.strokeStyle = t.hdrBotBorder; hCtx.beginPath(); hCtx.moveTo(x, 17); hCtx.lineTo(x, HDR_H); hCtx.stroke();
+                hCtx.strokeStyle = t.hdrBotBorder; hCtx.beginPath(); hCtx.moveTo(x, 17); hCtx.lineTo(x, hdrH); hCtx.stroke();
                 const dd = 'S ' + String(cur.getDate()).padStart(2, '0') + '/' + String(cur.getMonth() + 1).padStart(2, '0');
                 hCtx.fillStyle = t.hdrBotText; hCtx.font = '9px Segoe UI';
                 if (PX * 7 > 40) hCtx.fillText(dd, x + 2, 30);
                 cur.setDate(cur.getDate() + 7);
             } else {
+                // Day zoom: 3-row header — day number (row 2) + day letter (row 3)
                 const isSun = cur.getDay() === 0, isSat = cur.getDay() === 6;
-                hCtx.fillStyle = isSun || isSat ? t.hdrWeekend : t.hdrBotBg; hCtx.fillRect(x, 17, PX, 19);
-                hCtx.strokeStyle = t.hdrBotBorder; hCtx.beginPath(); hCtx.moveTo(x, 17); hCtx.lineTo(x, HDR_H); hCtx.stroke();
+                const wkndFill = isSun || isSat ? t.hdrWeekend : t.hdrBotBg;
+                const wkndText = isSun || isSat ? (lightMode ? '#94a3b8' : '#374151') : t.hdrBotText;
+                // Row 2: day of month (17-33)
+                hCtx.fillStyle = wkndFill; hCtx.fillRect(x, 17, PX, 16);
+                // Row 3: day of week letter (33-50)
+                hCtx.fillStyle = wkndFill; hCtx.fillRect(x, 33, PX, 17);
+                // Vertical grid line
+                hCtx.strokeStyle = t.hdrBotBorder;
+                hCtx.beginPath(); hCtx.moveTo(x, 17); hCtx.lineTo(x, hdrH); hCtx.stroke();
+                // Centered day number
+                hCtx.fillStyle = wkndText; hCtx.font = '9px Segoe UI';
+                hCtx.textAlign = 'center';
+                if (PX >= 14) hCtx.fillText(String(cur.getDate()), x + PX / 2, 29);
+                // Centered day letter
                 const days = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
-                hCtx.fillStyle = isSun || isSat ? (lightMode ? '#94a3b8' : '#374151') : t.hdrBotText; hCtx.font = '9px Segoe UI';
-                if (PX >= 18) hCtx.fillText(days[cur.getDay()], x + 2, 30);
-                else if (PX >= 14) hCtx.fillText(String(cur.getDate()), x + 2, 30);
+                if (PX >= 10) hCtx.fillText(days[cur.getDay()], x + PX / 2, 46);
+                hCtx.textAlign = 'left';
                 cur.setDate(cur.getDate() + 1);
             }
         }
+        // Horizontal separator between day-number and day-letter rows
+        if (zoom === 'day') {
+            hCtx.strokeStyle = t.hdrBotBorder;
+            hCtx.beginPath(); hCtx.moveTo(0, 33); hCtx.lineTo(W, 33); hCtx.stroke();
+        }
         const today = new Date(); const todayX = (dayDiff(projStart, today) + 1) * PX;
-        if (showTodayLine && todayX >= 0 && todayX <= W) { hCtx.fillStyle = '#f59e0b'; hCtx.fillRect(todayX, 0, 2, HDR_H); }
+        if (showTodayLine && todayX >= 0 && todayX <= W) { hCtx.fillStyle = '#f59e0b'; hCtx.fillRect(todayX, 0, 2, hdrH); }
         if (showStatusLine && statusDate) {
             const sdx = (dayDiff(projStart, statusDate) + 1) * PX;
-            if (sdx >= 0 && sdx <= W) { hCtx.fillStyle = '#06b6d4'; hCtx.fillRect(sdx, 0, 2, HDR_H); }
+            if (sdx >= 0 && sdx <= W) { hCtx.fillStyle = '#06b6d4'; hCtx.fillRect(sdx, 0, 2, hdrH); }
         }
 
         // ─── Body canvas ────────────────────────────────────

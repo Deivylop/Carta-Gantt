@@ -4,9 +4,11 @@
 // ═══════════════════════════════════════════════════════════════════
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useGantt } from '../../store/GanttContext';
-import { isoDate, fmtDate, parseDate } from '../../utils/cpm';
+import { isoDate, fmtDate, parseDate, addDays } from '../../utils/cpm';
+import { predsToStr } from '../../utils/helpers';
 import type { Activity, LeanRestriction, RestrictionCategory, RestrictionStatus } from '../../types/gantt';
 import { AlertTriangle, CheckCircle2, Clock, User, ShieldAlert, Settings2, Ruler, CalendarCheck2, Network } from 'lucide-react';
+import ColumnPickerModal from '../ColumnPickerModal';
 
 /* ── constants ── */
 const WEEK_DAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
@@ -32,8 +34,10 @@ interface ColDef {
   align: 'left' | 'center';
 }
 const COL_DEFS: ColDef[] = [
+  /* ── Originales Look Ahead ── */
   { key: 'id',        label: 'ID',          defaultWidth: 50,  minWidth: 35,  align: 'left'   },
   { key: 'name',      label: 'Actividad',   defaultWidth: 180, minWidth: 100, align: 'left'   },
+  /* ── Last Planner ── */
   { key: 'encargado', label: 'Encargado',   defaultWidth: 100, minWidth: 60,  align: 'left'   },
   { key: 'pct',       label: 'Avance',      defaultWidth: 60,  minWidth: 40,  align: 'center' },
   { key: 'pctProgr',  label: '% Progr.',    defaultWidth: 65,  minWidth: 45,  align: 'center' },
@@ -43,8 +47,73 @@ const COL_DEFS: ColDef[] = [
   { key: 'dias',      label: 'Días',        defaultWidth: 45,  minWidth: 30,  align: 'center' },
   { key: 'fPrevista', label: 'F. Prevista', defaultWidth: 85,  minWidth: 65,  align: 'center' },
   { key: 'fLiberado', label: 'F. Liberado', defaultWidth: 85,  minWidth: 65,  align: 'center' },
+  /* ── General (Carta Gantt) ── */
+  { key: 'outlineNum',label: 'EDT',         defaultWidth: 55,  minWidth: 35,  align: 'left'   },
+  { key: 'type',      label: 'Tipo',        defaultWidth: 70,  minWidth: 50,  align: 'center' },
+  { key: 'lv',        label: 'WBS/Nivel',   defaultWidth: 50,  minWidth: 30,  align: 'center' },
+  { key: 'notes',     label: 'Notas',       defaultWidth: 120, minWidth: 60,  align: 'left'   },
+  /* ── Duraciones ── */
+  { key: 'dur',       label: 'Duración',    defaultWidth: 70,  minWidth: 45,  align: 'center' },
+  { key: 'remDur',    label: 'Dur. Resta',  defaultWidth: 70,  minWidth: 45,  align: 'center' },
+  /* ── Fechas ── */
+  { key: 'startDate', label: 'Comienzo',    defaultWidth: 90,  minWidth: 65,  align: 'center' },
+  { key: 'endDate',   label: 'Fin',         defaultWidth: 90,  minWidth: 65,  align: 'center' },
+  { key: 'actualStart', label: 'Comienzo Real', defaultWidth: 95, minWidth: 65, align: 'center' },
+  { key: 'actualFinish',label: 'Fin Real',  defaultWidth: 95,  minWidth: 65,  align: 'center' },
+  { key: 'constraint', label: 'Restricción',defaultWidth: 80,  minWidth: 50,  align: 'center' },
+  { key: 'constraintDate', label: 'Fecha Restr.', defaultWidth: 90, minWidth: 65, align: 'center' },
+  /* ── Relaciones ── */
+  { key: 'predStr',   label: 'Predecesoras',defaultWidth: 100, minWidth: 60,  align: 'left'   },
+  /* ── Avance ── */
+  { key: 'plannedPct',label: '% Prog.',     defaultWidth: 65,  minWidth: 45,  align: 'center' },
+  /* ── Recursos ── */
+  { key: 'res',       label: 'Recursos',    defaultWidth: 110, minWidth: 60,  align: 'left'   },
+  { key: 'cal',       label: 'Calendario',  defaultWidth: 60,  minWidth: 40,  align: 'center' },
+  /* ── Trabajo / EVM ── */
+  { key: 'work',      label: 'Trabajo',     defaultWidth: 70,  minWidth: 45,  align: 'center' },
+  { key: 'earnedValue',label: 'Valor Ganado',defaultWidth: 85,  minWidth: 55,  align: 'center' },
+  { key: 'remainingWork',label: 'Trab. Restante', defaultWidth: 90, minWidth: 55, align: 'center' },
+  { key: 'weight',    label: 'Peso %',      defaultWidth: 65,  minWidth: 40,  align: 'center' },
+  /* ── Línea Base ── */
+  { key: 'blDur',     label: 'Dur. LB',     defaultWidth: 60,  minWidth: 40,  align: 'center' },
+  { key: 'blStart',   label: 'Inicio LB',   defaultWidth: 90,  minWidth: 65,  align: 'center' },
+  { key: 'blEnd',     label: 'Fin LB',      defaultWidth: 90,  minWidth: 65,  align: 'center' },
+  /* ── Holguras ── */
+  { key: 'TF',        label: 'Holgura Total',defaultWidth: 75,  minWidth: 45,  align: 'center' },
+  { key: 'FF',        label: 'Holgura Libre',defaultWidth: 75,  minWidth: 45,  align: 'center' },
+  { key: 'floatPath', label: 'Float Path',  defaultWidth: 70,  minWidth: 45,  align: 'center' },
+  /* ── CPM ── */
+  { key: 'crit',      label: 'Crítico',     defaultWidth: 55,  minWidth: 35,  align: 'center' },
+  { key: 'activityCount', label: 'Recuento',defaultWidth: 70,  minWidth: 45,  align: 'center' },
+  /* ── Personalizado ── */
+  { key: 'txt1',      label: 'Texto 1',     defaultWidth: 100, minWidth: 60,  align: 'left'   },
+  { key: 'txt2',      label: 'Texto 2',     defaultWidth: 100, minWidth: 60,  align: 'left'   },
+  { key: 'txt3',      label: 'Texto 3',     defaultWidth: 100, minWidth: 60,  align: 'left'   },
+  { key: 'txt4',      label: 'Texto 4',     defaultWidth: 100, minWidth: 60,  align: 'left'   },
+  { key: 'txt5',      label: 'Texto 5',     defaultWidth: 100, minWidth: 60,  align: 'left'   },
 ];
 const COL_MAP = Object.fromEntries(COL_DEFS.map(c => [c.key, c])) as Record<string, ColDef>;
+
+/* Default visible columns for Look Ahead */
+const DEFAULT_LA_VISIBLE = new Set([
+  'id', 'name', 'encargado', 'pct', 'pctProgr', 'estado', 'tipoRestr', 'estRestr', 'dias', 'fPrevista', 'fLiberado',
+]);
+
+/* Column groups for the Look Ahead Column Modal */
+const LA_COLUMN_GROUPS: { group: string; keys: string[] }[] = [
+  { group: 'General', keys: ['outlineNum', 'id', 'name', 'type', 'lv', 'notes'] },
+  { group: 'Last Planner', keys: ['encargado', 'estado', 'tipoRestr', 'estRestr', 'dias', 'fPrevista', 'fLiberado'] },
+  { group: 'Duraciones', keys: ['dur', 'remDur'] },
+  { group: 'Fechas', keys: ['startDate', 'endDate', 'actualStart', 'actualFinish', 'constraint', 'constraintDate'] },
+  { group: 'Relaciones', keys: ['predStr'] },
+  { group: 'Avance', keys: ['pct', 'pctProgr', 'plannedPct'] },
+  { group: 'Recursos', keys: ['res', 'cal'] },
+  { group: 'Trabajo / EVM', keys: ['work', 'earnedValue', 'remainingWork', 'weight'] },
+  { group: 'Línea Base', keys: ['blDur', 'blStart', 'blEnd'] },
+  { group: 'Holguras', keys: ['TF', 'FF', 'floatPath'] },
+  { group: 'CPM', keys: ['crit', 'activityCount'] },
+  { group: 'Personalizado', keys: ['txt1', 'txt2', 'txt3', 'txt4', 'txt5'] },
+];
 
 /* ── types ── */
 interface Props { windowStart: Date; windowEnd: Date; }
@@ -65,11 +134,12 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
   const [colWidths, setColWidths] = useState<Record<string, number>>(
     Object.fromEntries(COL_DEFS.map(c => [c.key, c.defaultWidth])),
   );
-  const [colHidden, setColHidden] = useState<Set<string>>(new Set());
+  const [colHidden, setColHidden] = useState<Set<string>>(
+    () => new Set(COL_DEFS.filter(c => !DEFAULT_LA_VISIBLE.has(c.key)).map(c => c.key)),
+  );
   const [showColPicker, setShowColPicker] = useState(false);
   const [dragCol, setDragCol] = useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
-  const colPickerRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerW, setContainerW] = useState(0);
 
@@ -79,16 +149,6 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
   );
 
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
-
-  /* close column-picker on outside click */
-  useEffect(() => {
-    if (!showColPicker) return;
-    const handler = (e: MouseEvent) => {
-      if (colPickerRef.current && !colPickerRef.current.contains(e.target as Node)) setShowColPicker(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [showColPicker]);
 
   /* measure container width for auto-fit day columns */
   useEffect(() => {
@@ -135,7 +195,11 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
         if (!a.ES || !a.EF) return false;
         return a.ES <= windowEnd && a.EF >= windowStart;
       })
-      .map(a => ({ ...a, _start: a.ES!, _end: a.EF! }) as ActEx)
+      .map(a => {
+        // EF is exclusive (day after last work day) for non-milestone tasks → subtract 1 day for visual end
+        const visualEnd = a.type === 'milestone' ? a.EF! : addDays(a.EF!, -1);
+        return { ...a, _start: a.ES!, _end: visualEnd } as ActEx;
+      })
       .sort((a, b) => a._start.getTime() - b._start.getTime());
   }, [state.activities, windowStart, windowEnd]);
 
@@ -325,14 +389,6 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
     setDragCol(null); setDragOverCol(null);
   };
 
-  /* ── column visibility toggle ── */
-  const toggleCol = (key: string) =>
-    setColHidden(prev => {
-      const next = new Set(prev);
-      next.has(key) ? next.delete(key) : next.add(key);
-      return next;
-    });
-
   /* ── styles ── */
   const inputS: React.CSSProperties = {
     width: '100%', background: 'var(--bg-input)', border: '1px solid var(--color-indigo)',
@@ -427,6 +483,73 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
             ? <span style={{ color: '#22c55e' }}>{fmtDate(parseDate(pr.actualReleaseDate))}</span>
             : <span style={{ color: 'var(--text-muted)' }}>—</span>;
 
+      /* ── Gantt columns ── */
+      case 'outlineNum':
+        return <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>{act.outlineNum || ''}</span>;
+      case 'type':
+        return <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
+          {act.type === 'milestone' ? 'Hito' : act.type === 'summary' ? 'Resumen' : 'Tarea'}
+        </span>;
+      case 'lv':
+        return <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{(act.lv || 0) + 1}</span>;
+      case 'notes':
+        return <span style={{ fontSize: 10, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{(act.notes || '').substring(0, 40)}</span>;
+      case 'dur':
+        return <span style={{ fontSize: 10, color: 'var(--text-primary)' }}>{act.type === 'milestone' ? '0d' : (act.dur || 0) + 'd'}</span>;
+      case 'remDur':
+        return <span style={{ fontSize: 10, color: 'var(--text-primary)' }}>{act.type === 'milestone' ? '0d' : (act.remDur != null ? act.remDur : (act.dur || 0)) + 'd'}</span>;
+      case 'startDate':
+        return <span style={{ fontSize: 10, color: 'var(--text-primary)' }}>{act.ES ? fmtDate(act.ES) : ''}</span>;
+      case 'endDate':
+        return <span style={{ fontSize: 10, color: 'var(--text-primary)' }}>{act.EF ? fmtDate(act.type === 'milestone' ? act.EF : addDays(act.EF, -1)) : ''}</span>;
+      case 'actualStart':
+        return <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{act.actualStart ? fmtDate(new Date(act.actualStart)) : ''}</span>;
+      case 'actualFinish':
+        return <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{act.actualFinish ? fmtDate(new Date(act.actualFinish)) : ''}</span>;
+      case 'constraint':
+        return <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{act.constraint || ''}</span>;
+      case 'constraintDate':
+        return <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{act.constraintDate || ''}</span>;
+      case 'predStr':
+        return <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{predsToStr(act.preds)}</span>;
+      case 'plannedPct':
+        return <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{Number((act as any)._plannedPct != null ? (act as any)._plannedPct : (act.pct || 0)).toFixed(1)}%</span>;
+      case 'res':
+        return <span style={{ fontSize: 10, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{act.res || ''}</span>;
+      case 'cal':
+        return <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{typeof act.cal === 'string' ? act.cal : (act.cal || '') + ''}</span>;
+      case 'work':
+        return <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{(act.work || 0) + ' hrs'}</span>;
+      case 'earnedValue': {
+        const ev = Math.round((act.work || 0) * (act.pct || 0) / 100 * 10) / 10;
+        return <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{ev} hrs</span>;
+      }
+      case 'remainingWork': {
+        const ev2 = (act.work || 0) * (act.pct || 0) / 100;
+        const rem = Math.round(((act.work || 0) - ev2) * 10) / 10;
+        return <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{rem} hrs</span>;
+      }
+      case 'weight':
+        return <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{act.weight != null ? act.weight + '%' : ''}</span>;
+      case 'blDur':
+        return <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{act.blDur != null ? act.blDur + 'd' : ''}</span>;
+      case 'blStart':
+        return <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{act.blES ? fmtDate(act.blES) : ''}</span>;
+      case 'blEnd':
+        return <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{act.blEF ? fmtDate(addDays(act.blEF, -1)) : ''}</span>;
+      case 'TF':
+        return <span style={{ fontSize: 10, color: act.TF != null && act.TF <= 0 ? '#ef4444' : 'var(--text-secondary)' }}>{act.TF != null ? act.TF + 'd' : ''}</span>;
+      case 'FF':
+        return <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{(act as any)._freeFloat != null ? (act as any)._freeFloat + 'd' : ''}</span>;
+      case 'floatPath':
+        return <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{(act as any)._floatPath != null ? String((act as any)._floatPath) : ''}</span>;
+      case 'crit':
+        return <span style={{ fontSize: 10, color: act.crit ? '#ef4444' : 'var(--text-secondary)', fontWeight: act.crit ? 600 : 400 }}>{act.crit ? 'Sí' : 'No'}</span>;
+      case 'activityCount':
+        return <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>1</span>;
+      case 'txt1': case 'txt2': case 'txt3': case 'txt4': case 'txt5':
+        return <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{(act as any)[key] || ''}</span>;
+
       default: return null;
     }
   };
@@ -493,35 +616,33 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
             }}><Network size={12} /> Relaciones</button>
         </div>
 
-        {/* Column picker */}
-        <div style={{ position: 'relative' }} ref={colPickerRef}>
-          <button onClick={() => setShowColPicker(p => !p)}
+        {/* Column picker – opens full modal like Carta Gantt */}
+        <div style={{ position: 'relative' }}>
+          <button onClick={() => setShowColPicker(true)}
             style={{ background: 'var(--bg-input)', border: '1px solid var(--border-secondary)', borderRadius: 4,
               padding: '3px 8px', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex',
               alignItems: 'center', gap: 4, fontSize: 10 }}>
             <Settings2 size={12} /> Columnas
           </button>
-          {showColPicker && (
-            <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4,
-              background: 'var(--bg-panel)', border: '1px solid var(--border-primary)',
-              borderRadius: 6, padding: 8, zIndex: 200, minWidth: 180,
-              boxShadow: '0 8px 24px rgba(0,0,0,0.35)' }}>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>Mostrar / Ocultar</div>
-              {COL_DEFS.map(col => (
-                <label key={col.key} style={{ display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '3px 6px', cursor: 'pointer', fontSize: 11, color: 'var(--text-primary)',
-                  borderRadius: 3 }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                  <input type="checkbox" checked={!colHidden.has(col.key)}
-                    onChange={() => toggleCol(col.key)} style={{ accentColor: 'var(--color-indigo)' }} />
-                  {col.label}
-                </label>
-              ))}
-            </div>
-          )}
         </div>
       </div>
+
+      {/* Column Picker Modal */}
+      {showColPicker && (
+        <ColumnPickerModal
+          onClose={() => setShowColPicker(false)}
+          externalColumns={COL_DEFS.map(c => ({ key: c.key, label: c.label }))}
+          externalSelected={visibleCols}
+          onExternalApply={(selectedKeys) => {
+            // Update colOrder to put selected first, then hidden
+            const selSet = new Set(selectedKeys);
+            const newOrder = [...selectedKeys, ...colOrder.filter(k => !selSet.has(k))];
+            setColOrder(newOrder);
+            setColHidden(new Set(COL_DEFS.map(c => c.key).filter(k => !selSet.has(k))));
+          }}
+          customGroups={LA_COLUMN_GROUPS}
+        />
+      )}
 
       {/* Grid */}
       <div ref={containerRef} style={{ flex: 1, overflow: 'auto', padding: 0, position: 'relative' }}>

@@ -47,24 +47,31 @@ function calFactor(cal: CalendarType): number {
 
 // ─── Date Utilities ─────────────────────────────────────────────
 
-export function addWorkDays(d: Date, wd: number, cal: CalendarType): Date {
-    const cc = findCustomCal(cal);
-    if (cc) {
-        // Day-by-day iteration for custom calendars
-        if (wd === 0) return new Date(d);
-        const r = new Date(d);
-        let remaining = Math.abs(Math.round(wd));
-        const dir = wd > 0 ? 1 : -1;
-        while (remaining > 0) {
-            r.setDate(r.getDate() + dir);
-            if (isWorkDayForCal(r, cal)) remaining--;
-        }
-        return r;
-    }
-    const f = calFactor(cal);
-    const c = Math.round(wd * f);
+/** Snap a date forward to the next work day (returns same date if already a work day) */
+export function snapToWorkDay(d: Date, cal: CalendarType): Date {
     const r = new Date(d);
-    r.setDate(r.getDate() + c);
+    while (!isWorkDayForCal(r, cal)) r.setDate(r.getDate() + 1);
+    return r;
+}
+
+/** Compute exclusive EF from ES and duration (ES is day 1, inclusive) */
+function calcEF(es: Date, dur: number, cal: CalendarType): Date {
+    if (dur <= 0) return new Date(es);
+    // Snap ES to work day, then advance dur-1 more work days to reach last work day
+    const snapped = snapToWorkDay(es, cal);
+    const lastWorkDay = dur === 1 ? snapped : addWorkDays(snapped, dur - 1, cal);
+    return addDays(lastWorkDay, 1); // EF is exclusive (day after last work day)
+}
+
+export function addWorkDays(d: Date, wd: number, cal: CalendarType): Date {
+    if (wd === 0) return new Date(d);
+    const r = new Date(d);
+    let remaining = Math.abs(Math.round(wd));
+    const dir = wd > 0 ? 1 : -1;
+    while (remaining > 0) {
+        r.setDate(r.getDate() + dir);
+        if (isWorkDayForCal(r, cal)) remaining--;
+    }
     return r;
 }
 
@@ -79,11 +86,7 @@ export function dayDiff(a: Date, b: Date): number {
 }
 
 export function calWorkDays(a: Date, b: Date, cal: CalendarType): number {
-    const cc = findCustomCal(cal);
-    if (cc) return getExactWorkDays(a, b, cal);
-    const cd = dayDiff(a, b);
-    const f = calFactor(cal);
-    return Math.max(0, Math.round(cd / f));
+    return getExactWorkDays(a, b, cal);
 }
 
 export function getExactWorkDays(start: Date, end: Date, cal: CalendarType): number {
@@ -243,7 +246,7 @@ export function calcCPM(
                 const pred = byId[p.id]; if (!pred) return;
                 if (pred.type === 'summary' || a.type === 'summary') return;
                 getES(pred);
-                const pEF = pred.EF || addWorkDays(pred.ES || projStart, pred.type === 'milestone' ? 0 : (pred.dur || 0), pred.cal || defCal);
+                const pEF = pred.EF || (pred.type === 'milestone' ? (pred.ES || projStart) : calcEF(pred.ES || projStart, pred.dur || 0, pred.cal || defCal));
                 const pES = pred.ES || projStart;
                 let t: Date;
                 const lag = p.lag || 0;
@@ -251,9 +254,9 @@ export function calcCPM(
                 if (p.type === 'FS') t = addWorkDays(pEF, lag, a.cal || defCal);
                 else if (p.type === 'SS') t = addWorkDays(pES, lag, a.cal || defCal);
                 else if (p.type === 'FF') {
-                    t = addDays(addWorkDays(pEF, lag, a.cal || defCal), -Math.round((a.type === 'milestone' ? 0 : (a.dur || 0)) * calFactor(a.cal || defCal)));
+                    t = addWorkDays(addWorkDays(pEF, lag, a.cal || defCal), -(a.type === 'milestone' ? 0 : (a.dur || 0)), a.cal || defCal);
                 } else if (p.type === 'SF') {
-                    t = addDays(addWorkDays(pES, lag, a.cal || defCal), -Math.round((a.type === 'milestone' ? 0 : (a.dur || 0)) * calFactor(a.cal || defCal)));
+                    t = addWorkDays(addWorkDays(pES, lag, a.cal || defCal), -(a.type === 'milestone' ? 0 : (a.dur || 0)), a.cal || defCal);
                 } else {
                     t = addWorkDays(pEF, lag, a.cal || defCal);
                 }
@@ -262,8 +265,13 @@ export function calcCPM(
             });
         }
 
+        // Snap ES to next work day (unless forced by actual start or constraint)
+        if (!forced && a.type !== 'milestone' && a.type !== 'summary') {
+            es = snapToWorkDay(es, a.cal || defCal);
+        }
+
         a.ES = es;
-        a.EF = addWorkDays(es, a.type === 'milestone' ? 0 : (a.dur || 0), a.cal || defCal);
+        a.EF = a.type === 'milestone' ? new Date(es) : calcEF(es, a.dur || 0, a.cal || defCal);
         // Para actividades 100% completas con Fin Real, usar actualFinish como EF
         if ((a.pct || 0) >= 100 && a.actualFinish) {
             const af = parseDate(a.actualFinish);
@@ -352,9 +360,9 @@ export function calcCPM(
                     if (p.type === 'FS') t = addWorkDays(pEF!, lag, a.cal || defCal);
                     else if (p.type === 'SS') t = addWorkDays(pES!, lag, a.cal || defCal);
                     else if (p.type === 'FF') {
-                        t = addDays(addWorkDays(pEF!, lag, a.cal || defCal), -Math.round((a.type === 'milestone' ? 0 : (a._remDur || a.dur || 0)) * calFactor(a.cal || defCal)));
+                        t = addWorkDays(addWorkDays(pEF!, lag, a.cal || defCal), -(a.type === 'milestone' ? 0 : (a._remDur || a.dur || 0)), a.cal || defCal);
                     } else if (p.type === 'SF') {
-                        t = addDays(addWorkDays(pES!, lag, a.cal || defCal), -Math.round((a.type === 'milestone' ? 0 : (a._remDur || a.dur || 0)) * calFactor(a.cal || defCal)));
+                        t = addWorkDays(addWorkDays(pES!, lag, a.cal || defCal), -(a.type === 'milestone' ? 0 : (a._remDur || a.dur || 0)), a.cal || defCal);
                     } else {
                         t = addWorkDays(pEF!, lag, a.cal || defCal);
                     }
@@ -366,8 +374,9 @@ export function calcCPM(
                 // Actividad con avance parcial:
                 // - ES se mantiene en la fecha de inicio real (actualStart)
                 // - Solo el trabajo restante se programa hacia adelante desde newES (fecha de corte o pred)
+                newES = snapToWorkDay(newES, a.cal || defCal);
                 a._remStart = newES;
-                const newEF = addWorkDays(newES, a._remDur!, a.cal || defCal);
+                const newEF = calcEF(newES, a._remDur!, a.cal || defCal);
                 // Mantener ES en la fecha de inicio real (actualStart si existe, si no el ES del forward pass)
                 if (a.actualStart) {
                     const asDate = parseDate(a.actualStart);
@@ -395,10 +404,12 @@ export function calcCPM(
                 a._spanDur = calWorkDays(a.ES!, a.EF!, a.cal || defCal);
             } else {
                 // Sin avance: mover si newES es posterior al ES actual
+                // Snap to next work day
+                if (a.type !== 'milestone') newES = snapToWorkDay(newES, a.cal || defCal);
                 if (newES > a.ES!) {
                     a.ES = newES;
                     const effDur = a.type === 'milestone' ? 0 : (a.remDur != null ? a.remDur : (a.dur || 0));
-                    a.EF = addWorkDays(newES, effDur, a.cal || defCal);
+                    a.EF = calcEF(newES, effDur, a.cal || defCal);
                 }
                 a._retES = a.ES;
                 a._retEF = a.EF;
@@ -444,7 +455,7 @@ export function calcCPM(
                 const remainingAfterResume = Math.max(0, totalRemaining - workBeforeSuspend);
 
                 // New EF = addWorkDays(resumeDate, remainingAfterResume)
-                const newEF = addWorkDays(resDate, remainingAfterResume, cal);
+                const newEF = calcEF(resDate, remainingAfterResume, cal);
                 a.EF = newEF;
                 a._isSplit = true;
                 a._actualEnd = suspDate;        // segment 1 ends at suspend date
@@ -494,9 +505,7 @@ export function calcCPM(
         if (minES) a.ES = minES;
         if (maxEF) a.EF = maxEF;
         if (minES && maxEF) {
-            const calDays = dayDiff(minES, maxEF);
-            const factor = calFactor(a.cal || defCal);
-            a.dur = Math.max(1, Math.round(calDays / factor));
+            a.dur = Math.max(1, getExactWorkDays(minES, maxEF, a.cal || defCal));
         }
     }
 
@@ -627,7 +636,8 @@ export function calcCPM(
         if (a.type === 'milestone') return 0;
         // Usar la distancia real ES→EF (que refleja la reprogramación)
         if (a.ES && a.EF) return Math.max(0, dayDiff(a.ES, a.EF));
-        return Math.round((a.dur || 0) * calFactor(a.cal || defCal));
+        // Fallback: estimate from duration (only used if ES/EF not computed)
+        return Math.max(0, dayDiff(new Date(), addWorkDays(new Date(), a.dur || 0, a.cal || defCal)));
     };
 
     sorted.forEach(a => {

@@ -46,6 +46,10 @@ const COLUMN_GROUPS: { group: string; keys: string[] }[] = [
         keys: ['crit', 'activityCount'],
     },
     {
+        group: 'Last Planner',
+        keys: ['encargado', 'lpEstado', 'tipoRestr', 'estRestr', 'lpDias', 'fPrevista', 'fLiberado'],
+    },
+    {
         group: 'Personalizado',
         keys: ['txt1', 'txt2', 'txt3', 'txt4', 'txt5'],
     },
@@ -74,12 +78,23 @@ function saveViews(views: SavedView[]) {
     localStorage.setItem(VIEWS_STORAGE_KEY, JSON.stringify(views));
 }
 
+/* ── Exported for reuse (e.g. Look Ahead) ── */
+export { COLUMN_GROUPS };
+
 interface Props {
     onClose: () => void;
+    /** When provided, modal works in external mode (e.g. Look Ahead) */
+    externalColumns?: { key: string; label: string }[];
+    externalSelected?: string[];
+    onExternalApply?: (selectedKeys: string[]) => void;
+    /** Optional custom groups override */
+    customGroups?: { group: string; keys: string[] }[];
 }
 
-export default function ColumnPickerModal({ onClose }: Props) {
+export default function ColumnPickerModal({ onClose, externalColumns, externalSelected, onExternalApply, customGroups }: Props) {
     const { state, dispatch } = useGantt();
+    const isExternal = !!(externalColumns && onExternalApply);
+    const groups = customGroups || COLUMN_GROUPS;
     const { ref: resizeRef, style: resizeStyle } = useResizable({ initW: 680, minW: 450, minH: 350 });
 
     /* ── Tab state ── */
@@ -87,13 +102,15 @@ export default function ColumnPickerModal({ onClose }: Props) {
 
     /* Local state: selected keys (visible columns, ordered) and available grouped */
     const [selected, setSelected] = useState<string[]>(() =>
-        state.columns.filter(c => c.visible && !INTERNAL_KEYS.has(c.key)).map(c => c.key)
+        isExternal
+            ? (externalSelected || [])
+            : state.columns.filter(c => c.visible && !INTERNAL_KEYS.has(c.key)).map(c => c.key)
     );
     const [selHighlight, setSelHighlight] = useState<Set<string>>(new Set());
     const [lastSelClick, setLastSelClick] = useState<string | null>(null);
 
     /* Expanded groups in left panel */
-    const [expanded, setExpanded] = useState<Set<string>>(() => new Set(COLUMN_GROUPS.map(g => g.group)));
+    const [expanded, setExpanded] = useState<Set<string>>(() => new Set(groups.map(g => g.group)));
 
     /* Selected item in left panel (multi-select) */
     const [availHighlight, setAvailHighlight] = useState<Set<string>>(new Set());
@@ -104,23 +121,38 @@ export default function ColumnPickerModal({ onClose }: Props) {
     const [newViewName, setNewViewName] = useState('');
 
     /* Column lookup – initialise synchronously so first render has labels */
+    const extMap = useRef<Map<string, { key: string; label: string }>>(
+        isExternal
+            ? new Map(externalColumns!.map(c => [c.key, c]))
+            : new Map()
+    );
     const colMap = useRef<Map<string, ColumnDef>>(new Map(state.columns.map(c => [c.key, c])));
     useEffect(() => {
         colMap.current = new Map(state.columns.map(c => [c.key, c]));
     }, [state.columns]);
 
     const getLabel = useCallback((key: string) => {
+        if (isExternal) {
+            return extMap.current.get(key)?.label || colMap.current.get(key)?.label || key;
+        }
         return colMap.current.get(key)?.label || key;
-    }, []);
+    }, [isExternal]);
 
     /* Available columns = all non-internal, non-selected */
     const availableKeys = useCallback(() => {
         const selSet = new Set(selected);
-        return COLUMN_GROUPS.map(g => ({
+        if (isExternal) {
+            const allExtKeys = new Set(externalColumns!.map(c => c.key));
+            return groups.map(g => ({
+                ...g,
+                keys: g.keys.filter(k => !selSet.has(k) && (allExtKeys.has(k) || colMap.current.has(k))),
+            })).filter(g => g.keys.length > 0);
+        }
+        return groups.map(g => ({
             ...g,
             keys: g.keys.filter(k => !selSet.has(k) && colMap.current.has(k)),
         })).filter(g => g.keys.length > 0);
-    }, [selected]);
+    }, [selected, isExternal, externalColumns, groups]);
 
     const toggleGroup = (group: string) => {
         setExpanded(prev => {
@@ -258,6 +290,10 @@ export default function ColumnPickerModal({ onClose }: Props) {
 
     /* ── Apply ── */
     const applyChanges = useCallback(() => {
+        if (isExternal) {
+            onExternalApply!(selected);
+            return;
+        }
         const selSet = new Set(selected);
 
         // Build new columns array: internals first (keep order), then selected, then remaining hidden
@@ -277,7 +313,7 @@ export default function ColumnPickerModal({ onClose }: Props) {
         });
 
         dispatch({ type: 'SET_COLUMNS_ORDER', columns: newCols, colWidths: newWidths });
-    }, [selected, state.columns, state.colWidths, dispatch]);
+    }, [selected, state.columns, state.colWidths, dispatch, isExternal, onExternalApply]);
 
     const handleAccept = () => { applyChanges(); onClose(); };
 
