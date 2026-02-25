@@ -618,7 +618,8 @@ function ensureProjRow(activities: Activity[], showProjRow: boolean, projName: s
 }
 
 function recalcInternal(state: GanttState, statusDate: Date | null, autoFit = false): GanttState {
-    let acts = ensureProjRow([...state.activities], state.showProjRow, state.projName, state.defCal);
+    // Deep-clone activity objects to prevent mutating previous state (React immutability)
+    let acts = ensureProjRow(state.activities.map(a => ({ ...a, preds: a.preds ? [...a.preds] : [] })), state.showProjRow, state.projName, state.defCal);
     const result = calcCPM(acts, state.projStart, state.defCal, statusDate, state.projName, state.activeBaselineIdx, state.customCalendars);
     // Multiple Float Paths
     if (state.mfpConfig.enabled) {
@@ -669,8 +670,16 @@ function refreshVisRows(state: GanttState): GanttState {
 // ─── Reducer ────────────────────────────────────────────────────
 function reducer(state: GanttState, action: Action): GanttState {
     switch (action.type) {
-        case 'SET_ACTIVITIES':
-            return recalcAutoFit({ ...state, activities: action.activities });
+        case 'SET_ACTIVITIES': {
+            const newState = { ...state, activities: action.activities };
+            // If activities have progress data and _cpmStatusDate is not yet set,
+            // apply retained logic using statusDate (project was previously calculated)
+            const hasProgress = action.activities.some((a: any) => (a.pct || 0) > 0 || a.actualStart);
+            if (hasProgress && !newState._cpmStatusDate) {
+                return recalcFullAutoFit(newState);
+            }
+            return recalcAutoFit(newState);
+        }
 
         case 'ADD_ACTIVITY': {
             const acts = [...state.activities];
