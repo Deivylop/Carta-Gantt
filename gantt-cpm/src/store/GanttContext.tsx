@@ -235,11 +235,44 @@ export type Action =
     | { type: 'UPDATE_PPC_WEEK'; id: string; updates: Partial<PPCWeekRecord> }
     | { type: 'DELETE_PPC_WEEK'; id: string }
     | { type: 'ADD_CNC_ENTRY'; weekId: string; entry: CNCEntry }
-    | { type: 'DELETE_CNC_ENTRY'; weekId: string; entryId: string };
+    | { type: 'DELETE_CNC_ENTRY'; weekId: string; entryId: string }
+    | { type: 'SET_PPC_HISTORY'; history: PPCWeekRecord[] }
+    | { type: 'SET_LEAN_RESTRICTIONS'; restrictions: LeanRestriction[] };
+
+// Module-level restriction cache (set synchronously in reducer before buildVisRows)
+let _moduleRestrictions: LeanRestriction[] = [];
 
 // ─── Grouping / Filtering ─────────────────────────────────────────
 function applyGroupFilter(rows: VisibleRow[], activities: Activity[], activeGroup: string, columns: ColumnDef[]): VisibleRow[] {
     if (activeGroup === 'none') return rows;
+    if (activeGroup === 'restriction') {
+        // Group by restriction category (only active, non-Liberada restrictions)
+        const activeRestr = _moduleRestrictions.filter(r => r.status !== 'Liberada' && r.category !== 'Sin Restricción');
+        const restrByAct = new Map<string, LeanRestriction[]>();
+        activeRestr.forEach(r => {
+            if (!restrByAct.has(r.activityId)) restrByAct.set(r.activityId, []);
+            restrByAct.get(r.activityId)!.push(r);
+        });
+        const special: VisibleRow[] = [], restricted: VisibleRow[] = [];
+        rows.forEach(vr => {
+            const a = activities[vr._idx];
+            if (a?._isProjRow) { special.push(vr); return; }
+            if (restrByAct.has(vr.id)) restricted.push(vr);
+        });
+        const groups = new Map<string, VisibleRow[]>();
+        restricted.forEach(vr => {
+            const restrs = restrByAct.get(vr.id)!;
+            const cat = restrs[0].category;
+            if (!groups.has(cat)) groups.set(cat, []);
+            groups.get(cat)!.push(vr);
+        });
+        const result: VisibleRow[] = [...special];
+        for (const [cat, grpRows] of groups) {
+            result.push({ _isGroupHeader: true, _groupLabel: 'Restricción: ' + cat, _groupCount: grpRows.length, id: '__grp_restr_' + cat } as any);
+            grpRows.forEach(vr => result.push(vr));
+        }
+        return result;
+    }
     if (activeGroup === 'critical') return rows.filter(vr => { const a = activities[vr._idx]; return a._isProjRow || a.type === 'summary' || a.crit; });
     if (activeGroup.startsWith('floatpath')) {
         const pathNum = parseInt(activeGroup.replace('floatpath', ''));
@@ -669,6 +702,8 @@ function refreshVisRows(state: GanttState): GanttState {
 
 // ─── Reducer ────────────────────────────────────────────────────
 function reducer(state: GanttState, action: Action): GanttState {
+    // Sync module-level restriction cache for grouping
+    _moduleRestrictions = state.leanRestrictions;
     switch (action.type) {
         case 'SET_ACTIVITIES': {
             const newState = { ...state, activities: action.activities };
@@ -973,6 +1008,10 @@ function reducer(state: GanttState, action: Action): GanttState {
         case 'DELETE_CNC_ENTRY': {
             return { ...state, ppcHistory: state.ppcHistory.map(w => w.id === action.weekId ? { ...w, cncEntries: w.cncEntries.filter(e => e.id !== action.entryId) } : w) };
         }
+        case 'SET_PPC_HISTORY':
+            return { ...state, ppcHistory: action.history };
+        case 'SET_LEAN_RESTRICTIONS':
+            return { ...state, leanRestrictions: action.restrictions };
 
         case 'SET_VIEW': {
             const visRows = buildVisRows(state.activities, state.collapsed, state.activeGroup, state.columns, action.view, state.expResources, state.usageModes);

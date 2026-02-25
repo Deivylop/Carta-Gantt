@@ -75,6 +75,8 @@ function AppInner() {
           if (data.resourcePool) dispatch({ type: 'SET_RESOURCES', resources: data.resourcePool });
           if (data.activities && data.activities.length) dispatch({ type: 'SET_ACTIVITIES', activities: data.activities });
           if (data.progressHistory) dispatch({ type: 'SET_PROGRESS_HISTORY', history: data.progressHistory });
+          if (data.ppcHistory && data.ppcHistory.length) dispatch({ type: 'SET_PPC_HISTORY', history: data.ppcHistory });
+          if (data.leanRestrictions && data.leanRestrictions.length) dispatch({ type: 'SET_LEAN_RESTRICTIONS', restrictions: data.leanRestrictions });
           return;
         } catch (err) {
           console.warn('Could not auto-load from Supabase, starting fresh', err);
@@ -100,7 +102,7 @@ function AppInner() {
       }
     }, 3000);
     return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
-  }, [state.activities, state.resourcePool, state.projName, state.projStart, state.defCal, state.statusDate]);
+  }, [state.activities, state.resourcePool, state.projName, state.projStart, state.defCal, state.statusDate, state.ppcHistory, state.leanRestrictions, state.progressHistory]);
 
   // 3. Listen to Supabase Events
   useEffect(() => {
@@ -113,28 +115,33 @@ function AppInner() {
         dispatch({ type: 'SET_RESOURCES', resources: data.resourcePool || [] });
         dispatch({ type: 'SET_ACTIVITIES', activities: data.activities || [] });
         dispatch({ type: 'SET_PROGRESS_HISTORY', history: data.progressHistory || [] });
+        if (data.ppcHistory && data.ppcHistory.length) dispatch({ type: 'SET_PPC_HISTORY', history: data.ppcHistory });
+        if (data.leanRestrictions && data.leanRestrictions.length) dispatch({ type: 'SET_LEAN_RESTRICTIONS', restrictions: data.leanRestrictions });
         localStorage.setItem('sb_current_project_id', pid);
         alert('Proyecto cargado exitosamente');
       } catch (err: any) {
         alert('Error al cargar proyecto: ' + err.message);
       }
     };
-    const handleForceSave = async () => {
+    const handleForceSave = async (e?: any) => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      const silent = e?.detail?.silent === true;
       const pid = localStorage.getItem('sb_current_project_id');
       try {
         const newId = await saveToSupabase(state, pid);
         if (newId && newId !== pid) localStorage.setItem('sb_current_project_id', newId);
-        alert('Proyecto guardado exitosamente');
+        if (!silent) alert('Proyecto guardado exitosamente');
+        else console.log('Silent save to Supabase completed');
       } catch (err: any) {
-        alert('Error al guardar: ' + err.message);
+        if (!silent) alert('Error al guardar: ' + err.message);
+        else console.error('Silent save error:', err);
       }
     };
     window.addEventListener('sb-load-project', handleLoad as any);
-    window.addEventListener('sb-force-save', handleForceSave);
+    window.addEventListener('sb-force-save', handleForceSave as any);
     return () => {
       window.removeEventListener('sb-load-project', handleLoad as any);
-      window.removeEventListener('sb-force-save', handleForceSave);
+      window.removeEventListener('sb-force-save', handleForceSave as any);
     };
   }, [state, dispatch]);
 

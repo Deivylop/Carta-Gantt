@@ -34,6 +34,12 @@ interface Props {
 
 export default function RestrictionsPanel({ windowStart, windowEnd }: Props) {
   const { state, dispatch } = useGantt();
+
+  /** Trigger a silent immediate save to Supabase after restriction mutations */
+  const triggerSave = () => {
+    setTimeout(() => window.dispatchEvent(new CustomEvent('sb-force-save', { detail: { silent: true } })), 500);
+  };
+
   const [filterStatus, setFilterStatus] = useState<RestrictionStatus | 'all'>('all');
   const [filterCat, setFilterCat] = useState<RestrictionCategory | 'all'>('all');
   const [showForm, setShowForm] = useState(false);
@@ -110,11 +116,13 @@ export default function RestrictionsPanel({ windowStart, windowEnd }: Props) {
     };
     dispatch({ type: 'ADD_RESTRICTION', restriction: r });
     setShowForm(false); setFormActId(''); setFormDesc(''); setFormResp(''); setFormPlanned(''); setFormNotes('');
+    triggerSave();
   };
 
   // Release restriction
   const releaseRestriction = (id: string) => {
     dispatch({ type: 'UPDATE_RESTRICTION', id, updates: { status: 'Liberada', actualReleaseDate: isoDate(new Date()) } });
+    triggerSave();
   };
 
   // Inline edit commit
@@ -127,10 +135,16 @@ export default function RestrictionsPanel({ windowStart, windowEnd }: Props) {
     else if (field === 'description') updates.description = editVal;
     else if (field === 'category') {
       (updates as any).category = editVal;
-      if (editVal === 'Sin Restricción') (updates as any).status = 'Liberada';
+      if (editVal === 'Sin Restricción') {
+        (updates as any).status = 'Liberada';
+      } else {
+        const cur = state.leanRestrictions.find(r => r.id === id);
+        if (cur && cur.status === 'Liberada') (updates as any).status = 'Pendiente';
+      }
     }
     dispatch({ type: 'UPDATE_RESTRICTION', id, updates });
     setEditingField(null);
+    triggerSave();
   };
 
   // Date indicator color
@@ -320,7 +334,7 @@ export default function RestrictionsPanel({ windowStart, windowEnd }: Props) {
                       {r.status !== 'Liberada' && (
                         <button onClick={() => releaseRestriction(r.id)} title="Liberar" style={{ background: '#22c55e22', border: '1px solid #22c55e44', borderRadius: 4, padding: '2px 6px', color: '#22c55e', cursor: 'pointer', fontSize: 10, fontWeight: 600 }}>✓ Liberar</button>
                       )}
-                      <button onClick={() => dispatch({ type: 'DELETE_RESTRICTION', id: r.id })} title="Eliminar" style={{ background: '#ef444422', border: '1px solid #ef444444', borderRadius: 4, padding: '2px 6px', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                      <button onClick={() => { dispatch({ type: 'DELETE_RESTRICTION', id: r.id }); triggerSave(); }} title="Eliminar" style={{ background: '#ef444422', border: '1px solid #ef444444', borderRadius: 4, padding: '2px 6px', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
                         <Trash2 size={12} />
                       </button>
                     </div>

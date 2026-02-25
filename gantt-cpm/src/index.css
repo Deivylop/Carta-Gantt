@@ -285,6 +285,18 @@ body,
   border-bottom: 2px solid #4f46e5 !important;
 }
 
+/* ── LookAhead Grid table rows (match GanttTable style) ── */
+.la-grid-table tbody tr {
+  cursor: default;
+  transition: background 0.05s;
+}
+.la-grid-table tbody tr:hover {
+  background: var(--bg-hover) !important;
+}
+.la-grid-table tbody tr.la-sel {
+  background: var(--bg-selected) !important;
+}
+
 .empty-row {
   opacity: 0.5;
 }

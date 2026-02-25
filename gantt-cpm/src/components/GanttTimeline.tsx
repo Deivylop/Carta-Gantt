@@ -2,10 +2,10 @@
 // Gantt Timeline – Canvas-based chart with connection lines,
 // bar drag (move/resize/link), tooltips, and full visual parity
 // ═══════════════════════════════════════════════════════════════════
-import React, { useRef, useEffect, useCallback, useState } from 'react';
+import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { useGantt } from '../store/GanttContext';
 import { dayDiff, addDays, fmtDate, isoDate } from '../utils/cpm';
-import type { ThemeColors } from '../types/gantt';
+import type { ThemeColors, LeanRestriction } from '../types/gantt';
 
 const ROW_H = 26;
 const HDR_H = 36;
@@ -54,10 +54,22 @@ interface DragPreview {
 
 export default function GanttTimeline() {
     const { state, dispatch } = useGantt();
-    const { visRows, zoom, totalDays, timelineStart: projStart, statusDate, _cpmStatusDate, selIdx, selIndices, lightMode, activities, defCal, pxPerDay, showProjRow: _showProjRow, showTodayLine, showStatusLine, showDependencies, mfpConfig, chainIds, chainTrace, spotlightEnabled, spotlightEnd } = state;
+    const { visRows, zoom, totalDays, timelineStart: projStart, statusDate, _cpmStatusDate, selIdx, selIndices, lightMode, activities, defCal, pxPerDay, showProjRow: _showProjRow, showTodayLine, showStatusLine, showDependencies, mfpConfig, chainIds, chainTrace, spotlightEnabled, spotlightEnd, leanRestrictions } = state;
     // For bar rendering, use the statusDate from last CPM calc (not the live one from the picker)
     const barStatusDate = _cpmStatusDate || statusDate;
     const PX = pxPerDay;
+
+    // Build restriction lookup: activityId → active (non-Liberada, non-'Sin Restricción') restrictions
+    const restrMap = useMemo(() => {
+        const m = new Map<string, LeanRestriction[]>();
+        leanRestrictions.forEach(r => {
+            if (r.status === 'Liberada') return;
+            if (r.category === 'Sin Restricción') return;
+            if (!m.has(r.activityId)) m.set(r.activityId, []);
+            m.get(r.activityId)!.push(r);
+        });
+        return m;
+    }, [leanRestrictions]);
     const hdrH = zoom === 'day' ? HDR_H_DAY : HDR_H;
     const hdrRef = useRef<HTMLCanvasElement>(null);
     const barRef = useRef<HTMLCanvasElement>(null);
@@ -402,14 +414,15 @@ export default function GanttTimeline() {
                     const seg2w = Math.max(4, seg2EndX - seg2x);
 
                     // Draw segment 1 (base bar)
+                    const isRestr = restrMap.has(r.id);
                     ctx.fillStyle = color;
                     if (!lightMode) { ctx.shadowColor = color; ctx.shadowBlur = 3; }
                     rrect(ctx, seg1x, by, seg1w, bh, 3); ctx.fill();
                     if (!lightMode) ctx.shadowBlur = 0;
-                    if (lightMode) {
-                        ctx.strokeStyle = r.crit ? '#b91c1c' : (r.lv <= 1 ? '#4338ca' : '#1d4ed8');
-                        ctx.lineWidth = 1; rrect(ctx, seg1x, by, seg1w, bh, 3); ctx.stroke();
-                    }
+                    // Border: yellow when restricted, else normal
+                    ctx.strokeStyle = isRestr ? '#f59e0b' : (r.crit ? '#b91c1c' : (r.lv <= 1 ? '#4338ca' : '#1d4ed8'));
+                    ctx.lineWidth = isRestr ? 2.5 : 1;
+                    rrect(ctx, seg1x, by, seg1w, bh, 3); ctx.stroke();
 
                     // Progress fill on segment 1:
                     // For suspended: progress covers only up to statusDate (done work portion)
@@ -449,10 +462,10 @@ export default function GanttTimeline() {
                     if (!lightMode) { ctx.shadowColor = color; ctx.shadowBlur = 3; }
                     rrect(ctx, seg2x, by, seg2w, bh, 3); ctx.fill();
                     if (!lightMode) ctx.shadowBlur = 0;
-                    if (lightMode) {
-                        ctx.strokeStyle = r.crit ? '#b91c1c' : (r.lv <= 1 ? '#4338ca' : '#1d4ed8');
-                        ctx.lineWidth = 1; rrect(ctx, seg2x, by, seg2w, bh, 3); ctx.stroke();
-                    }
+                    // Border: yellow when restricted, else normal
+                    ctx.strokeStyle = isRestr ? '#f59e0b' : (r.crit ? '#b91c1c' : (r.lv <= 1 ? '#4338ca' : '#1d4ed8'));
+                    ctx.lineWidth = isRestr ? 2.5 : 1;
+                    rrect(ctx, seg2x, by, seg2w, bh, 3); ctx.stroke();
                     // Gradient sheen seg 2
                     const g2 = ctx.createLinearGradient(0, by, 0, by + bh);
                     g2.addColorStop(0, t.gradTop); g2.addColorStop(1, t.gradBot);
@@ -471,14 +484,15 @@ export default function GanttTimeline() {
                     }
                 } else {
                     // ═══ NORMAL BAR (single continuous) ═══
+                    const isRestrN = restrMap.has(r.id);
                     ctx.fillStyle = color;
                     if (!lightMode) { ctx.shadowColor = color; ctx.shadowBlur = 3; }
                     rrect(ctx, bx, by, bw, bh, 3); ctx.fill();
                     if (!lightMode) ctx.shadowBlur = 0;
-                    if (lightMode) {
-                        ctx.strokeStyle = r.crit ? '#b91c1c' : (r.lv <= 1 ? '#4338ca' : '#1d4ed8');
-                        ctx.lineWidth = 1; rrect(ctx, bx, by, bw, bh, 3); ctx.stroke();
-                    }
+                    // Border: yellow when restricted, else normal
+                    ctx.strokeStyle = isRestrN ? '#f59e0b' : (r.crit ? '#b91c1c' : (r.lv <= 1 ? '#4338ca' : '#1d4ed8'));
+                    ctx.lineWidth = isRestrN ? 2.5 : 1;
+                    rrect(ctx, bx, by, bw, bh, 3); ctx.stroke();
                     // Progress fill
                     if (pct > 0 && barStatusDate && r.ES) {
                         const sdX = (dayDiff(projStart, barStatusDate) + 1) * PX;
@@ -507,6 +521,8 @@ export default function GanttTimeline() {
                 // Draw resize/link hit zones as subtle handles (only on hover)
                 // This is pure visual — actual hit-test is in hitTestBar
             }
+
+            // Restriction indicator is now rendered as yellow border on the bar itself (see bar stroke code above)
             // Active baseline only (no ghost bars for non-active baselines)
             // Active baseline (prominent)
             if (r.blES && r.blEF && r.type !== 'milestone' && r.type !== 'summary') {
@@ -602,7 +618,7 @@ export default function GanttTimeline() {
 
         // Draw drag overlay if active
         if (dragPreviewRef.current) drawDragOverlay();
-    }, [visRows, zoom, totalDays, projStart, statusDate, selIdx, selIndices, lightMode, activities, W, H, t, PX, defCal, drawDragOverlay, state.activeBaselineIdx, showTodayLine, showStatusLine, showDependencies]);
+    }, [visRows, zoom, totalDays, projStart, statusDate, selIdx, selIndices, lightMode, activities, W, H, t, PX, defCal, drawDragOverlay, state.activeBaselineIdx, showTodayLine, showStatusLine, showDependencies, restrMap]);
 
     // ─── Spotlight drag handler ───────────────────────────────────
     const handleSpotlightDragStart = useCallback((e: React.MouseEvent) => {
@@ -770,18 +786,27 @@ export default function GanttTimeline() {
                 const mfpLine = mfpConfig.enabled && a._floatPath != null
                     ? `Float Path: <b style="color:#fbbf24">${a._floatPath}</b>${a._freeFloat != null ? ` &nbsp; FF: <b>${a._freeFloat}d</b>` : ''}<br>`
                     : '';
+                // Restriction info (only for non-Liberada restrictions)
+                const actRestr = restrMap.get(a.id);
+                const restrLine = actRestr && actRestr.length > 0
+                    ? actRestr.map(r => {
+                        const relDate = r.plannedReleaseDate ? fmtDate(new Date(r.plannedReleaseDate)) : '—';
+                        const statusColor = r.status === 'Pendiente' ? '#f87171' : r.status === 'En Gestión' ? '#fbbf24' : '#94a3b8';
+                        return `<span style="color:${statusColor}">⚠ ${r.category}</span> &nbsp; Liberación: <b>${relDate}</b> &nbsp; [${r.status}]`;
+                    }).join('<br>') + '<br>'
+                    : '';
                 const html = `<b style="color:#f9fafb">${a.outlineNum || ''} ${a.id}</b><br>
               <span style="color:#94a3b8">${a.name}</span><br>
               Inicio: <b>${fmtDate(a.ES!)}</b> &nbsp; Fin: <b>${a.EF ? fmtDate(a.type === 'milestone' ? a.EF : addDays(a.EF, -1)) : ''}</b><br>
               Dur: <b style="color:#7dd3fc">${a.type === 'milestone' ? 'Hito' : ((a as any)._spanDur != null ? (a as any)._spanDur : (a.dur || 0)) + 'd'}</b> &nbsp; Avance: <b style="color:#6ee7b7">${a.pct || 0}%</b><br>
               TF: <b style="color:${a.crit ? '#ef4444' : '#22c55e'}">${a.crit ? 'CRÍTICA' : a.TF + 'd'}</b><br>
-              ${mfpLine}<span style="color:#6b7280">Pred: ${preds}</span>`;
+              ${restrLine}${mfpLine}<span style="color:#6b7280">Pred: ${preds}</span>`;
                 setTip({ x: e.clientX + 14, y: e.clientY - 10, html });
             }
         } else {
             setTip(null);
         }
-    }, [visRows, activities, projStart, PX, defCal, hitTestBar, draw, getHoveredActivity]);
+    }, [visRows, activities, projStart, PX, defCal, hitTestBar, draw, getHoveredActivity, restrMap]);
 
     const handleMouseUp = useCallback((e: React.MouseEvent) => {
         if (!dragRef.current) return;

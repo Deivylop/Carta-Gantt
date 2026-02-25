@@ -99,7 +99,7 @@ export interface LeanRestriction {
 
 /** CNC (Causas de No Cumplimiento) categories – root cause analysis */
 export type CNCCategory =
-  | 'Programación' | 'Material' | 'Mano de Obra' | 'Equipos'
+  | 'Sin Restricción' | 'Programación' | 'Material' | 'Mano de Obra' | 'Equipos'
   | 'Subcontrato' | 'Clima' | 'Diseño' | 'Cliente'
   | 'Actividad Previa' | 'Calidad' | 'Seguridad' | 'Otro';
 

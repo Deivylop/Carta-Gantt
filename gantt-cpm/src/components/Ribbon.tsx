@@ -366,6 +366,7 @@ export default function Ribbon() {
                                 onChange={e => dispatch({ type: 'SET_GROUP', group: e.target.value })}>
                                 <option value="none">Sin agrupación</option>
                                 <option value="critical">Ruta Crítica</option>
+                                <option value="restriction">Restricciones</option>
                                 <option value="inprogress">En Progreso</option>
                                 <option value="notstarted">No Iniciadas</option>
                                 <option value="completed">Completadas</option>

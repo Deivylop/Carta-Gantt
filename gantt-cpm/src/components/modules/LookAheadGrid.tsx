@@ -7,8 +7,9 @@ import { useGantt } from '../../store/GanttContext';
 import { isoDate, fmtDate, parseDate, addDays, getExactElapsedRatio, getExactWorkDays } from '../../utils/cpm';
 import { predsToStr } from '../../utils/helpers';
 import type { Activity, LeanRestriction, RestrictionCategory, RestrictionStatus } from '../../types/gantt';
-import { AlertTriangle, CheckCircle2, Clock, User, ShieldAlert, Settings2, Ruler, CalendarCheck2, Network } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock, User, ShieldAlert, Settings2, Ruler, CalendarCheck2, Network, Layers } from 'lucide-react';
 import ColumnPickerModal from '../ColumnPickerModal';
+import RowContextMenu from '../RowContextMenu';
 
 /* ── constants ── */
 const WEEK_DAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
@@ -123,12 +124,23 @@ type ActEx = Activity & { _start: Date; _end: Date };
 export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
   const { state, dispatch } = useGantt();
 
+  /** Trigger a silent immediate save to Supabase after restriction mutations */
+  const triggerSave = () => {
+    setTimeout(() => window.dispatchEvent(new CustomEvent('sb-force-save', { detail: { silent: true } })), 500);
+  };
+
   /* inline-edit state */
   const [editingEncargado, setEditingEncargado] = useState<string | null>(null);
   const [encargadoVal, setEncargadoVal] = useState('');
   const [editCell, setEditCell] = useState<{ actId: string; field: string } | null>(null);
   const [editVal, setEditVal] = useState('');
 
+  /* ── row selection & right-click context menu ── */
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const [ctxColKey, setCtxColKey] = useState<string | null>(null);
+
+  /* ── WBS toggle: show/hide summary rows ── */
+  const [showWBS, setShowWBS] = useState(false);
   /* ── column management state ── */
   const [colOrder, setColOrder] = useState<string[]>(COL_DEFS.map(c => c.key));
   const [colWidths, setColWidths] = useState<Record<string, number>>(
@@ -196,7 +208,8 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
 
     return state.activities
       .filter(a => {
-        if (a.type === 'summary' || a._isProjRow) return false;
+        if (a._isProjRow) return false;
+        if (!showWBS && a.type === 'summary') return false;
         if (!a.ES || !a.EF) return false;
         return a.ES <= windowEnd && a.EF >= windowStart;
       })
@@ -244,8 +257,16 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
         (act as any)._pctProgrLH = pctProgrLH;
         return act;
       })
-      .sort((a, b) => a._start.getTime() - b._start.getTime());
-  }, [state.activities, windowStart, windowEnd, state.defCal, state.activeBaselineIdx]);
+      .sort((a, b) => {
+        // When WBS is shown, keep the original structure order (outline)
+        if (showWBS) {
+          const ai = state.activities.findIndex(x => x.id === a.id);
+          const bi = state.activities.findIndex(x => x.id === b.id);
+          return ai - bi;
+        }
+        return a._start.getTime() - b._start.getTime();
+      });
+  }, [state.activities, windowStart, windowEnd, state.defCal, state.activeBaselineIdx, showWBS]);
 
   const primaryRestriction = useMemo(() => {
     const map: Record<string, LeanRestriction> = {};
@@ -345,7 +366,11 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
     const updates: Partial<LeanRestriction> = {};
     if (editCell.field === 'category') {
       (updates as any).category = editVal;
-      if (editVal === 'Sin Restricción') (updates as any).status = 'Liberada';
+      if (editVal === 'Sin Restricción') {
+        (updates as any).status = 'Liberada';
+      } else if (r.status === 'Liberada') {
+        (updates as any).status = 'Pendiente';
+      }
     } else if (editCell.field === 'status') {
       (updates as any).status = editVal;
     } else if (editCell.field === 'plannedReleaseDate') {
@@ -356,6 +381,7 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
     }
     dispatch({ type: 'UPDATE_RESTRICTION', id: r.id, updates });
     setEditCell(null);
+    triggerSave();
   };
 
   const isEditing = (actId: string, field: string) =>
@@ -650,6 +676,16 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
               display: 'flex', alignItems: 'center', gap: 4, fontSize: 10,
               color: state.showDependencies ? '#6366f1' : 'var(--text-secondary)',
             }}><Network size={12} /> Relaciones</button>
+          <button
+            onClick={() => setShowWBS(v => !v)}
+            title="Mostrar / Ocultar WBS (actividades resumen)"
+            style={{
+              background: showWBS ? 'rgba(168,85,247,0.15)' : 'var(--bg-input)',
+              border: `1px solid ${showWBS ? '#a855f7' : 'var(--border-secondary)'}`,
+              borderRadius: 4, padding: '3px 8px', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 4, fontSize: 10,
+              color: showWBS ? '#a855f7' : 'var(--text-secondary)',
+            }}><Layers size={12} /> WBS</button>
         </div>
 
         {/* Column picker – opens full modal like Carta Gantt */}
@@ -682,7 +718,7 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
 
       {/* Grid */}
       <div ref={containerRef} style={{ flex: 1, overflow: 'auto', padding: 0, position: 'relative' }}>
-        <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 11 }}>
+        <table className="la-grid-table" style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 11 }}>
           <colgroup>
             {visibleCols.map(k => <col key={k} style={{ width: colWidths[k] }} />)}
             {days.map((_, i) => <col key={`d${i}`} style={{ width: dayColWidth }} />)}
@@ -803,20 +839,51 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
               // Bar label text (like Carta Gantt: "5d 20%")
               const durLabel = (act.dur || 0) + 'd' + (pct ? ' ' + pct + '%' : '');
 
+              // Find this activity's index in the global activities array (for selection/context menu)
+              const globalIdx = state.activities.findIndex(a => a.id === act.id);
+              const isSelected = state.selIndices.has(globalIdx);
+
+              const isSummaryRow = act.type === 'summary';
+
               return (
-                <tr key={act.id} style={{ background: idx % 2 ? 'var(--bg-row-odd)' : 'var(--bg-row-even)', borderBottom: '1px solid var(--border-primary)' }}>
+                <tr key={act.id}
+                  className={isSelected ? 'la-sel' : ''}
+                  style={{
+                    background: isSummaryRow
+                      ? (state.lightMode ? '#eef2ff' : '#1a1040')
+                      : (idx % 2 ? 'var(--bg-row-odd)' : 'var(--bg-row-even)'),
+                    borderBottom: isSummaryRow ? '2px solid var(--color-indigo)' : '1px solid var(--border-primary)',
+                    fontWeight: isSummaryRow ? 700 : 400,
+                  }}
+                  onClick={(e) => {
+                    if (globalIdx >= 0) dispatch({ type: 'SET_SELECTION', index: globalIdx, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey });
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    const cell = (e.target as HTMLElement).closest('[data-colkey]') as HTMLElement | null;
+                    setCtxColKey(cell?.dataset?.colkey ?? null);
+                    if (globalIdx >= 0 && !state.selIndices.has(globalIdx)) {
+                      dispatch({ type: 'SET_SELECTION', index: globalIdx });
+                    }
+                    setCtxMenu({ x: e.clientX, y: e.clientY });
+                  }}
+                >
                   {/* Data columns – dynamic */}
                   {visibleCols.map(colKey => {
                     const def = COL_MAP[colKey];
                     const w = colWidths[colKey];
-                    const dbl = getCellDblClick(colKey, act);
+                    const dbl = isSummaryRow ? undefined : getCellDblClick(colKey, act);
                     return (
-                      <td key={colKey} onDoubleClick={dbl}
+                      <td key={colKey} data-colkey={colKey}
+                        onDoubleClick={dbl ? (e) => { e.stopPropagation(); dbl(); } : undefined}
                         style={{ padding: '2px 6px', borderRight: '1px solid var(--border-primary)',
                           width: w, minWidth: w, maxWidth: w, textAlign: def.align,
                           overflow: 'hidden', fontSize: colKey === 'name' ? 11 : 10,
-                          cursor: dbl ? 'pointer' : 'default' }}>
-                        {renderCell(colKey, act)}
+                          cursor: dbl ? 'pointer' : 'default',
+                          paddingLeft: isSummaryRow && colKey === 'name' ? (2 + Math.max(0, act.lv) * 14) : undefined }}>
+                        {isSummaryRow && colKey === 'name'
+                          ? <span style={{ color: 'var(--text-accent)' }}>▾ {act.name}</span>
+                          : renderCell(colKey, act)}
                       </td>
                     );
                   })}
@@ -1047,6 +1114,9 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
           );
         })()}
       </div>
+
+      {/* ── Row right-click context menu (same as GanttTable) ── */}
+      {ctxMenu && <RowContextMenu x={ctxMenu.x} y={ctxMenu.y} onClose={() => setCtxMenu(null)} onOpenColumns={() => { setCtxMenu(null); setShowColPicker(true); }} colKey={ctxColKey} selCount={state.selIndices.size} onFillDown={() => {}} onFillUp={() => {}} />}
     </div>
   );
 }

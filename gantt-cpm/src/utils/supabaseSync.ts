@@ -91,6 +91,41 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
                 lv: -1,
             } as any);
         }
+        // Inject PPC history (weekly PPC records + CNC entries) as a hidden activity
+        if (state.ppcHistory && state.ppcHistory.length > 0) {
+            acts.push({
+                ...newActivity('__PPC__', defCal),
+                name: '__PPC_HISTORY__',
+                type: 'milestone',
+                notes: JSON.stringify(state.ppcHistory),
+                lv: -1,
+            } as any);
+        }
+        // Inject Lean restrictions as a hidden activity
+        if (state.leanRestrictions && state.leanRestrictions.length > 0) {
+            acts.push({
+                ...newActivity('__RESTRICTIONS__', defCal),
+                name: '__LEAN_RESTRICTIONS__',
+                type: 'milestone',
+                notes: JSON.stringify(state.leanRestrictions),
+                lv: -1,
+            } as any);
+        }
+        // Build & inject deps backup as hidden activity (safeguard against dep-insert failures)
+        const depsBackup: Record<string, { id: string; type: string; lag: number }[]> = {};
+        state.activities.forEach(a => {
+            if (a._isProjRow || !a.preds || a.preds.length === 0) return;
+            depsBackup[a.id] = a.preds.map(p => ({ id: p.id, type: p.type || 'FS', lag: p.lag || 0 }));
+        });
+        if (Object.keys(depsBackup).length > 0) {
+            acts.push({
+                ...newActivity('__DEPS__', defCal),
+                name: '__DEPS_BACKUP__',
+                type: 'milestone',
+                notes: JSON.stringify(depsBackup),
+                lv: -1,
+            } as any);
+        }
         const localIdMap: Record<string, string> = {};
         if (acts.length) {
             const actRows = acts.map((a, i) => {
@@ -116,7 +151,7 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
             if (actErr) throw actErr;
             (actData as any[]).forEach(a => { localIdMap[a.local_id] = a.id; });
 
-            // 5. Dependencies
+            // 5. Dependencies — with retry for resilience
             const depRows: any[] = [];
             acts.forEach(a => {
                 if (!a.preds) return;
@@ -126,7 +161,16 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
                     if (fromUuid) depRows.push({ project_id: currentId, from_activity_id: fromUuid, to_activity_id: toUuid, type: p.type || 'FS', lag: p.lag || 0 });
                 });
             });
-            if (depRows.length) { const { error: de } = await supabase.from('gantt_dependencies').insert(depRows); if (de) throw de; }
+            if (depRows.length) {
+                const { error: de } = await supabase.from('gantt_dependencies').insert(depRows);
+                if (de) {
+                    console.warn('Dependency insert failed, retrying…', de);
+                    // Retry once after a short delay
+                    await new Promise(r => setTimeout(r, 500));
+                    const { error: de2 } = await supabase.from('gantt_dependencies').insert(depRows);
+                    if (de2) console.error('Dependency insert retry also failed — deps backed up in hidden activity __DEPS_BACKUP__', de2);
+                }
+            }
 
             // 6. Activity-resources
             const arRows: any[] = [];
@@ -177,6 +221,7 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
     const { data: depData, error: de } = await supabase.from('gantt_dependencies').select('*').eq('project_id', projectId);
     if (de) throw de;
     const depMap: Record<string, any[]> = {};
+    const depHasData = (depData as any[]).length > 0;
     (depData as any[]).forEach(d => {
         const toL = uuidToLocalId[d.to_activity_id];
         const fromL = uuidToLocalId[d.from_activity_id];
@@ -200,6 +245,9 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
     let progressHistory: any[] = [];
     let customFilters: any[] = [];
     let filtersMatchAll = true;
+    let ppcHistory: any[] = [];
+    let leanRestrictions: any[] = [];
+    let depsBackup: Record<string, { id: string; type: string; lag: number }[]> = {};
 
     // Build activities
     const activities = (actData as any[]).map(a => {
@@ -267,8 +315,33 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
             } catch (e) { }
             return false;
         }
+        // Extract hidden PPC history if found
+        if (na.id === '__PPC__') {
+            try { ppcHistory = JSON.parse(na.notes); } catch (e) { }
+            return false;
+        }
+        // Extract hidden Lean restrictions if found
+        if (na.id === '__RESTRICTIONS__') {
+            try { leanRestrictions = JSON.parse(na.notes); } catch (e) { }
+            return false;
+        }
+        // Extract hidden deps backup if found
+        if (na.id === '__DEPS__') {
+            try { depsBackup = JSON.parse(na.notes); } catch (e) { }
+            return false;
+        }
         return true;
     });
+
+    // Post-processing: restore deps from backup if dep table was empty
+    if (!depHasData && Object.keys(depsBackup).length > 0) {
+        console.warn('[Supabase] Dependencies table empty — restoring from backup');
+        activities.forEach(a => {
+            if ((!a.preds || a.preds.length === 0) && depsBackup[a.id]) {
+                a.preds = depsBackup[a.id];
+            }
+        });
+    }
 
     return {
         projName,
@@ -279,6 +352,8 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
         activities,
         progressHistory,
         customFilters,
-        filtersMatchAll
+        filtersMatchAll,
+        ppcHistory,
+        leanRestrictions
     };
 }
