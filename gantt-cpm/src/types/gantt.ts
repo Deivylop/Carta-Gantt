@@ -68,6 +68,70 @@ export interface BaselineEntry {
     statusDate: string;  // ISO date of status date when baseline was saved
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// Lean Construction / Last Planner System Types
+// Based on: LPS (Ballard 2000), Scrum-Construction hybrid, Pull Planning
+// ═══════════════════════════════════════════════════════════════════
+
+/** Restriction categories (Make Ready process) */
+export type RestrictionCategory =
+  | 'Sin Restricción'
+  | 'Material' | 'Mano de Obra' | 'Equipos' | 'Información'
+  | 'Espacio' | 'Actividad Previa' | 'Permisos' | 'Diseño'
+  | 'Subcontrato' | 'Calidad' | 'Seguridad' | 'Otro';
+
+/** Restriction lifecycle status */
+export type RestrictionStatus = 'Pendiente' | 'En Gestión' | 'Liberada' | 'No Liberada';
+
+/** A single constraint/restriction attached to an activity */
+export interface LeanRestriction {
+    id: string;                          // UUID
+    activityId: string;                  // ref to Activity.id
+    category: RestrictionCategory;
+    description: string;
+    responsible: string;                 // who must release
+    plannedReleaseDate: string | null;   // ISO date – planned release
+    actualReleaseDate: string | null;    // ISO date – actual release
+    status: RestrictionStatus;
+    notes: string;
+    createdAt: string;                   // ISO datetime
+}
+
+/** CNC (Causas de No Cumplimiento) categories – root cause analysis */
+export type CNCCategory =
+  | 'Programación' | 'Material' | 'Mano de Obra' | 'Equipos'
+  | 'Subcontrato' | 'Clima' | 'Diseño' | 'Cliente'
+  | 'Actividad Previa' | 'Calidad' | 'Seguridad' | 'Otro';
+
+/** Individual CNC entry for a non-completed commitment */
+export interface CNCEntry {
+    id: string;
+    activityId: string;                  // activity that failed commitment
+    category: CNCCategory;
+    description: string;
+    responsible: string;
+}
+
+/** Weekly PPC (Percent Plan Complete) record – core metric of LPS */
+export interface PPCWeekRecord {
+    id: string;
+    weekStart: string;                   // ISO Monday of that week
+    planned: string[];                   // activity IDs committed for the week
+    completed: string[];                 // activity IDs actually completed
+    ppc: number;                         // calculated PPC = completed/planned × 100
+    cncEntries: CNCEntry[];
+    notes: string;
+    createdAt: string;                   // ISO datetime
+}
+
+/** Kanban column status for Look Ahead visual management */
+export type KanbanStatus =
+  | 'Inventario'          // Backlog – identified but not yet in window
+  | 'Con Restricciones'   // Has pending constraints
+  | 'Libre'               // All constraints released – ready to execute
+  | 'En Ejecución'        // Work in progress (pct > 0)
+  | 'Completada';         // Done (pct = 100)
+
 // ─── Activity ───────────────────────────────────────────────────
 export interface Activity {
     id: string;           // unique local ID (e.g. "A", "1.1")
@@ -106,6 +170,9 @@ export interface Activity {
     blEF: Date | null;    // Baseline Early Finish
     blCal: CalendarType | null; // Baseline Calendar
     baselines: BaselineEntry[]; // 0-10 baselines
+
+    // ── Lean Construction / Last Planner ──
+    encargado: string;        // Responsible / Last Planner (person who commits)
 
     // ── Custom Text Fields ──
     txt1: string;

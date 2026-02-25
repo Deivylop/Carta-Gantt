@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useGantt } from '../store/GanttContext';
+import { newActivity } from '../utils/cpm';
+import { autoId } from '../utils/helpers';
 
 interface Props {
     x: number;
@@ -96,14 +98,18 @@ export default function RowContextMenu({ x, y, onClose, onOpenColumns, colKey, s
 
             {/* Agregar */}
             <div className="row-ctx-item"
-                onClick={() => act(() => dispatch({ type: 'ADD_ACTIVITY' }))}>
+                onClick={() => act(() => {
+                    const a = newActivity(autoId(state.activities), state.defCal);
+                    a.name = 'Nueva Actividad';
+                    dispatch({ type: 'ADD_ACTIVITY', activity: a, atIndex: state.selIdx >= 0 ? state.selIdx + 1 : undefined });
+                })}>
                 <span className="row-ctx-label">Agregar</span>
                 <span className="row-ctx-shortcut">Ins</span>
             </div>
 
             {/* Suprimir */}
             <div className={`row-ctx-item${!hasSelection || isProj ? ' disabled' : ''}`}
-                onClick={() => hasSelection && !isProj && act(() => dispatch({ type: 'DELETE_ACTIVITY' }))}>
+                onClick={() => hasSelection && !isProj && act(() => dispatch({ type: 'DELETE_ACTIVITY', index: state.selIdx }))}>
                 <span className="row-ctx-label">Suprimir</span>
                 <span className="row-ctx-shortcut">Del</span>
             </div>

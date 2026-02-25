@@ -225,6 +225,8 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
         const sDate = new Date(statusDateObj);
         sDate.setHours(0, 0, 0, 0);
         const sTime = sDate.getTime();
+        // End-of-day: add 1 day for line positioning
+        const sTimeEndOfDay = sTime + 86400000;
         datesToEvaluate.add(sTime);
 
         const sortedDates = Array.from(datesToEvaluate).sort((a, b) => a - b);
@@ -325,7 +327,11 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
             });
         });
 
-        return { points, statusDateMs: sTime, maxValue: totalWeight, isHoursMode };
+        // Shift status-date data point to end-of-day so actual curve reaches the Fecha de Corte line
+        const sdPt = points.find(p => p.dateMs === sTime);
+        if (sdPt) sdPt.dateMs = sTimeEndOfDay;
+
+        return { points, statusDateMs: sTimeEndOfDay, maxValue: totalWeight, isHoursMode };
 
     }, [state.activities, state.progressHistory, state.statusDate, selectedId, multiSelectIds, forcedActivityId, state.currentView, state.resourcePool, state.defCal]);
 
@@ -628,7 +634,7 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
         }
 
         // ─── Today line (amber) ──────────────────────────
-        const todayX = dayDiff(projStart, new Date()) * PX;
+        const todayX = (dayDiff(projStart, new Date()) + 1) * PX;
         if (todayX >= 0 && todayX <= width) {
             ctx.fillStyle = '#f59e0b';
             ctx.fillRect(todayX, chartTop, 2, chartH);

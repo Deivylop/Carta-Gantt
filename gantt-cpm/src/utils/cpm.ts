@@ -2,7 +2,7 @@
 // CPM Engine – Pure TypeScript (no React dependency)
 // Ported 1:1 from the calcCPM() function in Carta Gantt CPM.html
 // ═══════════════════════════════════════════════════════════════════
-import type { Activity, CalendarType, ProgressHistoryEntry, CustomCalendar, PredecessorLink, MFPConfig } from '../types/gantt';
+import type { Activity, CalendarType, ProgressHistoryEntry, CustomCalendar, PredecessorLink } from '../types/gantt';
 
 /** Calendar conversion factors: work days → calendar days */
 const CAL_F: Record<number, number> = { 5: 7 / 5, 6: 7 / 6, 7: 1 };
@@ -173,6 +173,7 @@ export function newActivity(id?: string, defCal: CalendarType = 6): Activity {
         crit: false,
         blDur: null, blES: null, blEF: null, blCal: null,
         baselines: [],
+        encargado: '',
         txt1: '', txt2: '', txt3: '', txt4: '', txt5: '',
     };
 }
@@ -284,8 +285,10 @@ export function calcCPM(
     });
 
     // ═══ RETAINED LOGIC (Status Date reprogramming) ═══
+    // sd = día siguiente a la fecha de corte (las actividades se reprograman DESPUÉS de la fecha de corte)
     if (statusDate) {
-        const sd = new Date(statusDate);
+        const sdRaw = new Date(statusDate);
+        const sd = addDays(sdRaw, 1); // remaining work starts the day AFTER status date
 
         // Paso 1: Calcular duraciones realizadas/restantes para actividades con avance
         activities.forEach(a => {
@@ -428,7 +431,7 @@ export function calcCPM(
         const cal = a.cal || defCal;
 
         // Determine where remaining work starts (from retained logic or status date)
-        const remStart = a._remES || (statusDate ? new Date(statusDate) : a.ES);
+        const remStart = a._remES || (statusDate ? addDays(new Date(statusDate), 1) : a.ES);
 
         if (a.resumeDate) {
             const resDate = parseDate(a.resumeDate);
@@ -743,7 +746,7 @@ function calcRelationshipFloat(
 ): number {
     const lag = link.lag || 0;
     const succCal = succ.cal || defCal;
-    const predCal = pred.cal || defCal;
+    // pred.cal available but currently unused
 
     if (!pred.ES || !pred.EF || !succ.ES || !succ.EF) return Infinity;
 
@@ -1013,7 +1016,7 @@ export function getUsageDailyValues(
             let acc = 0;
             for (const d of datesSeg1) {
                 const t = d.getTime();
-                if (calcTotalAccumulated || mode !== 'Trabajo acumulado') {
+                if (calcTotalAccumulated || (mode as string) !== 'Trabajo acumulado') {
                     if (dailySeg1 > 0) map.set(t, dailySeg1);
                 } else {
                     acc += dailySeg1;
@@ -1022,7 +1025,7 @@ export function getUsageDailyValues(
             }
             for (const d of datesSeg2) {
                 const t = d.getTime();
-                if (calcTotalAccumulated || mode !== 'Trabajo acumulado') {
+                if (calcTotalAccumulated || (mode as string) !== 'Trabajo acumulado') {
                     if (dailySeg2 > 0) map.set(t, dailySeg2);
                 } else {
                     acc += dailySeg2;

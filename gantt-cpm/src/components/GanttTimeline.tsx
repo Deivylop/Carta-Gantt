@@ -114,7 +114,7 @@ export default function GanttTimeline() {
             const seg1EndX = r.suspendDate
                 ? dayDiff(projStart, r._actualEnd!) * PX
                 : (barStatusDate
-                    ? dayDiff(projStart, barStatusDate) * PX
+                    ? (dayDiff(projStart, barStatusDate) + 1) * PX
                     : dayDiff(projStart, r._actualEnd!) * PX);
             const seg1w = Math.max(4, seg1EndX - seg1x);
             if (mx >= seg1x - 3 && mx <= seg1x + seg1w + 3) return { visIdx: vi, zone: 'move' as const };
@@ -158,7 +158,7 @@ export default function GanttTimeline() {
             const seg1EndX = r.suspendDate
                 ? dayDiff(projStart, r._actualEnd!) * PX
                 : (barStatusDate
-                    ? dayDiff(projStart, barStatusDate) * PX
+                    ? (dayDiff(projStart, barStatusDate) + 1) * PX
                     : dayDiff(projStart, r._actualEnd!) * PX);
             const seg2x = dayDiff(projStart, r._remES!) * PX;
             const seg2EndX = dayDiff(projStart, r._remEF!) * PX;
@@ -261,10 +261,10 @@ export default function GanttTimeline() {
                 cur.setDate(cur.getDate() + 1);
             }
         }
-        const today = new Date(); const todayX = dayDiff(projStart, today) * PX;
+        const today = new Date(); const todayX = (dayDiff(projStart, today) + 1) * PX;
         if (showTodayLine && todayX >= 0 && todayX <= W) { hCtx.fillStyle = '#f59e0b'; hCtx.fillRect(todayX, 0, 2, HDR_H); }
         if (showStatusLine && statusDate) {
-            const sdx = dayDiff(projStart, statusDate) * PX;
+            const sdx = (dayDiff(projStart, statusDate) + 1) * PX;
             if (sdx >= 0 && sdx <= W) { hCtx.fillStyle = '#06b6d4'; hCtx.fillRect(sdx, 0, 2, HDR_H); }
         }
 
@@ -299,10 +299,11 @@ export default function GanttTimeline() {
             else cur.setDate(cur.getDate() + 1);
         }
 
-        // Today + Status Date lines
-        if (showTodayLine && tx >= 0 && tx <= W) { ctx.fillStyle = t.todayLine; ctx.fillRect(tx, 0, 2, H); }
+        // Today + Status Date lines (positioned at END of the day)
+        const txEnd = tx + PX;  // end of today
+        if (showTodayLine && txEnd >= 0 && txEnd <= W) { ctx.fillStyle = t.todayLine; ctx.fillRect(txEnd, 0, 2, H); }
         if (showStatusLine && statusDate) {
-            const sx = dayDiff(projStart, statusDate) * PX;
+            const sx = (dayDiff(projStart, statusDate) + 1) * PX;  // end of status date
             if (sx >= 0 && sx <= W) { ctx.fillStyle = t.statusLine; ctx.fillRect(sx, 0, 2, H); }
         }
 
@@ -372,7 +373,7 @@ export default function GanttTimeline() {
                     const seg1EndX = isSuspend
                         ? dayDiff(projStart, r._actualEnd!) * PX   // _actualEnd = suspendDate
                         : (barStatusDate
-                            ? dayDiff(projStart, barStatusDate) * PX
+                            ? (dayDiff(projStart, barStatusDate) + 1) * PX
                             : dayDiff(projStart, r._actualEnd!) * PX);
                     const seg1w = Math.max(4, seg1EndX - seg1x);
 
@@ -395,7 +396,7 @@ export default function GanttTimeline() {
                     // For suspended: progress covers only up to statusDate (done work portion)
                     // For normal split: entire segment 1 is done work
                     if (isSuspend && barStatusDate) {
-                        const progEndX = Math.min(dayDiff(projStart, barStatusDate) * PX, seg1EndX);
+                        const progEndX = Math.min((dayDiff(projStart, barStatusDate) + 1) * PX, seg1EndX);
                         const progW = Math.max(0, progEndX - seg1x);
                         if (progW > 0) {
                             ctx.fillStyle = lightMode ? '#22c55eaa' : '#22c55e99';
@@ -461,7 +462,7 @@ export default function GanttTimeline() {
                     }
                     // Progress fill
                     if (pct > 0 && barStatusDate && r.ES) {
-                        const sdX = dayDiff(projStart, barStatusDate) * PX;
+                        const sdX = (dayDiff(projStart, barStatusDate) + 1) * PX;
                         const progressW = Math.min(Math.max(0, sdX - bx), bw);
                         if (progressW > 0) { ctx.fillStyle = lightMode ? '#22c55eaa' : '#22c55e99'; rrect(ctx, bx, by, progressW, bh, 3); ctx.fill(); }
                     } else if (pct > 0) {

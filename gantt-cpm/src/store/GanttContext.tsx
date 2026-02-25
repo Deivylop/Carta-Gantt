@@ -3,7 +3,7 @@
 // All state management matching HTML globals + actions
 // ═══════════════════════════════════════════════════════════════════
 import React, { createContext, useContext, useReducer, type ReactNode } from 'react';
-import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, VisibleRow, ProgressHistoryEntry, BaselineEntry, CustomCalendar, CustomFilter, MFPConfig } from '../types/gantt';
+import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, VisibleRow, ProgressHistoryEntry, BaselineEntry, CustomCalendar, CustomFilter, MFPConfig, LeanRestriction, PPCWeekRecord, CNCEntry } from '../types/gantt';
 import { calcCPM, calcMultipleFloatPaths, traceChain, newActivity, isoDate, parseDate, addDays, calWorkDays, fmtDate } from '../utils/cpm';
 import { autoId, computeOutlineNumbers, syncResFromString, deriveResString, distributeWork, strToPreds, predsToStr, newPoolResource } from '../utils/helpers';
 
@@ -129,6 +129,9 @@ export interface GanttState {
     // Progress Spotlight
     spotlightEnabled: boolean;
     spotlightEnd: string | null; // ISO date string – draggable right boundary
+    // Lean Construction / Last Planner System
+    leanRestrictions: LeanRestriction[];
+    ppcHistory: PPCWeekRecord[];
 }
 
 // ─── Actions ────────────────────────────────────────────────────
@@ -216,7 +219,16 @@ export type Action =
     | { type: 'SET_CHAIN_TRACE'; dir: 'fwd' | 'bwd' | 'both' }
     | { type: 'CLEAR_CHAIN_TRACE' }
     | { type: 'TOGGLE_SPOTLIGHT' }
-    | { type: 'SET_SPOTLIGHT_END'; isoDate: string };
+    | { type: 'SET_SPOTLIGHT_END'; isoDate: string }
+    // Lean Construction actions
+    | { type: 'ADD_RESTRICTION'; restriction: LeanRestriction }
+    | { type: 'UPDATE_RESTRICTION'; id: string; updates: Partial<LeanRestriction> }
+    | { type: 'DELETE_RESTRICTION'; id: string }
+    | { type: 'ADD_PPC_WEEK'; record: PPCWeekRecord }
+    | { type: 'UPDATE_PPC_WEEK'; id: string; updates: Partial<PPCWeekRecord> }
+    | { type: 'DELETE_PPC_WEEK'; id: string }
+    | { type: 'ADD_CNC_ENTRY'; weekId: string; entry: CNCEntry }
+    | { type: 'DELETE_CNC_ENTRY'; weekId: string; entryId: string };
 
 // ─── Grouping / Filtering ─────────────────────────────────────────
 function applyGroupFilter(rows: VisibleRow[], activities: Activity[], activeGroup: string, columns: ColumnDef[]): VisibleRow[] {
@@ -914,6 +926,26 @@ function reducer(state: GanttState, action: Action): GanttState {
         case 'SET_SPOTLIGHT_END':
             return { ...state, spotlightEnd: action.isoDate };
 
+        // ─── Lean Construction / Last Planner System ────────────────────
+        case 'ADD_RESTRICTION':
+            return { ...state, leanRestrictions: [...state.leanRestrictions, action.restriction] };
+        case 'UPDATE_RESTRICTION':
+            return { ...state, leanRestrictions: state.leanRestrictions.map(r => r.id === action.id ? { ...r, ...action.updates } : r) };
+        case 'DELETE_RESTRICTION':
+            return { ...state, leanRestrictions: state.leanRestrictions.filter(r => r.id !== action.id) };
+        case 'ADD_PPC_WEEK':
+            return { ...state, ppcHistory: [...state.ppcHistory, action.record] };
+        case 'UPDATE_PPC_WEEK':
+            return { ...state, ppcHistory: state.ppcHistory.map(w => w.id === action.id ? { ...w, ...action.updates } : w) };
+        case 'DELETE_PPC_WEEK':
+            return { ...state, ppcHistory: state.ppcHistory.filter(w => w.id !== action.id) };
+        case 'ADD_CNC_ENTRY': {
+            return { ...state, ppcHistory: state.ppcHistory.map(w => w.id === action.weekId ? { ...w, cncEntries: [...w.cncEntries, action.entry] } : w) };
+        }
+        case 'DELETE_CNC_ENTRY': {
+            return { ...state, ppcHistory: state.ppcHistory.map(w => w.id === action.weekId ? { ...w, cncEntries: w.cncEntries.filter(e => e.id !== action.entryId) } : w) };
+        }
+
         case 'SET_VIEW': {
             const visRows = buildVisRows(state.activities, state.collapsed, state.activeGroup, state.columns, action.view, state.expResources, state.usageModes);
             return { ...state, currentView: action.view, visRows };
@@ -1601,6 +1633,8 @@ const initialState: GanttState = {
     chainIds: new Set<string>(),
     spotlightEnabled: false,
     spotlightEnd: null,
+    leanRestrictions: [],
+    ppcHistory: [],
 };
 
 // ─── Context ────────────────────────────────────────────────────

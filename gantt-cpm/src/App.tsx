@@ -24,6 +24,11 @@ import TaskUsageGrid from './components/TaskUsageGrid';
 import ResourceUsageTable from './components/ResourceUsageTable';
 import ResourceUsageGrid from './components/ResourceUsageGrid';
 import ResourceForm from './components/ResourceForm';
+import ModuleTabs, { type ModuleId } from './components/ModuleTabs';
+import InicioPage from './components/modules/InicioPage';
+import LookAheadPage from './components/modules/LookAheadPage';
+import DashboardPage from './components/modules/DashboardPage';
+import ConfigPage from './components/modules/ConfigPage';
 import { newActivity } from './utils/cpm';
 import { autoId } from './utils/helpers';
 import { saveToSupabase, loadFromSupabase } from './utils/supabaseSync';
@@ -32,6 +37,7 @@ function AppInner() {
   const { state, dispatch } = useGantt();
   const [formH, setFormH] = useState(200);
   const [resizing, setResizing] = useState<'v' | 'h' | null>(null);
+  const [activeModule, setActiveModule] = useState<ModuleId>('inicio');
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Theme toggle on body
@@ -213,6 +219,23 @@ function AppInner() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+      {/* ── Module Tabs ── */}
+      <ModuleTabs active={activeModule} onChange={setActiveModule} />
+
+      {/* ── Module: Inicio ── */}
+      {activeModule === 'inicio' && <div style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0, overflow:'hidden' }}><InicioPage onNavigate={setActiveModule} /></div>}
+
+      {/* ── Module: Look Ahead ── */}
+      {activeModule === 'lookAhead' && <div style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0, overflow:'hidden' }}><LookAheadPage /></div>}
+
+      {/* ── Module: Dashboard ── */}
+      {activeModule === 'dashboard' && <div style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0, overflow:'hidden' }}><DashboardPage /></div>}
+
+      {/* ── Module: Configuración ── */}
+      {activeModule === 'config' && <div style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0, overflow:'hidden' }}><ConfigPage /></div>}
+
+      {/* ── Module: Carta Gantt (existing) ── */}
+      {activeModule === 'gantt' && (<>
       <Ribbon />
 
       {state.currentView === 'resources' ? (
@@ -308,6 +331,7 @@ function AppInner() {
           </div>
         </div>
       )}
+      </>)}
 
       {/* Modals */}
       <ActivityModal />

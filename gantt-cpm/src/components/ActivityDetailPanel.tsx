@@ -4,8 +4,8 @@
 // ═══════════════════════════════════════════════════════════════════
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useGantt } from '../store/GanttContext';
-import { isoDate, fmtDate, addDays, parseDate } from '../utils/cpm';
-import type { Activity, ConstraintType, LinkType } from '../types/gantt';
+import { isoDate, fmtDate, addDays } from '../utils/cpm';
+import type { Activity, ConstraintType } from '../types/gantt';
 import SCurveChart from './SCurveChart';
 
 type Tab = 'general' | 'estado' | 'recursos' | 'predecesores' | 'sucesores' | 'relaciones' | 'pasos' | 'curvas';
@@ -21,8 +21,8 @@ const CONSTRAINT_LABELS: Record<string, string> = {
     'FNLT': 'No finalizar después de',
 };
 
-/* ── Link-type labels (Spanish) ── */
-const LINK_TYPE_LABELS: Record<string, string> = {
+/* ── Link-type labels (Spanish) ── kept for future tab usage */
+export const LINK_TYPE_LABELS: Record<string, string> = {
     FS: 'Fin a Comienzo',
     SS: 'Comienzo a Comienzo',
     FF: 'Fin a Fin',
@@ -509,7 +509,7 @@ function TabRecursos({ a, selIdx, dispatch, resourcePool, acOpen, acTarget, acFi
 /* ════════════════════════════════════════════════════════════════
    TAB: Predecesores
    ════════════════════════════════════════════════════════════════ */
-function TabPredecesores({ a, preds, selIdx, dispatch, acOpen, acTarget, acFilter, acRef, setAcOpen, setAcTarget, setAcFilter, acItems, addPred, removePred }: any) {
+function TabPredecesores({ a: _a, preds, selIdx, dispatch, acOpen, acTarget, acFilter, acRef, setAcOpen, setAcTarget, setAcFilter, acItems, addPred, removePred }: any) {
     return (
         <div className="adp-table-tab">
             <table className="adp-tbl">
@@ -569,7 +569,7 @@ function TabPredecesores({ a, preds, selIdx, dispatch, acOpen, acTarget, acFilte
 /* ════════════════════════════════════════════════════════════════
    TAB: Sucesores
    ════════════════════════════════════════════════════════════════ */
-function TabSucesores({ a, succs, activities, selIdx, dispatch, acOpen, acTarget, acFilter, acRef, setAcOpen, setAcTarget, setAcFilter, acItems, addSuc, removeSuc }: any) {
+function TabSucesores({ a: _a, succs, activities, selIdx: _selIdx, dispatch, acOpen, acTarget, acFilter, acRef, setAcOpen, setAcTarget, setAcFilter, acItems, addSuc, removeSuc }: any) {
     return (
         <div className="adp-table-tab">
             <table className="adp-tbl">
@@ -635,7 +635,7 @@ function TabSucesores({ a, succs, activities, selIdx, dispatch, acOpen, acTarget
 /* ════════════════════════════════════════════════════════════════
    TAB: Relaciones (side-by-side Pred / Suc panels)
    ════════════════════════════════════════════════════════════════ */
-function TabRelaciones({ a, activities, succs, preds, dispatch, selIdx, addPred, addSuc, removePred, removeSuc, acOpen, acTarget, acFilter, acRef, setAcOpen, setAcTarget, setAcFilter, acItems }: any) {
+function TabRelaciones({ a: _a, activities, succs, preds, dispatch, selIdx, addPred, addSuc, removePred, removeSuc, acOpen, acTarget, acFilter, acRef, setAcOpen, setAcTarget, setAcFilter, acItems }: any) {
     const [selP, setSelP] = useState<number | null>(null);
     const [selS, setSelS] = useState<number | null>(null);
 
@@ -778,7 +778,7 @@ function TabRelaciones({ a, activities, succs, preds, dispatch, selIdx, addPred,
 /* ════════════════════════════════════════════════════════════════
    TAB: Pasos (WBS Steps / Notes placeholder)
    ════════════════════════════════════════════════════════════════ */
-function TabPasos({ a }: { a: Activity }) {
+function TabPasos({ a: _a }: { a: Activity }) {
     return (
         <div className="adp-table-tab">
             <div className="adp-section-title">Pasos de la actividad</div>
