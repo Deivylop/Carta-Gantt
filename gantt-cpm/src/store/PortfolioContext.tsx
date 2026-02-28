@@ -181,6 +181,14 @@ function portfolioReducer(state: PortfolioState, action: PortfolioAction): Portf
                 createdAt: now,
                 updatedAt: now,
                 supabaseId: null,
+                duration: 0,
+                remainingDur: 0,
+                work: 0,
+                actualWork: 0,
+                remainingWork: 0,
+                pctProg: 0,
+                weight: null,
+                resources: '',
                 ...(action.initialData || {}),
             };
             const expanded = new Set(state.expandedIds);

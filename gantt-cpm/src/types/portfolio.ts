@@ -22,26 +22,37 @@ export interface ProjectMeta {
     priority: number;          // 1 = highest
     description: string;
     status: 'Planificación' | 'Ejecución' | 'Suspendido' | 'Completado';
-    startDate: string | null;  // ISO date
-    endDate: string | null;    // ISO date
+    startDate: string | null;  // ISO date (ES of project)
+    endDate: string | null;    // ISO date (EF of project)
     statusDate: string | null; // ISO date
     activityCount: number;
     completedCount: number;
     criticalCount: number;
-    globalPct: number;         // 0-100
-    plannedPct: number;        // 0-100
+    globalPct: number;         // 0-100 (% avance)
+    plannedPct: number;        // 0-100 (% planificado)
     createdAt: string;         // ISO datetime
     updatedAt: string;         // ISO datetime
     supabaseId: string | null; // Supabase project id if synced
+
+    // ── WBS 0 / Project Row fields (from _isProjRow activity) ──
+    duration: number;               // project duration in work days
+    remainingDur: number;           // remaining duration
+    work: number;                   // total work hours (TRABAJO)
+    actualWork: number;             // actual/earned work hours (TRABAJO REAL / VALOR GANADO)
+    remainingWork: number;          // remaining work hours (TRABAJO RESTANTE)
+    pctProg: number;                // % PROG (WBS 0 pct)
+    weight: number | null;          // PESO
+    resources: string;              // resource names string
+
     // Project defaults for new activities (P6 "Valores por defecto")
-    durationType?: string;         // e.g. 'Fija Duración y Unidades'
-    pctCompleteType?: string;      // e.g. 'Físico' | 'Duración' | 'Unidades'
-    activityType?: string;         // e.g. 'Dependiente de tarea'
-    defaultCalendar?: string;      // calendar name
-    actIdPrefix?: string;          // activity ID prefix e.g. "A"
-    actIdSuffix?: string;          // activity ID suffix
-    actIdIncrement?: number;       // ID increment e.g. 10
-    notes?: string;                // project notes / bloc de notas
+    durationType?: string;
+    pctCompleteType?: string;
+    activityType?: string;
+    defaultCalendar?: string;
+    actIdPrefix?: string;
+    actIdSuffix?: string;
+    actIdIncrement?: number;
+    notes?: string;
 }
 
 /** The full portfolio state */

@@ -303,6 +303,8 @@ function AppInner() {
           if (a.EF && (!max || a.EF > max)) return a.EF;
           return max;
         }, null);
+        const tw = state.activities.reduce((s, a) => s + (a.work || 0), 0);
+        const aw = state.activities.reduce((s, a) => s + ((a.work || 0) * (a.pct || 0) / 100), 0);
         const meta = pState.projects.map(p => p.id === pState.activeProjectId ? {
           ...p, name: state.projName,
           activityCount: tasks.length,
@@ -313,6 +315,14 @@ function AppInner() {
           startDate: state.projStart ? state.projStart.toISOString() : (p.startDate || null),
           endDate: latestEF ? latestEF.toISOString() : (state.projStart ? new Date(state.projStart.getTime() + 90 * 86400000).toISOString() : (p.endDate || null)),
           statusDate: state.statusDate ? state.statusDate.toISOString() : (p.statusDate || null),
+          duration: projRow?.dur || p.duration || 0,
+          remainingDur: projRow?.remDur || p.remainingDur || 0,
+          work: tw || p.work || 0,
+          actualWork: Math.round(aw) || p.actualWork || 0,
+          remainingWork: Math.round(tw - aw) || p.remainingWork || 0,
+          pctProg: projRow ? Math.round((projRow.pct || 0) * 10) / 10 : p.pctProg || 0,
+          weight: projRow?.weight ?? p.weight ?? null,
+          resources: projRow?.res || p.resources || '',
           updatedAt: new Date().toISOString(),
         } : p);
         try {
@@ -342,6 +352,8 @@ function AppInner() {
         if (a.EF && (!max || a.EF > max)) return a.EF;
         return max;
       }, null);
+      const totalWork = state.activities.reduce((s, a) => s + (a.work || 0), 0);
+      const actualWork = state.activities.reduce((s, a) => s + ((a.work || 0) * (a.pct || 0) / 100), 0);
       pDispatch({
         type: 'UPDATE_PROJECT', id: pState.activeProjectId, updates: {
           name: state.projName,
@@ -354,6 +366,14 @@ function AppInner() {
           endDate: latestEF ? latestEF.toISOString() : (state.projStart ? new Date(state.projStart.getTime() + 90 * 86400000).toISOString() : null),
           statusDate: state.statusDate ? state.statusDate.toISOString() : null,
           supabaseId: localStorage.getItem('sb_current_project_id') || null,
+          duration: projRow?.dur || 0,
+          remainingDur: projRow?.remDur || 0,
+          work: totalWork,
+          actualWork: Math.round(actualWork),
+          remainingWork: Math.round(totalWork - actualWork),
+          pctProg: projRow ? Math.round((projRow.pct || 0) * 10) / 10 : 0,
+          weight: projRow?.weight ?? null,
+          resources: projRow?.res || '',
         }
       });
     }

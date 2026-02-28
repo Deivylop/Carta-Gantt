@@ -9,6 +9,7 @@ import type { EPSNode } from '../../types/portfolio';
 import {
     FolderOpen, FolderPlus, Trash2, Scissors, Copy,
     ClipboardPaste, ChevronRight, ChevronDown,
+    ArrowRight, ArrowLeft, ArrowUp, ArrowDown,
 } from 'lucide-react';
 
 interface Props {
@@ -113,6 +114,42 @@ export default function EPSModal({ open, onClose }: Props) {
             });
         }
         setClipboard(null);
+    };
+
+    const handleIndent = () => {
+        if (!selectedEpsId) return;
+        dispatch({ type: 'INDENT', id: selectedEpsId });
+    };
+
+    const handleOutdent = () => {
+        if (!selectedEpsId) return;
+        dispatch({ type: 'OUTDENT', id: selectedEpsId });
+    };
+
+    const handleMoveUp = () => {
+        if (!selectedEpsId) return;
+        const eps = state.epsNodes.find(e => e.id === selectedEpsId);
+        if (!eps) return;
+        const siblings = (childMap.get(eps.parentId) || []).sort((a, b) => a.name.localeCompare(b.name));
+        const idx = siblings.findIndex(e => e.id === eps.id);
+        if (idx > 0) {
+            const prev = siblings[idx - 1];
+            dispatch({ type: 'RENAME_EPS', id: eps.id, name: prev.name });
+            dispatch({ type: 'RENAME_EPS', id: prev.id, name: eps.name });
+        }
+    };
+
+    const handleMoveDown = () => {
+        if (!selectedEpsId) return;
+        const eps = state.epsNodes.find(e => e.id === selectedEpsId);
+        if (!eps) return;
+        const siblings = (childMap.get(eps.parentId) || []).sort((a, b) => a.name.localeCompare(b.name));
+        const idx = siblings.findIndex(e => e.id === eps.id);
+        if (idx >= 0 && idx < siblings.length - 1) {
+            const next = siblings[idx + 1];
+            dispatch({ type: 'RENAME_EPS', id: eps.id, name: next.name });
+            dispatch({ type: 'RENAME_EPS', id: next.id, name: eps.name });
+        }
     };
 
     const handleSaveField = (id: string, field: 'epsCode' | 'name', value: string) => {
@@ -292,6 +329,36 @@ export default function EPSModal({ open, onClose }: Props) {
                             style={{ ...sideBtnStyle, opacity: clipboard ? 1 : 0.4 }}
                         >
                             <ClipboardPaste size={13} /> Pegar
+                        </button>
+                        <div style={{ height: 8 }} />
+                        <button
+                            onClick={handleIndent}
+                            disabled={!selectedEpsId}
+                            style={{ ...sideBtnStyle, opacity: selectedEpsId ? 1 : 0.4 }}
+                        >
+                            <ArrowRight size={13} /> Indentar
+                        </button>
+                        <button
+                            onClick={handleOutdent}
+                            disabled={!selectedEpsId}
+                            style={{ ...sideBtnStyle, opacity: selectedEpsId ? 1 : 0.4 }}
+                        >
+                            <ArrowLeft size={13} /> Des-indentar
+                        </button>
+                        <div style={{ height: 8 }} />
+                        <button
+                            onClick={handleMoveUp}
+                            disabled={!selectedEpsId}
+                            style={{ ...sideBtnStyle, opacity: selectedEpsId ? 1 : 0.4 }}
+                        >
+                            <ArrowUp size={13} /> Subir
+                        </button>
+                        <button
+                            onClick={handleMoveDown}
+                            disabled={!selectedEpsId}
+                            style={{ ...sideBtnStyle, opacity: selectedEpsId ? 1 : 0.4 }}
+                        >
+                            <ArrowDown size={13} /> Bajar
                         </button>
                     </div>
                 </div>
