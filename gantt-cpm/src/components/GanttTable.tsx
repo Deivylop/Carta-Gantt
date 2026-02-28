@@ -455,7 +455,7 @@ export default function GanttTable() {
             }
         }
         return a[c.key] != null ? String(a[c.key]) : '';
-    }, [activities, defCal, state.collapsed, state.statusDate, isUsageView, state.expResources]);
+    }, [activities, defCal, state.collapsed, state.statusDate, isUsageView, state.expResources, simMap, spotlightEnabled, spotlightEnd]);
 
     const getRawValue = useCallback((a: any, key: string): string => {
         if (a._isResourceAssignment) {
