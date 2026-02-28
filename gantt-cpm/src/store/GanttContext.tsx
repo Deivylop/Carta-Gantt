@@ -1751,20 +1751,42 @@ function reducer(state: GanttState, action: Action): GanttState {
         case 'MERGE_SCENARIO': {
             const sc = state.scenarios.find(s => s.id === action.scenarioId);
             if (!sc) return state;
+            // Safety: only merge if scenario has real activities (not just project row)
+            const realActivities = sc.activities.filter(a => !a._isProjRow);
+            if (realActivities.length === 0) {
+                console.error('[MERGE_SCENARIO] Scenario has no activities — aborting merge');
+                return state;
+            }
             // Replace master activities with scenario activities
             // Transfer the scenario's simStatusDate to the master if it exists
             const mergedStatusDate = sc.simStatusDate ? (() => {
                 const d = new Date(sc.simStatusDate + 'T00:00:00');
                 return isNaN(d.getTime()) ? state.statusDate : d;
             })() : state.statusDate;
+            // Ensure all Date fields are proper Date objects before merge
+            const safeActs = deepCloneActivities(sc.activities).map(a => {
+                const toDate = (v: any): Date | null => {
+                    if (!v) return null;
+                    if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+                    const d = new Date(v);
+                    return isNaN(d.getTime()) ? null : d;
+                };
+                return { ...a, ES: toDate(a.ES), EF: toDate(a.EF), LS: toDate(a.LS), LF: toDate(a.LF), blES: toDate(a.blES), blEF: toDate(a.blEF) };
+            });
             const newState = {
                 ...state,
-                activities: deepCloneActivities(sc.activities),
+                activities: safeActs,
                 statusDate: mergedStatusDate,
                 _cpmStatusDate: mergedStatusDate,
             };
             // Use recalcInternal with the scenario's status date (retained logic)
-            return recalcInternal(newState, mergedStatusDate, false);
+            try {
+                return recalcInternal(newState, mergedStatusDate, false);
+            } catch (err) {
+                console.error('[MERGE_SCENARIO] recalc failed:', err);
+                // Fallback: set activities without recalc rather than losing data
+                return { ...newState, visRows: buildVisRows(safeActs, state.collapsed, state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes, state.activeCheckerFilter, state.checkerThresholds, state.statusDate, state.customFilters, state.filtersMatchAll) };
+            }
         }
 
         case 'DUPLICATE_SCENARIO': {
