@@ -69,7 +69,7 @@ type PortfolioAction =
     | { type: 'RENAME_EPS'; id: string; name: string }
     | { type: 'UPDATE_EPS'; id: string; updates: Partial<EPSNode> }
     | { type: 'DELETE_EPS'; id: string }
-    | { type: 'ADD_PROJECT'; epsId: string | null; name: string; code: string }
+    | { type: 'ADD_PROJECT'; epsId: string | null; name: string; code: string; initialData?: Partial<ProjectMeta> }
     | { type: 'UPDATE_PROJECT'; id: string; updates: Partial<ProjectMeta> }
     | { type: 'DELETE_PROJECT'; id: string }
     | { type: 'TOGGLE_EXPAND'; id: string }
@@ -80,7 +80,9 @@ type PortfolioAction =
     | { type: 'CUT_PROJECT'; id: string }
     | { type: 'COPY_PROJECT'; id: string }
     | { type: 'PASTE_PROJECT'; targetEpsId: string | null }
-    | { type: 'MOVE_PROJECT'; id: string; targetEpsId: string | null };
+    | { type: 'MOVE_PROJECT'; id: string; targetEpsId: string | null }
+    | { type: 'INDENT'; id: string }
+    | { type: 'OUTDENT'; id: string };
 
 // ─── Initial State ──────────────────────────────────────────────
 const initialState: PortfolioState = {
@@ -179,6 +181,7 @@ function portfolioReducer(state: PortfolioState, action: PortfolioAction): Portf
                 createdAt: now,
                 updatedAt: now,
                 supabaseId: null,
+                ...(action.initialData || {}),
             };
             const expanded = new Set(state.expandedIds);
             if (action.epsId) expanded.add(action.epsId);
@@ -277,6 +280,45 @@ function portfolioReducer(state: PortfolioState, action: PortfolioAction): Portf
                     p.id === action.id ? { ...p, epsId: action.targetEpsId, updatedAt: nowISO() } : p
                 ),
             };
+        }
+
+        case 'INDENT': {
+            // Make the selected node a child of the nearest sibling EPS above it
+            const tree = buildTree(state.epsNodes, state.projects, state.expandedIds);
+            const idx = tree.findIndex(n => (n.kind === 'eps' ? n.data.id : n.data.id) === action.id);
+            if (idx <= 0) return state;
+            const node = tree[idx];
+            let targetEps: string | null = null;
+            for (let i = idx - 1; i >= 0; i--) {
+                if (tree[i].kind === 'eps' && tree[i].depth === node.depth) {
+                    targetEps = tree[i].data.id;
+                    break;
+                }
+            }
+            if (!targetEps) return state;
+            const isEps = state.epsNodes.some(e => e.id === action.id);
+            const expanded = new Set(state.expandedIds);
+            expanded.add(targetEps);
+            if (isEps) {
+                return { ...state, epsNodes: state.epsNodes.map(e => e.id === action.id ? { ...e, parentId: targetEps } : e), expandedIds: expanded };
+            } else {
+                return { ...state, projects: state.projects.map(p => p.id === action.id ? { ...p, epsId: targetEps } : p), expandedIds: expanded };
+            }
+        }
+
+        case 'OUTDENT': {
+            const isEps = state.epsNodes.some(e => e.id === action.id);
+            if (isEps) {
+                const node = state.epsNodes.find(e => e.id === action.id);
+                if (!node || !node.parentId) return state;
+                const parent = state.epsNodes.find(e => e.id === node.parentId);
+                return { ...state, epsNodes: state.epsNodes.map(e => e.id === action.id ? { ...e, parentId: parent?.parentId || null } : e) };
+            } else {
+                const proj = state.projects.find(p => p.id === action.id);
+                if (!proj || !proj.epsId) return state;
+                const parentEps = state.epsNodes.find(e => e.id === proj.epsId);
+                return { ...state, projects: state.projects.map(p => p.id === action.id ? { ...p, epsId: parentEps?.parentId || null } : p) };
+            }
         }
 
         default:

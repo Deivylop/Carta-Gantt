@@ -11,11 +11,14 @@ import { supabase } from '../../lib/supabase';
 import type { ModuleId } from '../ModuleTabs';
 import type { TreeNode, ProjectMeta } from '../../types/portfolio';
 import ProjectConfigModal from '../modals/ProjectConfigModal';
+import EPSModal from '../modals/EPSModal';
+import ProjectDetailPanel from './ProjectDetailPanel';
 import {
     FolderOpen, FolderPlus, FilePlus, Trash2, ChevronRight, ChevronDown,
     Play, Briefcase, TrendingUp, Building2,
     Search, Edit3, GanttChart, Scissors, Copy, ClipboardPaste,
-    ArrowRightLeft, Cloud, Settings, ChevronsRight, ChevronsLeft
+    ArrowRightLeft, Cloud, Settings, ChevronsRight, ChevronsLeft,
+    ArrowRight, ArrowLeft, Network, PanelBottomOpen, PanelBottomClose
 } from 'lucide-react';
 
 interface Props {
@@ -109,9 +112,31 @@ export default function ProjectsPage({ onOpenProject }: Props) {
     const [moveModalOpen, setMoveModalOpen] = useState(false);
     const [moveTargetEps, setMoveTargetEps] = useState<string | null>(null);
 
+    // EPS management modal
+    const [epsModalOpen, setEpsModalOpen] = useState(false);
+
+    // Detail panel state
+    const [detailPanelOpen, setDetailPanelOpen] = useState(true);
+    const DETAIL_H = 220;
+
+    // Timeline auto-scale: measure container width
+    const [timelineWidth, setTimelineWidth] = useState(600);
+    const timelineContainerRef = useRef<HTMLDivElement>(null);
+
     // Scroll sync refs
     const tableBodyRef = useRef<HTMLDivElement>(null);
     const timelineBodyRef = useRef<HTMLDivElement>(null);
+
+    // Measure timeline container width for auto-scaling
+    useEffect(() => {
+        const el = timelineContainerRef.current;
+        if (!el) return;
+        const obs = new ResizeObserver(entries => {
+            if (entries[0]) setTimelineWidth(entries[0].contentRect.width);
+        });
+        obs.observe(el);
+        return () => obs.disconnect();
+    }, []);
 
     // Sync vertical scroll between table body and timeline body
     useEffect(() => {
@@ -201,7 +226,17 @@ export default function ProjectsPage({ onOpenProject }: Props) {
         } else {
             // Creating new project via modal
             const code = data.code || ('PRY-' + String(pState.projects.length + 1).padStart(3, '0'));
-            pDispatch({ type: 'ADD_PROJECT', epsId: configEpsId, name: data.name || 'Nuevo Proyecto', code });
+            pDispatch({
+                type: 'ADD_PROJECT', epsId: configEpsId,
+                name: data.name || 'Nuevo Proyecto', code,
+                initialData: {
+                    startDate: data.startDate || null,
+                    statusDate: data.statusDate || null,
+                    description: data.description || '',
+                    priority: 1,
+                    status: data.status || 'Planificación',
+                },
+            });
         }
         setConfigModalOpen(false);
     }, [configProject, configEpsId, pState.projects.length, pDispatch]);
@@ -267,6 +302,15 @@ export default function ProjectsPage({ onOpenProject }: Props) {
         setMoveModalOpen(false);
     }, [selectedProject, moveTargetEps, pDispatch]);
 
+    // ── Indent / Outdent handlers ──
+    const handleIndent = useCallback(() => {
+        if (pState.selectedId) pDispatch({ type: 'INDENT', id: pState.selectedId });
+    }, [pState.selectedId, pDispatch]);
+
+    const handleOutdent = useCallback(() => {
+        if (pState.selectedId) pDispatch({ type: 'OUTDENT', id: pState.selectedId });
+    }, [pState.selectedId, pDispatch]);
+
     // ── Supabase handlers ──
     const handleLoadFromSupabase = useCallback(async () => {
         setSbModalOpen(true);
@@ -321,23 +365,33 @@ export default function ProjectsPage({ onOpenProject }: Props) {
     // TIMELINE CALCULATIONS
     // ══════════════════════════════════════════════════════════════
     const timelineData = useMemo(() => {
+        // Include projects with startDate, endDate, or even createdAt as fallback
         const projectsWithDates = pState.projects.filter(p => p.startDate || p.endDate);
-        if (projectsWithDates.length === 0) return null;
+        if (projectsWithDates.length === 0) {
+            // Fallback: if any projects exist, use createdAt as start and +90 days
+            if (pState.projects.length === 0) return null;
+            const anyWithCreated = pState.projects.filter(p => p.createdAt);
+            if (anyWithCreated.length === 0) return null;
+        }
 
         let minDate = Infinity;
         let maxDate = -Infinity;
+        const now = Date.now();
 
         for (const p of pState.projects) {
-            if (p.startDate) {
-                const d = new Date(p.startDate).getTime();
-                if (d < minDate) minDate = d;
-                if (d > maxDate) maxDate = d;
-            }
-            if (p.endDate) {
-                const d = new Date(p.endDate).getTime();
-                if (d < minDate) minDate = d;
-                if (d > maxDate) maxDate = d;
-            }
+            const sd = p.startDate ? new Date(p.startDate).getTime() : null;
+            const ed = p.endDate ? new Date(p.endDate).getTime() : null;
+            const cd = p.createdAt ? new Date(p.createdAt).getTime() : null;
+
+            // Use startDate or fallback to createdAt
+            const effectiveStart = sd || cd || now;
+            // Use endDate or fallback to startDate + 90 days
+            const effectiveEnd = ed || (sd ? sd + 90 * 86400000 : effectiveStart + 90 * 86400000);
+
+            if (effectiveStart < minDate) minDate = effectiveStart;
+            if (effectiveEnd > maxDate) maxDate = effectiveEnd;
+            if (effectiveStart > maxDate) maxDate = effectiveStart;
+            if (effectiveEnd < minDate) minDate = effectiveEnd;
         }
 
         if (!isFinite(minDate) || !isFinite(maxDate)) return null;
@@ -406,7 +460,12 @@ export default function ProjectsPage({ onOpenProject }: Props) {
         return ranges;
     }, [pState.projects, pState.epsNodes]);
 
-    const DAY_W = 3; // pixels per day in timeline
+    // Auto-scale DAY_W to fit the timeline container width
+    const DAY_W = useMemo(() => {
+        if (!timelineData || timelineWidth <= 0) return 3;
+        const computed = (timelineWidth - 20) / timelineData.totalDays;
+        return Math.max(1, computed); // at least 1px per day
+    }, [timelineData, timelineWidth]);
 
     // ── Render Tree Row ──
     const renderTreeRow = (node: TreeNode, index: number) => {
@@ -559,8 +618,10 @@ export default function ProjectsPage({ onOpenProject }: Props) {
         let barHeight = 10;
 
         if (node.kind === 'project') {
-            startDate = node.data.startDate ? new Date(node.data.startDate) : null;
-            endDate = node.data.endDate ? new Date(node.data.endDate) : startDate;
+            startDate = node.data.startDate ? new Date(node.data.startDate)
+                : node.data.createdAt ? new Date(node.data.createdAt) : null;
+            endDate = node.data.endDate ? new Date(node.data.endDate)
+                : startDate ? new Date(startDate.getTime() + 90 * 86400000) : null;
             barColor = node.data.status === 'Completado' ? '#0ea5e9'
                 : node.data.status === 'Ejecución' ? '#22c55e'
                 : node.data.status === 'Suspendido' ? '#f59e0b'
@@ -706,6 +767,23 @@ export default function ProjectsPage({ onOpenProject }: Props) {
 
                 <Sep />
 
+                {/* Schema: Indent / Outdent (ESQUEMA) */}
+                <button onClick={handleIndent} disabled={!pState.selectedId} style={{ ...btnStyle, opacity: pState.selectedId ? 1 : 0.4 }} title="Indentar (mover dentro de EPS superior)">
+                    <ArrowRight size={14} /> Indentar
+                </button>
+                <button onClick={handleOutdent} disabled={!pState.selectedId} style={{ ...btnStyle, opacity: pState.selectedId ? 1 : 0.4 }} title="Des-indentar (mover un nivel arriba)">
+                    <ArrowLeft size={14} /> Des-indentar
+                </button>
+
+                <Sep />
+
+                {/* EPS Management Modal */}
+                <button onClick={() => setEpsModalOpen(true)} style={{ ...btnStyle, color: '#f59e0b' }} title="Gestionar Estructura EPS">
+                    <Network size={14} /> EPS
+                </button>
+
+                <Sep />
+
                 {/* Cut / Copy / Paste / Move */}
                 <button onClick={handleCut} disabled={!selectedProject} style={{ ...btnStyle, opacity: selectedProject ? 1 : 0.4 }} title="Cortar Proyecto">
                     <Scissors size={14} /> Cortar
@@ -729,6 +807,13 @@ export default function ProjectsPage({ onOpenProject }: Props) {
                 </button>
 
                 <div style={{ flex: 1 }} />
+
+                {/* Detail Panel toggle */}
+                <button onClick={() => setDetailPanelOpen(!detailPanelOpen)} style={{ ...btnStyle, color: detailPanelOpen ? '#6366f1' : 'var(--text-muted)' }} title={detailPanelOpen ? 'Ocultar Panel de Detalles' : 'Mostrar Panel de Detalles'}>
+                    {detailPanelOpen ? <PanelBottomClose size={14} /> : <PanelBottomOpen size={14} />}
+                </button>
+
+                <Sep />
 
                 {/* Expand/Collapse */}
                 <button onClick={() => pDispatch({ type: 'EXPAND_ALL' })} style={btnStyle} title="Expandir Todo">
@@ -757,8 +842,11 @@ export default function ProjectsPage({ onOpenProject }: Props) {
                 </div>
             </div>
 
-            {/* ── Main Content: Table + Timeline ── */}
-            <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+            {/* ── Main Content: Table + Timeline + Detail Panel ── */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+                {/* ── Upper: Table + Timeline ── */}
+                <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
 
                 {/* Left: EPS Table */}
                 <div style={{
@@ -796,7 +884,7 @@ export default function ProjectsPage({ onOpenProject }: Props) {
                 </div>
 
                 {/* Right: Gantt Timeline */}
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                <div ref={timelineContainerRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                     {/* Timeline Header */}
                     <div style={{
                         height: HEADER_H, borderBottom: '2px solid var(--border-primary)',
@@ -866,7 +954,19 @@ export default function ProjectsPage({ onOpenProject }: Props) {
                         )}
                     </div>
                 </div>
-            </div>
+                </div>{/* end upper: Table + Timeline */}
+
+                {/* ── Bottom: Detail Panel ── */}
+                {detailPanelOpen && selectedProject && (
+                    <div style={{ height: DETAIL_H, flexShrink: 0, overflow: 'hidden' }}>
+                        <ProjectDetailPanel
+                            projectId={selectedProject.id}
+                            customCalendars={ganttState.customCalendars || []}
+                        />
+                    </div>
+                )}
+
+            </div>{/* end main content column */}
 
             {/* ── Context Menu ── */}
             {contextMenu && (
@@ -1045,6 +1145,9 @@ export default function ProjectsPage({ onOpenProject }: Props) {
                 onClose={() => setConfigModalOpen(false)}
                 customCalendars={ganttState.customCalendars || []}
             />
+
+            {/* ── EPS Management Modal ── */}
+            <EPSModal open={epsModalOpen} onClose={() => setEpsModalOpen(false)} />
         </div>
     );
 }

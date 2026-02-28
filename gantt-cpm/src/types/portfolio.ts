@@ -33,6 +33,15 @@ export interface ProjectMeta {
     createdAt: string;         // ISO datetime
     updatedAt: string;         // ISO datetime
     supabaseId: string | null; // Supabase project id if synced
+    // Project defaults for new activities (P6 "Valores por defecto")
+    durationType?: string;         // e.g. 'Fija Duración y Unidades'
+    pctCompleteType?: string;      // e.g. 'Físico' | 'Duración' | 'Unidades'
+    activityType?: string;         // e.g. 'Dependiente de tarea'
+    defaultCalendar?: string;      // calendar name
+    actIdPrefix?: string;          // activity ID prefix e.g. "A"
+    actIdSuffix?: string;          // activity ID suffix
+    actIdIncrement?: number;       // ID increment e.g. 10
+    notes?: string;                // project notes / bloc de notas
 }
 
 /** The full portfolio state */

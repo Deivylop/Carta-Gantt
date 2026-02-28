@@ -299,6 +299,10 @@ function AppInner() {
         // Update project metadata
         const tasks = state.activities.filter(a => (a.type === 'task' || a.type === 'milestone') && !a._isProjRow);
         const projRow = state.activities.find(a => a._isProjRow);
+        const latestEF = tasks.reduce<Date | null>((max, a) => {
+          if (a.EF && (!max || a.EF > max)) return a.EF;
+          return max;
+        }, null);
         const meta = pState.projects.map(p => p.id === pState.activeProjectId ? {
           ...p, name: state.projName,
           activityCount: tasks.length,
@@ -306,6 +310,9 @@ function AppInner() {
           criticalCount: tasks.filter(a => a.crit).length,
           globalPct: projRow ? Math.round((projRow.pct || 0) * 10) / 10 : 0,
           plannedPct: projRow ? Math.round((projRow._plannedPct || 0) * 10) / 10 : 0,
+          startDate: state.projStart ? state.projStart.toISOString() : (p.startDate || null),
+          endDate: latestEF ? latestEF.toISOString() : (state.projStart ? new Date(state.projStart.getTime() + 90 * 86400000).toISOString() : (p.endDate || null)),
+          statusDate: state.statusDate ? state.statusDate.toISOString() : (p.statusDate || null),
           updatedAt: new Date().toISOString(),
         } : p);
         try {
@@ -331,6 +338,10 @@ function AppInner() {
       // Update project metadata
       const tasks = state.activities.filter(a => (a.type === 'task' || a.type === 'milestone') && !a._isProjRow);
       const projRow = state.activities.find(a => a._isProjRow);
+      const latestEF = tasks.reduce<Date | null>((max, a) => {
+        if (a.EF && (!max || a.EF > max)) return a.EF;
+        return max;
+      }, null);
       pDispatch({
         type: 'UPDATE_PROJECT', id: pState.activeProjectId, updates: {
           name: state.projName,
@@ -340,6 +351,7 @@ function AppInner() {
           globalPct: projRow ? Math.round((projRow.pct || 0) * 10) / 10 : 0,
           plannedPct: projRow ? Math.round((projRow._plannedPct || 0) * 10) / 10 : 0,
           startDate: state.projStart ? state.projStart.toISOString() : null,
+          endDate: latestEF ? latestEF.toISOString() : (state.projStart ? new Date(state.projStart.getTime() + 90 * 86400000).toISOString() : null),
           statusDate: state.statusDate ? state.statusDate.toISOString() : null,
           supabaseId: localStorage.getItem('sb_current_project_id') || null,
         }
