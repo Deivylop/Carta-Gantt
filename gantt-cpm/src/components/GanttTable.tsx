@@ -123,17 +123,19 @@ const EditableTextCell = ({ rawValue, displayHtml, onUpdate, onFocus, isRowSelec
             style={{ cursor: 'text', display: 'flex', alignItems: 'center', justifyContent: 'inherit', width: '100%', height: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
             onMouseDown={(e) => {
                 if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
-                // 1er click: seleccionar fila. 2do click: entrar en edición.
+                // Celda ya tocada → entrar en edición
                 if (cellTouchedRef.current) { enterEdit(e); return; }
+                // Fila ya seleccionada → marcar celda como tocada (siguiente click = editar)
                 if (isRowSelected || wasSelectedRef.current) {
                     e.stopPropagation();
                     cellTouchedRef.current = true;
                     return;
                 }
-                wasSelectedRef.current = true;
+                // Fila no seleccionada → dejar que el click propague para seleccionar la fila
+                // wasSelectedRef se actualizará via useEffect cuando isRowSelected cambie
             }}
             onDoubleClick={(e) => { if (!isEditing) enterEdit(e); }}
-            onClick={(e) => { if ((isRowSelected || wasSelectedRef.current) && !e.ctrlKey && !e.metaKey && !e.shiftKey) e.stopPropagation(); }}
+            onClick={(e) => { if (isRowSelected && cellTouchedRef.current && !e.ctrlKey && !e.metaKey && !e.shiftKey) e.stopPropagation(); }}
             dangerouslySetInnerHTML={{ __html: displayHtml }}
         />
     );
