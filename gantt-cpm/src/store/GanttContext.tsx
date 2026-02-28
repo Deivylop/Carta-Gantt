@@ -772,8 +772,9 @@ function reducer(state: GanttState, action: Action): GanttState {
             const acts = [...state.activities];
             const orig = acts[action.index];
             const updated = { ...orig, ...action.updates };
-            // Si la restricción se limpia ("Sin Restricción"), borrar fecha y manual
-            if ('constraint' in action.updates && !updated.constraint) {
+            // Si la restricción CAMBIA de un valor real a vacío ("Sin Restricción"), borrar fecha y manual
+            // Solo cuando orig tenía un constraint real (MSO, SNET, etc.) — no cuando ya era ''
+            if ('constraint' in action.updates && !updated.constraint && orig.constraint) {
                 updated.constraintDate = ''; updated.manual = false;
             }
             // Track actualStart: when pct goes from 0 to >0, record the current start date
@@ -931,7 +932,10 @@ function reducer(state: GanttState, action: Action): GanttState {
                 // Si ES es posterior al Data Date, NO auto-completar — el usuario debe
                 // establecer manualmente el Actual Start.
                 if (oldPct === 0 && newPct > 0 && !a.actualStart) {
-                    const effectiveStatusDate = state._cpmStatusDate || state.statusDate;
+                    // Preferir statusDate actual (el que el usuario ve en el picker)
+                    // sobre _cpmStatusDate (que puede estar desfasado si el usuario
+                    // cambió la fecha de corte pero aún no presionó "Calcular CPM")
+                    const effectiveStatusDate = state.statusDate || state._cpmStatusDate;
                     const esIsBeforeOrAtDataDate = a.ES && effectiveStatusDate
                         ? a.ES.getTime() <= effectiveStatusDate.getTime()
                         : true; // Si no hay Data Date, permitir
