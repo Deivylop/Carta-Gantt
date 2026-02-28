@@ -672,7 +672,7 @@ export default function GanttTimeline() {
         e.preventDefault();
         const slEnd = spotlightEnd ? new Date(spotlightEnd) : addDays(statusDate, 7);
         const origX = dayDiff(projStart, slEnd) * PX;
-        const minX = dayDiff(projStart, statusDate) * PX;
+        const minX = (dayDiff(projStart, statusDate) + 1) * PX;
         const startClientX = e.clientX;
         const onMove = (me: MouseEvent) => {
             const newX = Math.max(minX, origX + (me.clientX - startClientX));
@@ -991,7 +991,7 @@ export default function GanttTimeline() {
                     const slEnd = spotlightDragX !== null
                         ? addDays(projStart, Math.round(spotlightDragX / PX))
                         : (spotlightEnd ? new Date(spotlightEnd) : addDays(statusDate, 7));
-                    const slX1 = Math.max(0, dayDiff(projStart, slStart) * PX);
+                    const slX1 = Math.max(0, (dayDiff(projStart, slStart) + 1) * PX);
                     const slX2 = spotlightDragX !== null ? spotlightDragX : dayDiff(projStart, slEnd) * PX;
                     const slW = Math.max(0, slX2 - slX1);
                     return (
