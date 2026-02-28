@@ -42,6 +42,7 @@ const EditableNumberCell = ({ rawValue, displayValue, onUpdate, onFocus, isRowSe
                     max={max}
                     style={{ background: 'transparent', outline: 'none', border: '1px solid #3b82f6', color: 'inherit', padding: 0, margin: 0, width: '100%', height: '100%', fontSize: 'inherit', fontFamily: 'inherit', boxSizing: 'border-box', textAlign: 'inherit' }}
                     autoFocus
+                    ref={el => { if (el) { el.select(); } }}
                     value={val}
                     onChange={e => setVal(e.target.value)}
                     onBlur={() => { setIsEditing(false); onUpdate(val); }}
@@ -794,8 +795,8 @@ export default function GanttTable() {
                                                         onUpdate={(newVal) => handleBlur(vr._idx, c.key, newVal)}
                                                         onFocus={() => dispatch({ type: 'SET_SELECTION', index: vr._idx })}
                                                         isRowSelected={selIndices.has(vr._idx)}
-                                                        step={c.key === 'pct' ? 5 : undefined}
-                                                        min={c.key === 'pct' ? 0 : undefined}
+                                                        step={c.key === 'pct' ? 5 : c.key === 'work' ? 100 : undefined}
+                                                        min={c.key === 'pct' || c.key === 'work' ? 0 : undefined}
                                                         max={c.key === 'pct' ? 100 : undefined}
                                                     />
                                                 </div>
@@ -839,7 +840,21 @@ export default function GanttTable() {
                                                     }
                                                 }}
                                                 onContextMenu={e => { e.preventDefault(); e.currentTarget.blur(); }}
-                                                onFocus={() => dispatch({ type: 'SET_SELECTION', index: vr._idx })}
+                                                onFocus={e => {
+                                                    dispatch({ type: 'SET_SELECTION', index: vr._idx });
+                                                    // Mover cursor al final del texto
+                                                    const el = e.currentTarget;
+                                                    requestAnimationFrame(() => {
+                                                        const sel = window.getSelection();
+                                                        if (sel && el.childNodes.length) {
+                                                            const range = document.createRange();
+                                                            range.selectNodeContents(el);
+                                                            range.collapse(false);
+                                                            sel.removeAllRanges();
+                                                            sel.addRange(range);
+                                                        }
+                                                    });
+                                                }}
                                                 onBlur={e => handleBlur(vr._idx, c.key, e.currentTarget.textContent || '')}
                                                 onKeyDown={handleKeyDown}
                                                 dangerouslySetInnerHTML={{ __html: c.key === 'name' ? val : getRawValue(a, c.key) || val }}
