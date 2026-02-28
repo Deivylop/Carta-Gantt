@@ -208,6 +208,7 @@ export default function GanttTable() {
         const map = new Map<string, { simReal: number; simProg: number }>();
         if (!spotlightEnabled || !spotlightEnd) return map;
         const target = new Date(spotlightEnd); target.setHours(0, 0, 0, 0);
+        const sd = new Date(statusDate); sd.setHours(0, 0, 0, 0);
 
         // ── Leaf activities ──
         for (const a of activities) {
@@ -251,21 +252,31 @@ export default function GanttTable() {
                 }
             }
 
-            // ── simRealPct: linear time-based proration on CURRENT schedule (ES/EF) ──
+            // ── simRealPct: starts from current pct, prorates remaining work from statusDate to EF ──
             let simReal = 0;
             const pct = a.pct || 0;
             if (pct >= 100) {
                 simReal = 100;
-            } else if (a.ES && a.EF) {
-                const esObj = new Date(a.ES); esObj.setHours(0, 0, 0, 0);
+            } else if (a.EF) {
                 const efObj = new Date(a.EF); efObj.setHours(0, 0, 0, 0);
                 if (target >= efObj) {
+                    // Reflector past EF → expect 100%
                     simReal = 100;
-                } else if (target <= esObj) {
-                    simReal = 0;
+                } else if (target <= sd) {
+                    // Reflector at or before status date → just current pct
+                    simReal = pct;
                 } else {
-                    simReal = getExactElapsedRatio(a.ES, a.EF, target, cal) * 100;
+                    // Reflector between statusDate and EF:
+                    // remaining% = (100 - pct), distributed over statusDate→EF
+                    // simReal = pct + (elapsed from sd to target / total from sd to EF) × remaining%
+                    const remainPct = 100 - pct;
+                    const totalRemWd = getExactWorkDays(sd, efObj, cal);
+                    const elapsedWd = getExactWorkDays(sd, target, cal);
+                    const ratio = totalRemWd > 0 ? Math.min(1, elapsedWd / totalRemWd) : 1;
+                    simReal = pct + ratio * remainPct;
                 }
+            } else {
+                simReal = pct;
             }
 
             map.set(a.id, { simReal: Math.round(simReal * 10) / 10, simProg: Math.round(simProg * 10) / 10 });
