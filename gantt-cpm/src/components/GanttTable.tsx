@@ -2,9 +2,9 @@
 // Gantt Table – Left panel, editable table matching HTML exactly
 // Column resize, inline editing, empty row, tooltip, all formatting
 // ═══════════════════════════════════════════════════════════════════
-import React, { useCallback, useRef, useState, useEffect } from 'react';
+import React, { useCallback, useMemo, useRef, useState, useEffect } from 'react';
 import { useGantt } from '../store/GanttContext';
-import { fmtDate, addDays, isoDate, newActivity, parseDate } from '../utils/cpm';
+import { fmtDate, addDays, isoDate, newActivity, parseDate, getExactWorkDays, getExactElapsedRatio } from '../utils/cpm';
 import { predsToStr, getWeightPct, strToPreds, autoId, syncResFromString } from '../utils/helpers';
 import ColumnPickerModal from './ColumnPickerModal';
 import RowContextMenu from './RowContextMenu';
@@ -203,6 +203,104 @@ export default function GanttTable() {
     const MIN_ROW_H = 26;
     const usageRowH = Math.max(MIN_ROW_H, (usageModes.length || 1) * LINE_H + 4);
 
+    // ═══ Simulated progress at Reflector end date ═══
+    const simMap = useMemo(() => {
+        const map = new Map<string, { simReal: number; simProg: number }>();
+        if (!spotlightEnabled || !spotlightEnd) return map;
+        const target = new Date(spotlightEnd); target.setHours(0, 0, 0, 0);
+        const sd = new Date(statusDate); sd.setHours(0, 0, 0, 0);
+        const activeBlIdx = state.activeBaselineIdx ?? 0;
+
+        // ── Leaf activities ──
+        for (const a of activities) {
+            if (a._isProjRow || a.type === 'summary') continue;
+            const cal = a.cal || defCal;
+
+            // ── simProgPct: planned progress at target (two-segment baseline interp.) ──
+            let simProg = 0;
+            const blStart = a.blES || a.ES;
+            const blEnd = a.blEF || a.EF;
+            if (blStart && blEnd) {
+                const stObj = new Date(blStart); stObj.setHours(0, 0, 0, 0);
+                const endObj = new Date(blEnd); endObj.setHours(0, 0, 0, 0);
+                if (target <= stObj) { simProg = 0; }
+                else if (target >= endObj) { simProg = 100; }
+                else {
+                    const activeBl = (a.baselines || [])[activeBlIdx] || null;
+                    if (activeBl && activeBl.pct != null && activeBl.statusDate) {
+                        const blPct = activeBl.pct;
+                        if (blPct === 0) {
+                            simProg = getExactElapsedRatio(blStart, blEnd, target, cal) * 100;
+                        } else {
+                            const blStatusEnd = new Date(activeBl.statusDate); blStatusEnd.setHours(0, 0, 0, 0);
+                            blStatusEnd.setDate(blStatusEnd.getDate() + 1);
+                            if (target <= blStatusEnd) {
+                                const totalWd = getExactWorkDays(stObj, blStatusEnd, cal);
+                                const elapsed = getExactWorkDays(stObj, target, cal);
+                                simProg = totalWd > 0 ? (elapsed / totalWd) * blPct : blPct;
+                            } else {
+                                const totalWd = getExactWorkDays(blStatusEnd, endObj, cal);
+                                const elapsed = getExactWorkDays(blStatusEnd, target, cal);
+                                const ratio = totalWd > 0 ? elapsed / totalWd : 1;
+                                simProg = blPct + ratio * (100 - blPct);
+                            }
+                        }
+                    } else {
+                        simProg = getExactElapsedRatio(blStart, blEnd, target, cal) * 100;
+                    }
+                }
+            }
+
+            // ── simRealPct: project actual progress at target by velocity ──
+            let simReal = 0;
+            const pct = a.pct || 0;
+            if (pct >= 100) {
+                simReal = 100;
+            } else if (pct > 0 && a.ES) {
+                const actStart = a.actualStart ? new Date(a.actualStart) : new Date(a.ES);
+                actStart.setHours(0, 0, 0, 0);
+                const elapsedWd = getExactWorkDays(actStart, sd, cal);
+                if (elapsedWd > 0) {
+                    const rate = pct / elapsedWd; // % per work day
+                    const projWd = getExactWorkDays(actStart, target, cal);
+                    simReal = Math.min(100, Math.max(pct, rate * projWd));
+                } else {
+                    simReal = pct;
+                }
+            }
+            // pct === 0 → simReal stays 0
+
+            map.set(a.id, { simReal: Math.round(simReal * 10) / 10, simProg: Math.round(simProg * 10) / 10 });
+        }
+
+        // ── Summary rollup (bottom-up, weight/work based) ──
+        for (let i = activities.length - 1; i >= 0; i--) {
+            const a = activities[i];
+            if (a.type !== 'summary' && !a._isProjRow) continue;
+            let sumWReal = 0, sumWProg = 0, sumW = 0, sumDur = 0, sumDReal = 0, sumDProg = 0;
+            const processChild = (ch: any) => {
+                const c = map.get(ch.id);
+                if (!c) return;
+                const w = (ch.weight != null && ch.weight > 0) ? ch.weight : (ch.work || 0);
+                sumW += w; sumWReal += w * c.simReal; sumWProg += w * c.simProg;
+                const d = ch.dur || 1;
+                sumDur += d; sumDReal += d * c.simReal; sumDProg += d * c.simProg;
+            };
+            if (a._isProjRow) {
+                for (let j = 1; j < activities.length; j++) { if (activities[j].lv === 0) processChild(activities[j]); }
+            } else {
+                for (let j = i + 1; j < activities.length; j++) {
+                    if (activities[j].lv <= a.lv) break;
+                    if (activities[j].lv === a.lv + 1) processChild(activities[j]);
+                }
+            }
+            const sr = sumW > 0 ? sumWReal / sumW : (sumDur > 0 ? sumDReal / sumDur : 0);
+            const sp = sumW > 0 ? sumWProg / sumW : (sumDur > 0 ? sumDProg / sumDur : 0);
+            map.set(a.id, { simReal: Math.round(sr * 10) / 10, simProg: Math.round(sp * 10) / 10 });
+        }
+        return map;
+    }, [activities, spotlightEnabled, spotlightEnd, statusDate, defCal, state.activeBaselineIdx]);
+
     const getCellValue = useCallback((a: any, c: any, vi: number): string => {
         if (a._isResourceAssignment) {
             if (c.key === 'name') return '👤 ' + (a.name || '');
@@ -246,6 +344,16 @@ export default function GanttTable() {
         if (c.key === 'predStr') return predsToStr(a.preds);
         if (c.key === 'pct') return Number(a.pct || 0).toFixed(1) + '%';
         if (c.key === 'plannedPct') return Number(a._plannedPct != null ? a._plannedPct : (a.pct || 0)).toFixed(1) + '%';
+        if (c.key === 'simRealPct') {
+            if (!spotlightEnabled || !spotlightEnd) return '—';
+            const entry = simMap.get(a.id);
+            return entry ? entry.simReal.toFixed(1) + '%' : '—';
+        }
+        if (c.key === 'simProgPct') {
+            if (!spotlightEnabled || !spotlightEnd) return '—';
+            const entry = simMap.get(a.id);
+            return entry ? entry.simProg.toFixed(1) + '%' : '—';
+        }
         if (c.key === 'res') return a.res || '';
         if (c.key === 'work') return a.type === 'milestone' ? '0 hrs' : ((a.work || 0) + ' hrs');
         if (c.key === 'earnedValue' || c.key === 'remainingWork') {
