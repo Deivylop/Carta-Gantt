@@ -416,7 +416,10 @@ function TabEstado({ a, dispatch, selIdx }: {
                     <div className="adp-field-row">
                         <label className="adp-field-label">Principal</label>
                         <select className="adp-input" value={a.constraint || ''}
-                            onChange={e => update({ constraint: e.target.value as ConstraintType })}>
+                            onChange={e => {
+                                const c = e.target.value as ConstraintType;
+                                update(c ? { constraint: c } : { constraint: '' as any, constraintDate: '', manual: false });
+                            }}>
                             {Object.entries(CONSTRAINT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                         </select>
                         <label className="adp-field-label" style={{ marginLeft: 12 }}>Fecha</label>

@@ -103,7 +103,7 @@ export default function ActivityModal() {
                 </div>
                 <div className="form-row">
                     <div className="form-group"><label className="form-label">Restricción</label>
-                        <select className="form-input" value={form.constraint} onChange={e => F('constraint', e.target.value)}>
+                        <select className="form-input" value={form.constraint} onChange={e => { F('constraint', e.target.value); if (!e.target.value) F('constraintDate', ''); }}>
                             <option value="">Sin restricción</option>
                             <option value="SNET">No iniciar antes de (SNET)</option>
                             <option value="SNLT">No iniciar después de (SNLT)</option>

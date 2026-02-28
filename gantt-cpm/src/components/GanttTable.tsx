@@ -434,7 +434,7 @@ export default function GanttTable() {
         if (c.key === 'blStart') return a.blES ? fmtDate(a.blES) : '';
         if (c.key === 'blEnd') return a.blEF ? fmtDate(addDays(a.blEF, -1)) : '';
         if (c.key === 'constraint') return a.constraint || '';
-        if (c.key === 'constraintDate') return a.constraintDate || '';
+        if (c.key === 'constraintDate') return (a.constraint && a.constraintDate) ? a.constraintDate : '';
         if (c.key === 'notes') return (a.notes || '').substring(0, 40);
         // ── Last Planner columns ──
         if (c.key === 'encargado') return a.encargado || '';

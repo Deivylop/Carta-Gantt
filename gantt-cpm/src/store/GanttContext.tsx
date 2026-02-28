@@ -509,7 +509,7 @@ function buildVisRows(
                 case 'remEndDate': return isoDate(a._remEF ?? null);
                 case 'blStart': return isoDate(a.blES ?? null);
                 case 'blEnd': return isoDate(a.blEF ?? null);
-                case 'constraintDate': return a.constraintDate ? isoDate(new Date(a.constraintDate)) : '';
+                case 'constraintDate': return (a.constraint && a.constraintDate) ? isoDate(new Date(a.constraintDate)) : '';
                 case 'predStr': {
                     if (!a.preds || a.preds.length === 0) return '';
                     return a.preds.map((p: any) => p.id + (p.type !== 'FS' ? ` ${p.type}` : '') + (p.lag ? ` +${p.lag}d` : '')).join(', ');
@@ -772,6 +772,10 @@ function reducer(state: GanttState, action: Action): GanttState {
             const acts = [...state.activities];
             const orig = acts[action.index];
             const updated = { ...orig, ...action.updates };
+            // Si la restricción se limpia ("Sin Restricción"), borrar fecha y manual
+            if ('constraint' in action.updates && !updated.constraint) {
+                updated.constraintDate = ''; updated.manual = false;
+            }
             // Track actualStart: when pct goes from 0 to >0, record the current start date
             const oldPct = orig.pct || 0;
             const newPct = updated.pct || 0;
