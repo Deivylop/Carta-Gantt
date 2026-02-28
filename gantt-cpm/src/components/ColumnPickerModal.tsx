@@ -23,7 +23,7 @@ const COLUMN_GROUPS: { group: string; keys: string[] }[] = [
     },
     {
         group: 'Avance',
-        keys: ['pct', 'plannedPct'],
+        keys: ['pct', 'plannedPct', 'simRealPct', 'simProgPct'],
     },
     {
         group: 'Recursos',
@@ -109,6 +109,9 @@ export default function ColumnPickerModal({ onClose, externalColumns, externalSe
     const [selHighlight, setSelHighlight] = useState<Set<string>>(new Set());
     const [lastSelClick, setLastSelClick] = useState<string | null>(null);
 
+    /* Search filter */
+    const [search, setSearch] = useState('');
+
     /* Expanded groups in left panel */
     const [expanded, setExpanded] = useState<Set<string>>(() => new Set(groups.map(g => g.group)));
 
@@ -138,21 +141,27 @@ export default function ColumnPickerModal({ onClose, externalColumns, externalSe
         return colMap.current.get(key)?.label || key;
     }, [isExternal]);
 
-    /* Available columns = all non-internal, non-selected */
+    /* Available columns = all non-internal, non-selected, filtered by search */
     const availableKeys = useCallback(() => {
         const selSet = new Set(selected);
+        const q = search.toLowerCase().trim();
+        const matchesSearch = (k: string) => {
+            if (!q) return true;
+            const label = (isExternal ? extMap.current.get(k)?.label : colMap.current.get(k)?.label) || k;
+            return label.toLowerCase().includes(q) || k.toLowerCase().includes(q);
+        };
         if (isExternal) {
             const allExtKeys = new Set(externalColumns!.map(c => c.key));
             return groups.map(g => ({
                 ...g,
-                keys: g.keys.filter(k => !selSet.has(k) && (allExtKeys.has(k) || colMap.current.has(k))),
+                keys: g.keys.filter(k => !selSet.has(k) && (allExtKeys.has(k) || colMap.current.has(k)) && matchesSearch(k)),
             })).filter(g => g.keys.length > 0);
         }
         return groups.map(g => ({
             ...g,
-            keys: g.keys.filter(k => !selSet.has(k) && colMap.current.has(k)),
+            keys: g.keys.filter(k => !selSet.has(k) && colMap.current.has(k) && matchesSearch(k)),
         })).filter(g => g.keys.length > 0);
-    }, [selected, isExternal, externalColumns, groups]);
+    }, [selected, isExternal, externalColumns, groups, search]);
 
     const toggleGroup = (group: string) => {
         setExpanded(prev => {
@@ -402,6 +411,22 @@ export default function ColumnPickerModal({ onClose, externalColumns, externalSe
                             {/* Left panel: available options */}
                             <div className="col-picker-panel">
                                 <div className="col-picker-panel-title">Opciones disponibles</div>
+                                <div style={{ padding: '4px 8px 2px' }}>
+                                    <input
+                                        type="text"
+                                        value={search}
+                                        onChange={e => { setSearch(e.target.value); setExpanded(new Set(groups.map(g => g.group))); }}
+                                        placeholder="Buscar columna…"
+                                        style={{
+                                            width: '100%', boxSizing: 'border-box',
+                                            padding: '4px 8px', fontSize: 10, borderRadius: 3,
+                                            border: '1px solid var(--border-secondary, #374151)',
+                                            background: 'var(--bg-input, #1e293b)',
+                                            color: 'var(--text-primary, #e5e7eb)',
+                                            outline: 'none', opacity: 0.85,
+                                        }}
+                                    />
+                                </div>
                                 <div className="col-picker-list">
                                     {avail.map(g => (
                                         <div key={g.group}>
