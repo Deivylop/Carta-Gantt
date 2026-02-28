@@ -11,20 +11,20 @@
   <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body { background:#ffffff; color:#1e293b; margin:0; }
+    body { background:#0f172a; color:#e2e8f0; margin:0; }
     ::-webkit-scrollbar { width:5px; height:5px; }
-    ::-webkit-scrollbar-track { background:#f1f5f9; }
-    ::-webkit-scrollbar-thumb { background:#94a3b8; border-radius:4px; }
+    ::-webkit-scrollbar-track { background:#1e293b; }
+    ::-webkit-scrollbar-thumb { background:#475569; border-radius:4px; }
     ::-webkit-scrollbar-thumb:hover { background:#64748b; }
-    input[type=date]::-webkit-calendar-picker-indicator { }
-    .timeline-track { position:relative; height:6px; background:#e2e8f0; border-radius:3px; margin:0 8px; }
+    input[type=date]::-webkit-calendar-picker-indicator { filter:invert(1); }
+    .timeline-track { position:relative; height:6px; background:#1e293b; border-radius:3px; margin:0 8px; }
     .timeline-track .fill { position:absolute; height:100%; background:linear-gradient(90deg,#3b82f6,#06b6d4); border-radius:3px; }
-    .timeline-thumb { -webkit-appearance:none; appearance:none; position:absolute; top:50%; transform:translateY(-50%); width:16px; height:16px; background:#3b82f6; border:2px solid #ffffff; border-radius:50%; cursor:pointer; pointer-events:auto; z-index:2; }
+    .timeline-thumb { -webkit-appearance:none; appearance:none; position:absolute; top:50%; transform:translateY(-50%); width:16px; height:16px; background:#3b82f6; border:2px solid #0f172a; border-radius:50%; cursor:pointer; pointer-events:auto; z-index:2; }
     .timeline-thumb:hover { background:#60a5fa; transform:translateY(-50%) scale(1.2); }
     .timeline-container input[type=range] { -webkit-appearance:none; appearance:none; position:absolute; width:100%; height:6px; background:transparent; pointer-events:none; margin:0; top:50%; transform:translateY(-50%); }
-    .timeline-container input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:16px; height:16px; background:#3b82f6; border:2px solid #ffffff; border-radius:50%; cursor:pointer; pointer-events:auto; }
+    .timeline-container input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:16px; height:16px; background:#3b82f6; border:2px solid #0f172a; border-radius:50%; cursor:pointer; pointer-events:auto; }
     .timeline-container input[type=range]::-webkit-slider-thumb:hover { background:#60a5fa; transform:scale(1.2); }
-    .timeline-container input[type=range]::-moz-range-thumb { width:16px; height:16px; background:#3b82f6; border:2px solid #ffffff; border-radius:50%; cursor:pointer; pointer-events:auto; }
+    .timeline-container input[type=range]::-moz-range-thumb { width:16px; height:16px; background:#3b82f6; border:2px solid #0f172a; border-radius:50%; cursor:pointer; pointer-events:auto; }
   </style>
 </head>
 <body>
@@ -862,38 +862,6 @@
         window.XLSX.utils.book_append_sheet(wb3, ws, 'Forecast Nivelado');
         window.XLSX.writeFile(wb3, 'Tabla_Forecast_Nivelado.xlsx');
       };
-
-      const exportParallelChart = (labels, lbPar, fcNivPar, cap, monthMap, months, dailyLb, dailyFcNiv) => {
-        if (!window.XLSX) return;
-        const rows = [];
-        // Header
-        rows.push(['Actividades en Paralelo (diario) — Línea Base vs Forecast Nivelado']);
-        rows.push([]);
-        // Monthly summary
-        rows.push(['Mes', 'Máx. Diario LB', 'Máx. Diario FC Nivelado', 'Prom. Diario LB', 'Prom. Diario FC Nivelado', 'Capacidad']);
-        months.forEach((mk, i) => {
-          const m = monthMap[mk];
-          rows.push([
-            labels[i],
-            lbPar[i],
-            fcNivPar[i],
-            m.days > 0 ? parseFloat((m.lbSum / m.days).toFixed(1)) : 0,
-            m.days > 0 ? parseFloat((m.fcSum / m.days).toFixed(1)) : 0,
-            cap
-          ]);
-        });
-        rows.push([]);
-        // Daily detail
-        rows.push(['Fecha', 'Paralelo Línea Base', 'Paralelo Forecast Nivelado', 'Capacidad']);
-        Object.keys(dailyLb).sort().forEach(dStr => {
-          rows.push([dStr, dailyLb[dStr] || 0, dailyFcNiv[dStr] || 0, cap]);
-        });
-        const ws = window.XLSX.utils.aoa_to_sheet(rows);
-        ws['!cols'] = [{wch:18},{wch:16},{wch:22},{wch:16},{wch:22},{wch:12}];
-        const wb = window.XLSX.utils.book_new();
-        window.XLSX.utils.book_append_sheet(wb, ws, 'Paralelo Diario');
-        window.XLSX.writeFile(wb, 'Actividades_en_Paralelo.xlsx');
-      };
       // ────────────────────────────────────────────────────────────────────────
 
       // Curva S
@@ -1017,12 +985,12 @@
             c.save();
             // Horizontal guide at qty level
             c.beginPath(); c.setLineDash([5,3]);
-            c.strokeStyle = 'rgba(202,138,4,0.7)'; c.lineWidth = 1.5;
+            c.strokeStyle = 'rgba(250,204,21,0.6)'; c.lineWidth = 1.5;
             c.moveTo(chartArea.left, _mouseY); c.lineTo(chartArea.right, _mouseY); c.stroke();
 
             // Qty label on left
             c.setLineDash([]); c.font = 'bold 10px sans-serif'; c.textAlign = 'right';
-            c.fillStyle = 'rgba(202,138,4,0.9)';
+            c.fillStyle = 'rgba(250,204,21,0.9)';
             c.fillText(qtyVal.toFixed(0) + ' m', chartArea.left - 4, _mouseY + 3);
 
             // Vertical guide + dot for LB intersection
@@ -1098,7 +1066,7 @@
             c.setLineDash([]);
             // Draw rounded rect manually for compatibility
             const r = 6;
-            c.fillStyle = 'rgba(255,255,255,0.95)'; c.strokeStyle = '#d1d5db'; c.lineWidth = 1;
+            c.fillStyle = 'rgba(15,23,42,0.92)'; c.strokeStyle = '#334155'; c.lineWidth = 1;
             c.beginPath();
             c.moveTo(bx + r, by); c.lineTo(bx + boxW - r, by); c.quadraticCurveTo(bx + boxW, by, bx + boxW, by + r);
             c.lineTo(bx + boxW, by + boxH - r); c.quadraticCurveTo(bx + boxW, by + boxH, bx + boxW - r, by + boxH);
@@ -1108,7 +1076,7 @@
 
             c.font = '11px Consolas, monospace'; c.textAlign = 'left';
             lines.forEach((ln, li) => {
-              c.fillStyle = li === 0 ? '#1e293b'
+              c.fillStyle = li === 0 ? '#e2e8f0'
                 : ln.startsWith('===') ? '#ef4444'
                 : ln.startsWith('LB') ? '#60a5fa'
                 : ln.startsWith('FC') ? '#34d399'
@@ -1116,7 +1084,7 @@
                 : ln.startsWith('Dur FC Contrat') ? '#fb923c'
                 : ln.startsWith('Exceso') ? '#ef4444'
                 : ln.startsWith('Vel') ? '#fb923c'
-                : '#4b5563';
+                : '#cbd5e1';
               c.fillText(ln, bx + pad, by + pad + (li + 1) * lineH - 2);
             });
             c.restore();
@@ -1136,11 +1104,11 @@
             interaction:{ mode:'index', intersect:false },
             plugins:{
               tooltip:{ enabled: false },
-              legend:{ labels:{ color:'#374151' } }
+              legend:{ labels:{ color:'#ffffff' } }
             },
             scales:{
-              y:{ beginAtZero:true, grid:{ color:'#e5e7eb' }, ticks:{ color:'#4b5563' }, title:{ display:true, text:'Cantidad Acumulada', color:'#4b5563' } },
-              x:{ grid:{ color:'#e5e7eb' }, ticks:{ color:'#4b5563' }, title:{ display:true, text: viewMode==='day'?'Días':viewMode==='week'?'Semanas':'Meses', color:'#4b5563' } }
+              y:{ beginAtZero:true, grid:{ color:'#334155' }, ticks:{ color:'#94a3b8' }, title:{ display:true, text:'Cantidad Acumulada', color:'#64748b' } },
+              x:{ grid:{ color:'#334155' }, ticks:{ color:'#94a3b8' }, title:{ display:true, text: viewMode==='day'?'Días':viewMode==='week'?'Semanas':'Meses', color:'#64748b' } }
             }
           }
         });
@@ -1206,11 +1174,11 @@
             interaction:{ mode:'index', intersect:false },
             plugins:{
               tooltip:{ callbacks:{ label: c => `${c.dataset.label}: ${c.parsed.y.toFixed(1)}` } },
-              legend:{ labels:{ color:'#374151', font:{ weight:'bold' } } }
+              legend:{ labels:{ color:'#ffffff', font:{ weight:'bold' } } }
             },
             scales:{
-              y:{ beginAtZero:true, grid:{ color:'#e5e7eb' }, ticks:{ color:'#4b5563' }, title:{ display:true, text:'Cantidad Acumulada (Remanente)', color:'#4b5563' } },
-              x:{ grid:{ color:'#e5e7eb' }, ticks:{ color:'#4b5563' }, title:{ display:true, text: viewMode==='day'?'Días':viewMode==='week'?'Semanas':'Meses', color:'#4b5563' } }
+              y:{ beginAtZero:true, grid:{ color:'#334155' }, ticks:{ color:'#94a3b8' }, title:{ display:true, text:'Cantidad Acumulada (Remanente)', color:'#64748b' } },
+              x:{ grid:{ color:'#334155' }, ticks:{ color:'#94a3b8' }, title:{ display:true, text: viewMode==='day'?'Días':viewMode==='week'?'Semanas':'Meses', color:'#64748b' } }
             }
           }
         });
@@ -1366,7 +1334,7 @@
             c.save();
             tramosInfo.forEach((t, ti) => {
               const pxIni = x.getPixelForValue(TC_OFFSET[t.id]);
-              c.setLineDash([3,4]); c.strokeStyle = '#9ca3af'; c.lineWidth = 1;
+              c.setLineDash([3,4]); c.strokeStyle = '#475569'; c.lineWidth = 1;
               c.beginPath(); c.moveTo(pxIni, y.top); c.lineTo(pxIni, y.bottom); c.stroke();
               const pxMid = x.getPixelForValue(TC_OFFSET[t.id] + tramoQty[t.id] / 2);
               c.setLineDash([]);
@@ -1391,7 +1359,7 @@
               legend: {
                 display: true, position: 'top',
                 labels: {
-                  color:'#4b5563', boxWidth:20, font:{size:10}, usePointStyle:false,
+                  color:'#94a3b8', boxWidth:20, font:{size:10}, usePointStyle:false,
                   generateLabels: chart => {
                     return chart.data.datasets.map((ds, i) => ({
                       text: ds.label,
@@ -1421,9 +1389,9 @@
                 type: 'linear', position: 'top',
                 min: Math.round(tcQtyRange[0] / 100 * totalDist),
                 max: Math.max(Math.round(tcQtyRange[1] / 100 * totalDist), 1),
-                title: { display: true, text: 'Cantidad Acumulada por Tramo (m)', color:'#4b5563', font:{size:10} },
+                title: { display: true, text: 'Cantidad Acumulada por Tramo (m)', color:'#64748b', font:{size:10} },
                 ticks: {
-                  color:'#4b5563', font:{size:9},
+                  color:'#94a3b8', font:{size:9},
                   stepSize: (() => {
                     const span = Math.round(tcQtyRange[1] / 100 * totalDist) - Math.round(tcQtyRange[0] / 100 * totalDist);
                     if (span <= 200) return 10;
@@ -1434,15 +1402,15 @@
                     return 500;
                   })()
                 },
-                grid: { color:'#e5e7eb' }
+                grid: { color:'#334155' }
               },
               y: {
                 type: 'linear', min: (() => { const fb=filterHeadersByDate(buckets); if(fb.length>0&&fb.length<buckets.length){const i=buckets.findIndex(b=>b.key===fb[0].key); return i>=0?i:0;} return 0; })(), max: (() => { const fb=filterHeadersByDate(buckets); if(fb.length>0&&fb.length<buckets.length){const i=buckets.findIndex(b=>b.key===fb[fb.length-1].key); return i>=0?i:buckets.length-1;} return buckets.length-1; })(), reverse: true,
                 ticks: {
-                  color:'#4b5563', font:{size:9}, stepSize:1,
+                  color:'#94a3b8', font:{size:9}, stepSize:1,
                   callback: v => { const i=Math.round(v); return (i>=0&&i<yLabels.length)?yLabels[i]:''; }
                 },
-                grid: { color:'#e5e7eb' }
+                grid: { color:'#334155' }
               }
             }
           }
@@ -1466,28 +1434,28 @@
       }, [chart2Height]);
 
       return (
-        <div className="min-h-screen bg-white p-2 font-sans text-gray-800">
+        <div className="min-h-screen bg-[#0f172a] p-2 font-sans text-[#e2e8f0]">
           <div className="mx-auto space-y-6" style={{maxWidth:'80%'}}>
 
             {/* Cabecera */}
-            <div className="bg-gray-100 text-gray-800 p-5 rounded-xl shadow-md border border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div className="bg-slate-800 text-white p-5 rounded-xl shadow-md flex flex-col md:flex-row justify-between items-center gap-4">
               <div>
                 <h1 className="text-xl font-bold">Panel de Rendimiento: Montec</h1>
-                <p className="text-sm text-gray-600 mt-1">Comparativa, Totales y Curva de Avance</p>
+                <p className="text-sm text-slate-300 mt-1">Comparativa, Totales y Curva de Avance</p>
                 {fileName && <p className="text-xs text-emerald-400 mt-2">Archivo: {fileName}</p>}
               </div>
               <div className="flex flex-col md:flex-row gap-4 items-center">
-                <div className="flex bg-gray-200 rounded-lg p-1">
+                <div className="flex bg-slate-700 rounded-lg p-1">
                   {['day','week','month'].map(mode => (
                     <button key={mode} onClick={() => setViewMode(mode)}
-                      className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${viewMode===mode?'bg-blue-500 text-white shadow-sm':'text-gray-500 hover:text-gray-800 hover:bg-gray-200'}`}>
+                      className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${viewMode===mode?'bg-blue-500 text-white shadow-sm':'text-slate-300 hover:text-white hover:bg-slate-600'}`}>
                       {mode==='day'?'Días':mode==='week'?'Semanas':'Meses'}
                     </button>
                   ))}
                 </div>
                 <div className="flex items-center gap-2 text-xs">
                   <button onClick={() => setSliderRange([0,100])}
-                    className={`text-xs border border-gray-300 rounded px-2 py-1 ${sliderRange[0]===0&&sliderRange[1]===100?'text-gray-500':'text-red-400 hover:text-red-500'}`}
+                    className={`text-xs border border-slate-600 rounded px-2 py-1 ${sliderRange[0]===0&&sliderRange[1]===100?'text-slate-500':'text-red-400 hover:text-red-300'}`}
                     disabled={sliderRange[0]===0&&sliderRange[1]===100}>Todo</button>
                 </div>
                 <label className="cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2 shadow-sm">
@@ -1502,14 +1470,14 @@
 
             {/* Timeline slider */}
             {processedSchedule.dates.length > 1 && (
-              <div className="bg-white rounded-xl border border-gray-200 px-5 py-3 shadow-sm">
+              <div className="bg-[#1e293b] rounded-xl border border-[#334155] px-5 py-3">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] text-gray-500 font-medium">Línea de Tiempo</span>
-                  <span className="text-[11px] text-gray-500">
+                  <span className="text-[11px] text-slate-400 font-medium">Línea de Tiempo</span>
+                  <span className="text-[11px] text-slate-500">
                     <span className="text-cyan-400 font-semibold">{sliderLabels.from}</span>
-                    <span className="mx-2 text-gray-400">—</span>
+                    <span className="mx-2 text-slate-600">—</span>
                     <span className="text-cyan-400 font-semibold">{sliderLabels.to}</span>
-                    <span className="ml-2 text-gray-400">({filteredDates.length} de {sliderLabels.total})</span>
+                    <span className="ml-2 text-slate-600">({filteredDates.length} de {sliderLabels.total})</span>
                   </span>
                 </div>
                 <div className="timeline-container" style={{position:'relative', height:'24px', display:'flex', alignItems:'center'}}>
@@ -1522,41 +1490,41 @@
                     onChange={e => { const v = Math.max(Number(e.target.value), sliderRange[0]+1); setSliderRange([sliderRange[0], v]); }} />
                 </div>
                 <div className="flex justify-between mt-1">
-                  <span className="text-[10px] text-gray-400">{processedSchedule.dates[0]?.label}</span>
-                  <span className="text-[10px] text-gray-400">{processedSchedule.dates[processedSchedule.dates.length-1]?.label}</span>
+                  <span className="text-[10px] text-slate-600">{processedSchedule.dates[0]?.label}</span>
+                  <span className="text-[10px] text-slate-600">{processedSchedule.dates[processedSchedule.dates.length-1]?.label}</span>
                 </div>
               </div>
             )}
 
             {/* Panel Objeción al Forecast — Simulación Nivelada */}
             {earnedSchedule && (
-              <div className="bg-white p-4 rounded-xl border border-red-200 shadow-sm">
-                <h2 className="text-lg font-semibold text-gray-800 mb-2 flex items-center gap-2 cursor-pointer select-none" onClick={() => toggleSection('earned')}>
-                  <span className="text-gray-400 text-sm">{collapsedSections.has('earned') ? '\u25B6' : '\u25BC'}</span>
+              <div className="bg-[#1e293b] p-4 rounded-xl border border-red-700/40">
+                <h2 className="text-lg font-semibold text-[#e2e8f0] mb-2 flex items-center gap-2 cursor-pointer select-none" onClick={() => toggleSection('earned')}>
+                  <span className="text-[#64748b] text-sm">{collapsedSections.has('earned') ? '\u25B6' : '\u25BC'}</span>
                   <span className="text-red-400">&#9888;</span>
                   Objeción al Forecast — Simulación Nivelada con Rendimiento Línea Base
                 </h2>
 
                 {/* Controls inline */}
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-600 mb-3">
-                  <span>Duraciones con <strong className="text-blue-600">rendimiento Línea Base</strong> (Cantidad remanente ÷ velocidad Línea Base)</span>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-300 mb-3">
+                  <span>Duraciones con <strong className="text-blue-300">rendimiento Línea Base</strong> (Cantidad remanente ÷ velocidad Línea Base)</span>
                   <label className="flex items-center gap-1">
-                    <span className="text-emerald-600 font-semibold">Soldadores/día:</span>
+                    <span className="text-emerald-300 font-semibold">Soldadores/día:</span>
                     <input type="number" min="1" max="50" step="1"
                       value={soldadoresDia != null ? soldadoresDia : dailyLbCapacity.avg}
                       onChange={e => {
                         const v = parseInt(e.target.value);
                         setSoldadoresDia(isNaN(v) || v < 1 ? null : v);
                       }}
-                      className="w-14 bg-white text-emerald-600 font-bold border border-emerald-300 rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:border-emerald-400" />
-                    <span className="text-gray-500">(prom. LB: {dailyLbCapacity.avg})</span>
+                      className="w-14 bg-slate-700 text-emerald-300 font-bold border border-emerald-600/50 rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:border-emerald-400" />
+                    <span className="text-slate-500">(prom. LB: {dailyLbCapacity.avg})</span>
                   </label>
                   <label className="flex items-center gap-1">
                     <span>Inicio:</span>
                     <input type="date" value={levelStart} onChange={e => setLevelStart(e.target.value)}
-                      className="bg-white text-gray-800 border border-gray-300 rounded px-1 py-0.5 text-xs cursor-pointer" />
+                      className="bg-slate-700 text-white border border-slate-500 rounded px-1 py-0.5 text-xs cursor-pointer" />
                   </label>
-                  <span className="text-gray-500">Cap: <strong className="text-emerald-600">{leveledSchedule.capacity}</strong> slots</span>
+                  <span className="text-slate-500">Cap: <strong className="text-emerald-300">{leveledSchedule.capacity}</strong> slots</span>
                 </div>
 
                 {!collapsedSections.has('earned') && <>
@@ -1564,49 +1532,49 @@
                 {/* KPI Cards - 5 columns */}
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
                   {/* LB */}
-                  <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                  <div className="bg-[#0f172a] rounded-lg p-3 border border-blue-800/40">
                     <div className="text-[10px] uppercase text-blue-400 font-bold tracking-wider mb-1">Línea Base</div>
-                    <div className="text-xl font-bold text-blue-600">{earnedSchedule.lbTotalQty.toLocaleString('es-CL')} m</div>
-                    <div className="text-xs text-gray-500 mt-1">{earnedSchedule.lbDurGlobal} días</div>
-                    <div className="text-xs text-blue-600 font-semibold">{earnedSchedule.lbVelGlobal.toFixed(1)} m/día</div>
+                    <div className="text-xl font-bold text-blue-300">{earnedSchedule.lbTotalQty.toLocaleString('es-CL')} m</div>
+                    <div className="text-xs text-slate-400 mt-1">{earnedSchedule.lbDurGlobal} días</div>
+                    <div className="text-xs text-blue-200 font-semibold">{earnedSchedule.lbVelGlobal.toFixed(1)} m/día</div>
                   </div>
                   {/* FC Pendiente */}
-                  <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-200">
+                  <div className="bg-[#0f172a] rounded-lg p-3 border border-emerald-800/40">
                     <div className="text-[10px] uppercase text-emerald-400 font-bold tracking-wider mb-1">Forecast Pendiente</div>
-                    <div className="text-xl font-bold text-emerald-600">{earnedSchedule.fcTotalQty.toLocaleString('es-CL')} m</div>
-                    <div className="text-xs text-gray-500 mt-1">{earnedSchedule.actCount} actividades</div>
+                    <div className="text-xl font-bold text-emerald-300">{earnedSchedule.fcTotalQty.toLocaleString('es-CL')} m</div>
+                    <div className="text-xs text-slate-400 mt-1">{earnedSchedule.actCount} actividades</div>
                   </div>
                   {/* FC Contratista */}
-                  <div className="bg-orange-50 rounded-lg p-3 border border-orange-200">
+                  <div className="bg-[#0f172a] rounded-lg p-3 border border-orange-800/40">
                     <div className="text-[10px] uppercase text-orange-400 font-bold tracking-wider mb-1">Forecast Contratista</div>
-                    <div className="text-xl font-bold text-orange-500">{earnedSchedule.fcDurContractorGlobal} días</div>
-                    <div className="text-xs text-orange-600 font-semibold">{earnedSchedule.fcVelContractor.toFixed(1)} m/día</div>
+                    <div className="text-xl font-bold text-orange-300">{earnedSchedule.fcDurContractorGlobal} días</div>
+                    <div className="text-xs text-orange-200 font-semibold">{earnedSchedule.fcVelContractor.toFixed(1)} m/día</div>
                     {earnedSchedule.fcContractorMaxDate && (
-                      <div className="text-xs text-orange-600">Fin: {earnedSchedule.fcContractorMaxDate.toLocaleDateString('es-CL',{day:'2-digit',month:'2-digit',year:'2-digit'})}</div>
+                      <div className="text-xs text-orange-200">Fin: {earnedSchedule.fcContractorMaxDate.toLocaleDateString('es-CL',{day:'2-digit',month:'2-digit',year:'2-digit'})}</div>
                     )}
                   </div>
                   {/* FC Nivelado */}
-                  <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-200">
+                  <div className="bg-[#0f172a] rounded-lg p-3 border border-emerald-800/40">
                     <div className="text-[10px] uppercase text-emerald-400 font-bold tracking-wider mb-1">Forecast Nivelado (vel. Línea Base)</div>
                     {objectionMetrics ? (
                       <>
-                        <div className="text-xl font-bold text-emerald-600">{objectionMetrics.nivDurGlobal} días</div>
-                        <div className="text-xs text-gray-500 mt-1">Capacidad: {objectionMetrics.nivCapacity} soldadores/día</div>
-                        <div className="text-xs text-emerald-600 font-semibold">Fin: {objectionMetrics.nivEndDate.toLocaleDateString('es-CL',{day:'2-digit',month:'2-digit',year:'2-digit'})}</div>
+                        <div className="text-xl font-bold text-emerald-300">{objectionMetrics.nivDurGlobal} días</div>
+                        <div className="text-xs text-slate-400 mt-1">Capacidad: {objectionMetrics.nivCapacity} soldadores/día</div>
+                        <div className="text-xs text-emerald-200 font-semibold">Fin: {objectionMetrics.nivEndDate.toLocaleDateString('es-CL',{day:'2-digit',month:'2-digit',year:'2-digit'})}</div>
                       </>
                     ) : (
-                      <div className="text-xs text-gray-500">Cargando...</div>
+                      <div className="text-xs text-slate-500">Cargando...</div>
                     )}
                   </div>
                   {/* Objeción */}
                   {objectionMetrics && (
-                    <div className={`bg-gray-50 rounded-lg p-3 border ${objectionMetrics.excessDaysNiv > 0 ? 'border-red-300' : 'border-emerald-300'}`}>
+                    <div className={`bg-[#0f172a] rounded-lg p-3 border ${objectionMetrics.excessDaysNiv > 0 ? 'border-red-600/60' : 'border-emerald-600/60'}`}>
                       <div className="text-[10px] uppercase text-red-400 font-bold tracking-wider mb-1">Objeción</div>
-                      <div className={`text-xl font-bold ${objectionMetrics.excessDaysNiv > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                      <div className={`text-xl font-bold ${objectionMetrics.excessDaysNiv > 0 ? 'text-red-300' : 'text-emerald-300'}`}>
                         {objectionMetrics.excessDaysNiv > 0 ? '+' : ''}{objectionMetrics.excessDaysNiv} días
                       </div>
-                      <div className="text-xs text-gray-500 mt-1">SPI: {earnedSchedule.spi.toFixed(2)}</div>
-                      <div className="text-xs text-red-600 font-semibold">
+                      <div className="text-xs text-slate-400 mt-1">SPI: {earnedSchedule.spi.toFixed(2)}</div>
+                      <div className="text-xs text-red-200 font-semibold">
                         {objectionMetrics.excessDaysNiv > 0 ? 'Contratista sobreestima' : 'FC razonable'}
                       </div>
                     </div>
@@ -1615,36 +1583,36 @@
 
                 {/* Banner: Fin FC Nivelado vs Fin FC Contratista */}
                 {objectionMetrics && (
-                  <div className="flex flex-wrap items-center gap-x-6 gap-y-1 px-4 py-3 mb-4 bg-orange-50 rounded-lg border border-orange-200">
+                  <div className="flex flex-wrap items-center gap-x-6 gap-y-1 px-4 py-3 mb-4 bg-[#1c1505] rounded-lg border border-[#92400e]/50">
                     <div className="flex items-center gap-2">
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-emerald-500 shrink-0" viewBox="0 0 20 20" fill="currentColor">
                         <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
                       </svg>
-                      <span className="text-sm text-emerald-600">
+                      <span className="text-sm text-emerald-300">
                         <strong>Fin Forecast Nivelado (vel. Línea Base):</strong>
                         &nbsp;<span className="text-lg font-bold text-emerald-400">{objectionMetrics.projEndLabel}</span>
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-sm text-gray-500">vs</span>
-                      <span className="text-sm text-orange-500">
+                      <span className="text-sm text-slate-400">vs</span>
+                      <span className="text-sm text-orange-300">
                         <strong>Fin Forecast Contratista:</strong>
                         &nbsp;<span className="text-lg font-bold text-orange-400">{objectionMetrics.fcContractorEndLabel}</span>
                       </span>
                       {objectionMetrics.excessDaysNiv > 0
-                        ? <span className="ml-2 px-2 py-0.5 bg-red-50 text-red-500 text-xs font-bold rounded">{objectionMetrics.excessDaysNiv} días de exceso del contratista</span>
-                        : <span className="ml-2 px-2 py-0.5 bg-emerald-900/50 text-emerald-600 text-xs font-bold rounded">FC razonable</span>}
+                        ? <span className="ml-2 px-2 py-0.5 bg-red-900/50 text-red-300 text-xs font-bold rounded">{objectionMetrics.excessDaysNiv} días de exceso del contratista</span>
+                        : <span className="ml-2 px-2 py-0.5 bg-emerald-900/50 text-emerald-300 text-xs font-bold rounded">FC razonable</span>}
                     </div>
                   </div>
                 )}
 
                 {/* Methodology */}
-                <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-600 space-y-1 border border-gray-200">
-                  <p className="font-semibold text-emerald-600">Metodología:</p>
-                  <p>La Línea Base establece un rendimiento de <span className="text-blue-600 font-bold">{earnedSchedule.lbVelGlobal.toFixed(1)} m/día</span> ({earnedSchedule.lbTotalQty.toLocaleString('es-CL')}m / {earnedSchedule.lbDurGlobal}d).</p>
-                  <p>El Forecast del contratista tiene <span className="text-emerald-600 font-bold">{earnedSchedule.fcTotalQty.toLocaleString('es-CL')}m</span> pendientes. Usando el rendimiento de la Línea Base por actividad y limitando a <span className="text-emerald-600 font-bold">{leveledSchedule.capacity} soldadores/día</span> en paralelo, la simulación nivelada completa el Forecast en {objectionMetrics ? <span className="text-emerald-600 font-bold">{objectionMetrics.nivDurGlobal} días</span> : '...'} (Fin: {objectionMetrics ? <span className="text-emerald-600 font-bold">{objectionMetrics.projEndLabel}</span> : '...'}).</p>
-                  <p>El contratista propone <span className="text-orange-500 font-bold">{earnedSchedule.fcDurContractorGlobal} días</span>, es decir {objectionMetrics && objectionMetrics.excessDaysNiv > 0 ? <><span className="font-bold text-red-500">{objectionMetrics.excessDaysNiv} días de exceso</span> sin justificación técnica basada en los rendimientos pactados.</> : <span className="font-bold text-emerald-600">dentro de lo razonable</span>}.</p>
-                  {earnedSchedule.spi < 1 && <p className="text-red-600">El SPI de {earnedSchedule.spi.toFixed(2)} indica que el contratista opera al <span className="font-bold">{(earnedSchedule.spi*100).toFixed(0)}%</span> de la eficiencia establecida en la Línea Base.</p>}
+                <div className="bg-[#0f172a]/60 rounded-lg p-3 text-xs text-slate-300 space-y-1 border border-slate-700/30">
+                  <p className="font-semibold text-emerald-300">Metodología:</p>
+                  <p>La Línea Base establece un rendimiento de <span className="text-blue-300 font-bold">{earnedSchedule.lbVelGlobal.toFixed(1)} m/día</span> ({earnedSchedule.lbTotalQty.toLocaleString('es-CL')}m / {earnedSchedule.lbDurGlobal}d).</p>
+                  <p>El Forecast del contratista tiene <span className="text-emerald-300 font-bold">{earnedSchedule.fcTotalQty.toLocaleString('es-CL')}m</span> pendientes. Usando el rendimiento de la Línea Base por actividad y limitando a <span className="text-emerald-300 font-bold">{leveledSchedule.capacity} soldadores/día</span> en paralelo, la simulación nivelada completa el Forecast en {objectionMetrics ? <span className="text-emerald-300 font-bold">{objectionMetrics.nivDurGlobal} días</span> : '...'} (Fin: {objectionMetrics ? <span className="text-emerald-300 font-bold">{objectionMetrics.projEndLabel}</span> : '...'}).</p>
+                  <p>El contratista propone <span className="text-orange-300 font-bold">{earnedSchedule.fcDurContractorGlobal} días</span>, es decir {objectionMetrics && objectionMetrics.excessDaysNiv > 0 ? <><span className="font-bold text-red-300">{objectionMetrics.excessDaysNiv} días de exceso</span> sin justificación técnica basada en los rendimientos pactados.</> : <span className="font-bold text-emerald-300">dentro de lo razonable</span>}.</p>
+                  {earnedSchedule.spi < 1 && <p className="text-red-200">El SPI de {earnedSchedule.spi.toFixed(2)} indica que el contratista opera al <span className="font-bold">{(earnedSchedule.spi*100).toFixed(0)}%</span> de la eficiencia establecida en la Línea Base.</p>}
                 </div>
 
                 {/* Per-activity table */}
@@ -1652,23 +1620,23 @@
                   <summary className="text-xs text-cyan-400 cursor-pointer hover:text-cyan-300 font-semibold">Ver detalle por actividad ({earnedSchedule.actCount} actividades)</summary>
                   <div className="overflow-x-auto mt-2 max-h-[300px]">
                     <table className="w-full text-[11px] border-collapse">
-                      <thead className="bg-gray-100 text-[10px] text-gray-500 uppercase sticky top-0">
+                      <thead className="bg-[#0f172a] text-[10px] text-slate-500 uppercase sticky top-0">
                         <tr>
-                          <th className="px-2 py-1 text-left border-b border-gray-300">Actividad</th>
-                          <th className="px-2 py-1 text-right border-b border-gray-300">Vel. Línea Base (m/d)</th>
-                          <th className="px-2 py-1 text-right border-b border-gray-300">Duración Forecast Contratista</th>
-                          <th className="px-2 py-1 text-right border-b border-gray-300">Duración Forecast @ vel. Línea Base</th>
-                          <th className="px-2 py-1 text-right border-b border-gray-300">Exceso (días)</th>
+                          <th className="px-2 py-1 text-left border-b border-slate-700">Actividad</th>
+                          <th className="px-2 py-1 text-right border-b border-slate-700">Vel. Línea Base (m/d)</th>
+                          <th className="px-2 py-1 text-right border-b border-slate-700">Duración Forecast Contratista</th>
+                          <th className="px-2 py-1 text-right border-b border-slate-700">Duración Forecast @ vel. Línea Base</th>
+                          <th className="px-2 py-1 text-right border-b border-slate-700">Exceso (días)</th>
                         </tr>
                       </thead>
                       <tbody>
                         {earnedSchedule.perActivity.map(pa => (
-                          <tr key={pa.id} className={`border-b border-gray-200 ${pa.diff > 0 ? 'bg-red-50' : ''}`}>
-                            <td className="px-2 py-1 text-gray-600">{pa.id}</td>
-                            <td className="px-2 py-1 text-right text-blue-600">{pa.lbRate.toFixed(1)}</td>
-                            <td className="px-2 py-1 text-right text-orange-500">{pa.fcDurContractor ?? '-'}</td>
-                            <td className="px-2 py-1 text-right text-emerald-600">{pa.fcDurAtLbRate}</td>
-                            <td className={`px-2 py-1 text-right font-bold ${pa.diff > 0 ? 'text-red-500' : 'text-emerald-600'}`}>{pa.diff !== null ? (pa.diff > 0 ? '+' : '') + pa.diff : '-'}</td>
+                          <tr key={pa.id} className={`border-b border-slate-800 ${pa.diff > 0 ? 'bg-red-950/20' : ''}`}>
+                            <td className="px-2 py-1 text-slate-300">{pa.id}</td>
+                            <td className="px-2 py-1 text-right text-blue-300">{pa.lbRate.toFixed(1)}</td>
+                            <td className="px-2 py-1 text-right text-orange-300">{pa.fcDurContractor ?? '-'}</td>
+                            <td className="px-2 py-1 text-right text-emerald-300">{pa.fcDurAtLbRate}</td>
+                            <td className={`px-2 py-1 text-right font-bold ${pa.diff > 0 ? 'text-red-300' : 'text-emerald-300'}`}>{pa.diff !== null ? (pa.diff > 0 ? '+' : '') + pa.diff : '-'}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1681,9 +1649,9 @@
             )}
 
             {/* Curva S */}
-            <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-              <h2 className="text-lg font-semibold text-gray-800 mb-2 flex items-center gap-2 cursor-pointer select-none" onClick={() => toggleSection('scurve')}>
-                <span className="text-gray-400 text-sm">{collapsedSections.has('scurve') ? '\u25B6' : '\u25BC'}</span>
+            <div className="bg-[#1e293b] p-4 rounded-xl border border-[#334155]">
+              <h2 className="text-lg font-semibold text-[#e2e8f0] mb-2 flex items-center gap-2 cursor-pointer select-none" onClick={() => toggleSection('scurve')}>
+                <span className="text-[#64748b] text-sm">{collapsedSections.has('scurve') ? '\u25B6' : '\u25BC'}</span>
                 Curvas de Avance (S-Curve)
               </h2>
               {!collapsedSections.has('scurve') && <>
@@ -1704,7 +1672,7 @@
                 }}
                 style={{height:'10px', cursor:'ns-resize', display:'flex', alignItems:'center', justifyContent:'center', userSelect:'none'}}
                 title="Arrastra para cambiar altura">
-                <div style={{width:'48px', height:'3px', background:'#d1d5db', borderRadius:'2px'}}></div>
+                <div style={{width:'48px', height:'3px', background:'#334155', borderRadius:'2px'}}></div>
               </div>
               </>}
             </div>
@@ -1713,9 +1681,9 @@
                  GRÁFICOS DE ANÁLISIS DE OBJECIÓN
                  ═══════════════════════════════════════════════════════════════ */}
             {earnedSchedule && earnedSchedule.perActivity.length > 0 && (
-              <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                <h2 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2 cursor-pointer select-none" onClick={() => toggleSection('objCharts')}>
-                  <span className="text-gray-400 text-sm">{collapsedSections.has('objCharts') ? '\u25B6' : '\u25BC'}</span>
+              <div className="bg-[#1e293b] p-4 rounded-xl border border-[#334155]">
+                <h2 className="text-lg font-semibold text-[#e2e8f0] mb-3 flex items-center gap-2 cursor-pointer select-none" onClick={() => toggleSection('objCharts')}>
+                  <span className="text-[#64748b] text-sm">{collapsedSections.has('objCharts') ? '\u25B6' : '\u25BC'}</span>
                   <span className="text-rose-400">&#9888;</span>
                   Análisis de Objeción al Forecast del Contratista
                 </h2>
@@ -1760,44 +1728,44 @@
                   return <>
                   {/* ───── KPIs Resumen (arriba) ───── */}
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
-                    <div className="bg-red-50 rounded-lg p-3 border border-red-200 text-center">
+                    <div className="bg-[#0f172a] rounded-lg p-3 border border-red-800/40 text-center">
                       <div className="text-[10px] uppercase text-red-400 font-bold tracking-wider mb-1">Actividades con exceso</div>
-                      <div className="text-2xl font-bold text-red-500">{countExceso}</div>
-                      <div className="text-xs text-gray-500">de {paAll.length} actividades</div>
+                      <div className="text-2xl font-bold text-red-300">{countExceso}</div>
+                      <div className="text-xs text-slate-400">de {paAll.length} actividades</div>
                     </div>
-                    <div className="bg-blue-50 rounded-lg p-3 border border-blue-200 text-center">
+                    <div className="bg-[#0f172a] rounded-lg p-3 border border-blue-800/40 text-center">
                       <div className="text-[10px] uppercase text-blue-400 font-bold tracking-wider mb-1">Actividades con adelanto</div>
-                      <div className="text-2xl font-bold text-blue-600">{countAdelanto}</div>
-                      <div className="text-xs text-gray-500">de {paAll.length} actividades</div>
+                      <div className="text-2xl font-bold text-blue-300">{countAdelanto}</div>
+                      <div className="text-xs text-slate-400">de {paAll.length} actividades</div>
                     </div>
-                    <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-200 text-center">
+                    <div className="bg-[#0f172a] rounded-lg p-3 border border-emerald-800/40 text-center">
                       <div className="text-[10px] uppercase text-emerald-400 font-bold tracking-wider mb-1">Iguales a Línea Base</div>
-                      <div className="text-2xl font-bold text-emerald-600">{countIguales}</div>
-                      <div className="text-xs text-gray-500">de {paAll.length} actividades</div>
+                      <div className="text-2xl font-bold text-emerald-300">{countIguales}</div>
+                      <div className="text-xs text-slate-400">de {paAll.length} actividades</div>
                     </div>
-                    <div className="bg-red-50 rounded-lg p-3 border border-red-200 text-center">
+                    <div className="bg-[#0f172a] rounded-lg p-3 border border-red-800/40 text-center">
                       <div className="text-[10px] uppercase text-red-400 font-bold tracking-wider mb-1">Objeción neta (días)</div>
-                      <div className="text-2xl font-bold text-red-500">{totalExcesoNeto >= 0 ? '+' : ''}{totalExcesoNeto}</div>
-                      <div className="text-[10px] text-gray-500">Exceso: +{totalExcesoBruto} — Adelantos: −{totalAdelantoKpi}</div>
+                      <div className="text-2xl font-bold text-red-300">{totalExcesoNeto >= 0 ? '+' : ''}{totalExcesoNeto}</div>
+                      <div className="text-[10px] text-slate-500">Exceso: +{totalExcesoBruto} — Adelantos: −{totalAdelantoKpi}</div>
                     </div>
-                    <div className="bg-rose-50 rounded-lg p-3 border border-rose-200 text-center">
+                    <div className="bg-[#0f172a] rounded-lg p-3 border border-rose-800/40 text-center">
                       <div className="text-[10px] uppercase text-rose-400 font-bold tracking-wider mb-1">Peor actividad</div>
-                      <div className="text-sm font-bold text-rose-500 truncate">{[...paAll].sort((a,b) => (b.diff||0) - (a.diff||0))[0]?.id.replace(/^REPROGRAMADO\s*/i, '').substring(0, 30) || '-'}</div>
-                      <div className="text-xs text-gray-500">+{Math.max(0, [...paAll].sort((a,b) => (b.diff||0) - (a.diff||0))[0]?.diff || 0)} días</div>
+                      <div className="text-sm font-bold text-rose-300 truncate">{[...paAll].sort((a,b) => (b.diff||0) - (a.diff||0))[0]?.id.replace(/^REPROGRAMADO\s*/i, '').substring(0, 30) || '-'}</div>
+                      <div className="text-xs text-slate-400">+{Math.max(0, [...paAll].sort((a,b) => (b.diff||0) - (a.diff||0))[0]?.diff || 0)} días</div>
                     </div>
-                    <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-200 text-center">
+                    <div className="bg-[#0f172a] rounded-lg p-3 border border-emerald-800/40 text-center">
                       <div className="text-[10px] uppercase text-emerald-400 font-bold tracking-wider mb-1">Eficiencia promedio</div>
-                      <div className="text-2xl font-bold text-emerald-600">{(fcRatesAll.reduce((a,b)=>a+b,0) / (lbRatesAll.reduce((a,b)=>a+b,0) || 1) * 100).toFixed(0)}%</div>
-                      <div className="text-xs text-gray-500">vel. Forecast / vel. Línea Base</div>
+                      <div className="text-2xl font-bold text-emerald-300">{(fcRatesAll.reduce((a,b)=>a+b,0) / (lbRatesAll.reduce((a,b)=>a+b,0) || 1) * 100).toFixed(0)}%</div>
+                      <div className="text-xs text-slate-400">vel. Forecast / vel. Línea Base</div>
                     </div>
                   </div>
 
                   {/* ── Filtros ── */}
-                  <div className="flex flex-wrap items-center gap-3 mb-4 bg-gray-50 rounded-lg p-3 border border-gray-200">
-                    <label className="flex items-center gap-1.5 text-xs text-gray-600">
-                      <span className="text-gray-500 font-semibold">Tramo:</span>
+                  <div className="flex flex-wrap items-center gap-3 mb-4 bg-[#0f172a]/60 rounded-lg p-3 border border-slate-700/30">
+                    <label className="flex items-center gap-1.5 text-xs text-slate-300">
+                      <span className="text-slate-500 font-semibold">Tramo:</span>
                       <select value={objFilterWbs} onChange={e => setObjFilterWbs(e.target.value)}
-                        className="bg-white text-gray-800 border border-gray-300 rounded px-2 py-1 text-xs cursor-pointer">
+                        className="bg-slate-700 text-white border border-slate-500 rounded px-2 py-1 text-xs cursor-pointer">
                         <option value="__all__">Todos los tramos ({paAll.length} actividades)</option>
                         {wbsGroups.map(w => {
                           const cnt = paAll.filter(a => (processedSchedule.activities.find(x => x.id === a.id)?.parentId || 'Sin Tramo') === w).length;
@@ -1811,26 +1779,26 @@
                           className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
                             objExcessFilter === val
                               ? 'bg-red-600 text-white shadow'
-                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700'
+                              : 'bg-slate-700/60 text-slate-400 hover:bg-slate-600 hover:text-slate-200'
                           }`}>{lbl}</button>
                       ))}
                     </div>
-                    <span className="text-[10px] text-gray-500 ml-auto">
-                      Mostrando <strong className="text-gray-600">{pa.length}</strong> de {paAll.length} actividades
+                    <span className="text-[10px] text-slate-500 ml-auto">
+                      Mostrando <strong className="text-slate-300">{pa.length}</strong> de {paAll.length} actividades
                     </span>
                   </div>
 
                   {pa.length === 0 ? (
-                    <div className="text-center text-gray-500 py-8">No hay actividades que cumplan el filtro seleccionado.</div>
+                    <div className="text-center text-slate-500 py-8">No hay actividades que cumplan el filtro seleccionado.</div>
                   ) : (<>
 
                   {/* ───── 1. Scatter: Duración LB vs FC Contratista ───── */}
                   <div className="mb-6">
-                    <h3 className="text-sm font-semibold text-gray-600 mb-2">
+                    <h3 className="text-sm font-semibold text-slate-300 mb-2">
                       <span className="text-cyan-400 mr-1">●</span>
                       Dispersión: Duración Línea Base vs Forecast Contratista (por actividad)
                     </h3>
-                    <p className="text-[10px] text-gray-500 mb-2">Puntos sobre la línea diagonal (45°) indican que el contratista solicita más plazo que el comprometido en la Línea Base. Cuanto más lejos de la línea, mayor es la objeción. Pase el mouse sobre cada punto para ver el detalle.</p>
+                    <p className="text-[10px] text-slate-500 mb-2">Puntos sobre la línea diagonal (45°) indican que el contratista solicita más plazo que el comprometido en la Línea Base. Cuanto más lejos de la línea, mayor es la objeción. Pase el mouse sobre cada punto para ver el detalle.</p>
                     <div style={{height:'420px', position:'relative'}}>
                       <canvas ref={canvas => {
                         if (!canvas || !window.Chart) return;
@@ -1905,10 +1873,8 @@
                             plugins: {
                               legend: { display: false },
                               tooltip: {
-                                backgroundColor: 'rgba(255,255,255,0.95)',
-                                titleColor: '#1e293b',
-                                bodyColor: '#374151',
-                                borderColor: '#d1d5db',
+                                backgroundColor: '#1e293b',
+                                borderColor: '#334155',
                                 borderWidth: 1,
                                 titleFont: { size: 11, weight: 'bold' },
                                 bodyFont: { size: 11 },
@@ -1930,15 +1896,15 @@
                             },
                             scales: {
                               x: {
-                                title: { display: true, text: 'Duración @ vel. Línea Base (días)', color: '#4b5563', font: { size: 11 } },
-                                grid: { color: '#e5e7eb' },
-                                ticks: { color: '#4b5563', stepSize: maxD > 100 ? 20 : 10 },
+                                title: { display: true, text: 'Duración @ vel. Línea Base (días)', color: '#94a3b8', font: { size: 11 } },
+                                grid: { color: 'rgba(51,65,85,0.5)' },
+                                ticks: { color: '#94a3b8', stepSize: maxD > 100 ? 20 : 10 },
                                 min: 0, max: maxD
                               },
                               y: {
-                                title: { display: true, text: 'Duración Forecast Contratista (días)', color: '#4b5563', font: { size: 11 } },
-                                grid: { color: '#e5e7eb' },
-                                ticks: { color: '#4b5563', stepSize: maxD > 100 ? 20 : 10 },
+                                title: { display: true, text: 'Duración Forecast Contratista (días)', color: '#94a3b8', font: { size: 11 } },
+                                grid: { color: 'rgba(51,65,85,0.5)' },
+                                ticks: { color: '#94a3b8', stepSize: maxD > 100 ? 20 : 10 },
                                 min: 0, max: maxD
                               }
                             }
@@ -1946,21 +1912,21 @@
                         });
                       }}></canvas>
                     </div>
-                    <div className="flex gap-4 mt-2 text-[10px] text-gray-500 justify-center">
+                    <div className="flex gap-4 mt-2 text-[10px] text-slate-400 justify-center">
                       <span><span className="inline-block w-3 h-3 rounded-full bg-red-400 mr-1 align-middle"></span>Con exceso (contratista pide más)</span>
                       <span><span className="inline-block w-3 h-3 rounded-full bg-blue-400 mr-1 align-middle"></span>Sin exceso o menor</span>
-                      <span><span className="inline-block w-8 border-b border-dashed border-gray-300 mr-1 align-middle"></span>Línea 45° (referencia)</span>
-                      <span className="text-gray-500 italic">Tamaño del punto = magnitud del exceso</span>
+                      <span><span className="inline-block w-8 border-b border-dashed border-slate-500 mr-1 align-middle"></span>Línea 45° (referencia)</span>
+                      <span className="text-slate-500 italic">Tamaño del punto = magnitud del exceso</span>
                     </div>
                   </div>
 
                   {/* ───── 2. Waterfall: Exceso de días por actividad ───── */}
                   <div className="mb-6">
-                    <h3 className="text-sm font-semibold text-gray-600 mb-2">
+                    <h3 className="text-sm font-semibold text-slate-300 mb-2">
                       <span className="text-red-400 mr-1">●</span>
                       Exceso de Plazo por Actividad (Waterfall)
                     </h3>
-                    <p className="text-[10px] text-gray-500 mb-2">Días adicionales que solicita el contratista por encima del rendimiento comprometido en la Línea Base. Ordenado de mayor a menor exceso.</p>
+                    <p className="text-[10px] text-slate-500 mb-2">Días adicionales que solicita el contratista por encima del rendimiento comprometido en la Línea Base. Ordenado de mayor a menor exceso.</p>
                     <div style={{height: Math.max(340, pa.length * 26 + 60) + 'px', position:'relative'}}>
                       <canvas ref={canvas => {
                         if (!canvas || !window.Chart) return;
@@ -2015,10 +1981,8 @@
                             plugins: {
                               legend: { display: false },
                               tooltip: {
-                                backgroundColor: 'rgba(255,255,255,0.95)',
-                                titleColor: '#1e293b',
-                                bodyColor: '#374151',
-                                borderColor: '#d1d5db',
+                                backgroundColor: '#1e293b',
+                                borderColor: '#334155',
                                 borderWidth: 1,
                                 titleFont: { size: 11, weight: 'bold' },
                                 bodyFont: { size: 11 },
@@ -2049,20 +2013,20 @@
                             },
                             scales: {
                               x: {
-                                title: { display: true, text: 'Días de exceso', color: '#4b5563' },
-                                grid: { color: '#e5e7eb' },
-                                ticks: { color: '#4b5563' }
+                                title: { display: true, text: 'Días de exceso', color: '#94a3b8' },
+                                grid: { color: 'rgba(51,65,85,0.5)' },
+                                ticks: { color: '#94a3b8' }
                               },
                               y: {
                                 grid: { display: false },
-                                ticks: { color: '#4b5563', font: { size: 10 }, mirror: false }
+                                ticks: { color: '#cbd5e1', font: { size: 10 }, mirror: false }
                               }
                             }
                           }
                         });
                       }}></canvas>
                     </div>
-                    <div className="flex gap-4 mt-2 text-[10px] text-gray-500 justify-center">
+                    <div className="flex gap-4 mt-2 text-[10px] text-slate-400 justify-center">
                       <span><span className="inline-block w-3 h-3 bg-red-400 mr-1 align-middle"></span>Exceso positivo</span>
                       <span><span className="inline-block w-3 h-3 bg-blue-400 mr-1 align-middle"></span>Adelanto (descuento)</span>
                       <span><span className="inline-block w-3 h-3 bg-red-500 mr-1 align-middle"></span>Objeción neta</span>
@@ -2081,35 +2045,35 @@
               const filteredLvHeaders = filterHeadersByDate(lvHeaders);
 
               return (
-                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+                <div className="bg-[#1e293b] rounded-xl border border-[#334155] overflow-hidden">
                   {/* Header */}
-                  <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+                  <div className="px-4 py-3 border-b border-[#334155] bg-[#0f172a] flex items-center justify-between">
                     <div>
-                      <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2 cursor-pointer select-none" onClick={() => toggleSection('nivelado')}>
-                        <span className="text-gray-400 text-sm">{collapsedSections.has('nivelado') ? '\u25B6' : '\u25BC'}</span>
+                      <h2 className="text-lg font-semibold text-white flex items-center gap-2 cursor-pointer select-none" onClick={() => toggleSection('nivelado')}>
+                        <span className="text-[#64748b] text-sm">{collapsedSections.has('nivelado') ? '\u25B6' : '\u25BC'}</span>
                         Forecast Nivelado — Basado en Rendimiento Línea Base
                       </h2>
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-600 mt-1">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-300 mt-1">
                         <span>
-                          Duraciones con <strong className="text-blue-600">rendimiento Línea Base</strong> (Q rem. ÷ vel. Línea Base)
+                          Duraciones con <strong className="text-blue-300">rendimiento Línea Base</strong> (Q rem. ÷ vel. Línea Base)
                         </span>
                         <label className="flex items-center gap-1">
-                          <span className="text-emerald-600 font-semibold">Soldadores/día:</span>
+                          <span className="text-emerald-300 font-semibold">Soldadores/día:</span>
                           <input type="number" min="1" max="50" step="1"
                             value={soldadoresDia != null ? soldadoresDia : dailyLbCapacity.avg}
                             onChange={e => {
                               const v = parseInt(e.target.value);
                               setSoldadoresDia(isNaN(v) || v < 1 ? null : v);
                             }}
-                            className="w-14 bg-white text-emerald-600 font-bold border border-emerald-300 rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:border-emerald-400" />
-                          <span className="text-gray-500">(prom. Línea Base: {dailyLbCapacity.avg})</span>
+                            className="w-14 bg-slate-700 text-emerald-300 font-bold border border-emerald-600/50 rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:border-emerald-400" />
+                          <span className="text-slate-500">(prom. Línea Base: {dailyLbCapacity.avg})</span>
                         </label>
                         <label className="flex items-center gap-1">
                           <span>Inicio:</span>
                           <input type="date" value={levelStart} onChange={e => setLevelStart(e.target.value)}
-                            className="bg-white text-gray-800 border border-gray-300 rounded px-1 py-0.5 text-xs cursor-pointer" />
+                            className="bg-slate-700 text-white border border-slate-500 rounded px-1 py-0.5 text-xs cursor-pointer" />
                         </label>
-                        <span className="text-gray-500">Capacidad: <strong className="text-emerald-600">{leveledSchedule.capacity}</strong> slots</span>
+                        <span className="text-slate-500">Capacidad: <strong className="text-emerald-300">{leveledSchedule.capacity}</strong> slots</span>
                         {Object.keys(restrictions).length > 0 && (
                           <span className="text-rose-400 font-semibold" title={Object.entries(restrictions).map(([k,v]) => k + ' → ' + v).join('\n')}>
                             🔒 {Object.keys(restrictions).length} restricciones aplicadas
@@ -2118,20 +2082,20 @@
                       </div>
                       {/* ── Filtro por tramo y actividad ── */}
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2">
-                        <label className="flex items-center gap-1 text-xs text-gray-600">
-                          <span className="text-gray-500 font-semibold">Tramo:</span>
+                        <label className="flex items-center gap-1 text-xs text-slate-300">
+                          <span className="text-slate-500 font-semibold">Tramo:</span>
                           <select value={niveladoFilterTramo} onChange={e => { setNiveladoFilterTramo(e.target.value); setNiveladoFilterAct('__all__'); }}
-                            className="bg-white text-gray-800 border border-gray-300 rounded px-2 py-0.5 text-xs cursor-pointer">
+                            className="bg-slate-700 text-white border border-slate-500 rounded px-2 py-0.5 text-xs cursor-pointer">
                             <option value="__all__">Todos</option>
                             {[...new Set(processedSchedule.activities.filter(a => a.type === 'summary').map(a => a.id))].sort().map(t =>
                               <option key={t} value={t}>{t.replace(/^REPROGRAMADO\s*/i, '').substring(0, 35)}</option>
                             )}
                           </select>
                         </label>
-                        <label className="flex items-center gap-1 text-xs text-gray-600">
-                          <span className="text-gray-500 font-semibold">Actividad:</span>
+                        <label className="flex items-center gap-1 text-xs text-slate-300">
+                          <span className="text-slate-500 font-semibold">Actividad:</span>
                           <select value={niveladoFilterAct} onChange={e => setNiveladoFilterAct(e.target.value)}
-                            className="bg-white text-gray-800 border border-gray-300 rounded px-2 py-0.5 text-xs cursor-pointer max-w-[280px]">
+                            className="bg-slate-700 text-white border border-slate-500 rounded px-2 py-0.5 text-xs cursor-pointer max-w-[280px]">
                             <option value="__all__">Todas</option>
                             {processedSchedule.activities
                               .filter(a => a.type === 'activity' && a.fc_qty > 0 && a.fc_dur_calc > 0 && (niveladoFilterTramo === '__all__' || (a.parentId || '') === niveladoFilterTramo))
@@ -2140,7 +2104,7 @@
                         </label>
                         {(niveladoFilterTramo !== '__all__' || niveladoFilterAct !== '__all__') && (
                           <button onClick={() => { setNiveladoFilterTramo('__all__'); setNiveladoFilterAct('__all__'); }}
-                            className="text-[10px] text-red-400 hover:text-red-500 border border-red-200 rounded px-2 py-0.5">
+                            className="text-[10px] text-red-400 hover:text-red-300 border border-red-800/40 rounded px-2 py-0.5">
                             ✕ Limpiar filtro
                           </button>
                         )}
@@ -2155,7 +2119,7 @@
 
                   {/* Curva S nivelada */}
                   {!collapsedSections.has('nivelado') && <>
-                  <div className="px-4 pt-4 pb-2 border-b border-gray-200 bg-orange-50">
+                  <div className="px-4 pt-4 pb-2 border-b border-[#334155] bg-[#150e05]">
                     <p className="text-xs font-semibold text-emerald-500 mb-2">Curva de Avance — Forecast Nivelado (Acumulado)</p>
                     <div style={{height: chart2Height+'px', position:'relative', transition:'height 0.2s'}}>
                       <canvas ref={chartRef2}></canvas>
@@ -2169,7 +2133,7 @@
                       }}
                       style={{height:'10px', cursor:'ns-resize', display:'flex', alignItems:'center', justifyContent:'center', userSelect:'none'}}
                       title="Arrastra para cambiar altura">
-                      <div style={{width:'48px', height:'3px', background:'#d1d5db', borderRadius:'2px'}}></div>
+                      <div style={{width:'48px', height:'3px', background:'#334155', borderRadius:'2px'}}></div>
                     </div>
                   </div>
                   </>}
@@ -2178,30 +2142,30 @@
             })()}
 
             {/* Diagrama Tiempo-Cantidad — card separada */}
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-              <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+            <div className="bg-[#1e293b] rounded-xl border border-[#334155] overflow-hidden">
+              <div className="px-4 py-3 border-b border-[#334155] bg-[#0f172a] flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-semibold text-gray-500 flex items-center gap-2 cursor-pointer select-none" onClick={() => toggleSection('tcChart')}>
-                    <span className="text-gray-400 text-sm">{collapsedSections.has('tcChart') ? '\u25B6' : '\u25BC'}</span>
-                    Diagrama Tiempo – Cantidad &nbsp;<span className="font-normal text-gray-400">(línea sólida = vel. Línea Base nivelado · línea punteada = Forecast contratista)</span>
+                  <p className="text-xs font-semibold text-[#94a3b8] flex items-center gap-2 cursor-pointer select-none" onClick={() => toggleSection('tcChart')}>
+                    <span className="text-[#64748b] text-sm">{collapsedSections.has('tcChart') ? '\u25B6' : '\u25BC'}</span>
+                    Diagrama Tiempo – Cantidad &nbsp;<span className="font-normal text-[#64748b]">(línea sólida = vel. Línea Base nivelado · línea punteada = Forecast contratista)</span>
                   </p>
                 </div>
                 <button onClick={() => setTcChartHeight(h => h < 400 ? h + 100 : 260)}
-                  className="text-[10px] text-gray-400 hover:text-gray-500 border border-gray-200 rounded px-2 py-0.5 ml-2 shrink-0">
+                  className="text-[10px] text-[#64748b] hover:text-[#94a3b8] border border-[#334155] rounded px-2 py-0.5 ml-2 shrink-0">
                   {tcChartHeight < 400 ? '▼ ampliar' : '▲ reducir'}
                 </button>
               </div>
               {!collapsedSections.has('tcChart') && <>
               {/* Slider de distancia (eje X) — dual handle */}
-              <div className="px-5 py-2 border-b border-gray-200 bg-gray-50">
+              <div className="px-5 py-2 border-b border-[#334155] bg-[#0f172a]">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] text-gray-500 font-medium">Distancia (m)</span>
-                  <span className="text-[11px] text-gray-500">
+                  <span className="text-[11px] text-slate-400 font-medium">Distancia (m)</span>
+                  <span className="text-[11px] text-slate-500">
                     <span className="text-emerald-400 font-semibold font-mono">{Math.round(tcQtyRange[0]/100*tcTotalDist.current)}</span>
-                    <span className="mx-1 text-gray-400">—</span>
+                    <span className="mx-1 text-slate-600">—</span>
                     <span className="text-emerald-400 font-semibold font-mono">{Math.round(tcQtyRange[1]/100*tcTotalDist.current)} m</span>
                     <button onClick={() => setTcQtyRange([0,100])}
-                      className={`ml-2 text-[10px] border border-gray-300 rounded px-1.5 py-0.5 ${tcQtyRange[0]===0&&tcQtyRange[1]===100?'text-gray-400':'text-red-400 hover:text-red-500'}`}
+                      className={`ml-2 text-[10px] border border-slate-600 rounded px-1.5 py-0.5 ${tcQtyRange[0]===0&&tcQtyRange[1]===100?'text-slate-600':'text-red-400 hover:text-red-300'}`}
                       disabled={tcQtyRange[0]===0&&tcQtyRange[1]===100}>Todo</button>
                   </span>
                 </div>
@@ -2215,21 +2179,21 @@
                     onChange={e => { const v = Math.max(Number(e.target.value), tcQtyRange[0]+2); setTcQtyRange([tcQtyRange[0], v]); }} />
                 </div>
                 <div className="flex justify-between mt-0.5">
-                  <span className="text-[10px] text-gray-400">0 m</span>
-                  <span className="text-[10px] text-gray-400">{Math.round(tcTotalDist.current)} m</span>
+                  <span className="text-[10px] text-slate-600">0 m</span>
+                  <span className="text-[10px] text-slate-600">{Math.round(tcTotalDist.current)} m</span>
                 </div>
               </div>
               {/* Slider de tiempo (eje Y) — sincronizado con el principal */}
               {processedSchedule.dates.length > 1 && (
-                <div className="px-5 py-2 border-b border-gray-200 bg-gray-50">
+                <div className="px-5 py-2 border-b border-[#334155] bg-[#0f172a]">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-[11px] text-gray-500 font-medium">Tiempo</span>
-                    <span className="text-[11px] text-gray-500">
+                    <span className="text-[11px] text-slate-400 font-medium">Tiempo</span>
+                    <span className="text-[11px] text-slate-500">
                       <span className="text-cyan-400 font-semibold">{sliderLabels.from}</span>
-                      <span className="mx-1 text-gray-400">—</span>
+                      <span className="mx-1 text-slate-600">—</span>
                       <span className="text-cyan-400 font-semibold">{sliderLabels.to}</span>
                       <button onClick={() => setSliderRange([0,100])}
-                        className={`ml-2 text-[10px] border border-gray-300 rounded px-1.5 py-0.5 ${sliderRange[0]===0&&sliderRange[1]===100?'text-gray-400':'text-red-400 hover:text-red-500'}`}
+                        className={`ml-2 text-[10px] border border-slate-600 rounded px-1.5 py-0.5 ${sliderRange[0]===0&&sliderRange[1]===100?'text-slate-600':'text-red-400 hover:text-red-300'}`}
                         disabled={sliderRange[0]===0&&sliderRange[1]===100}>Todo</button>
                     </span>
                   </div>
@@ -2243,8 +2207,8 @@
                       onChange={e => { const v = Math.max(Number(e.target.value), sliderRange[0]+1); setSliderRange([sliderRange[0], v]); }} />
                   </div>
                   <div className="flex justify-between mt-0.5">
-                    <span className="text-[10px] text-gray-400">{processedSchedule.dates[0]?.label}</span>
-                    <span className="text-[10px] text-gray-400">{processedSchedule.dates[processedSchedule.dates.length-1]?.label}</span>
+                    <span className="text-[10px] text-slate-600">{processedSchedule.dates[0]?.label}</span>
+                    <span className="text-[10px] text-slate-600">{processedSchedule.dates[processedSchedule.dates.length-1]?.label}</span>
                   </div>
                 </div>
               )}
@@ -2263,7 +2227,7 @@
                   }}
                   style={{height:'12px', cursor:'ns-resize', display:'flex', alignItems:'center', justifyContent:'center', marginBottom:'4px', userSelect:'none'}}
                   title="Arrastra para cambiar altura">
-                  <div style={{width:'48px', height:'3px', background:'#d1d5db', borderRadius:'2px'}}></div>
+                  <div style={{width:'48px', height:'3px', background:'#334155', borderRadius:'2px'}}></div>
                 </div>
               </div>
               </>}
@@ -2374,62 +2338,54 @@
                   options: {
                     responsive: true, maintainAspectRatio: false, animation: false,
                     plugins: {
-                      legend: { display: true, position: 'top', labels: { color:'#4b5563', font:{size:10}, boxWidth:14 } },
+                      legend: { display: true, position: 'top', labels: { color:'#94a3b8', font:{size:10}, boxWidth:14 } },
                       tooltip: { callbacks: { label: item => ` ${item.dataset.label}: ${item.parsed.y}` } }
                     },
                     scales: {
-                      x: { ticks: { color:'#4b5563', font:{size:9}, maxRotation:45 }, grid: { color:'#e5e7eb' } },
-                      y: { min: 0, max: maxVal + 2, ticks: { color:'#4b5563', font:{size:9}, stepSize:1 }, grid: { color:'#e5e7eb' }, title: { display:true, text:'Máx. Diario Actividades en Paralelo', color:'#4b5563', font:{size:10} } }
+                      x: { ticks: { color:'#94a3b8', font:{size:9}, maxRotation:45 }, grid: { color:'#334155' } },
+                      y: { min: 0, max: maxVal + 2, ticks: { color:'#94a3b8', font:{size:9}, stepSize:1 }, grid: { color:'#334155' }, title: { display:true, text:'Máx. Diario Actividades en Paralelo', color:'#64748b', font:{size:10} } }
                     }
                   }
                 });
               };
 
               return (
-                <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                  <div className="flex items-center justify-between mb-2">
-                    <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2 cursor-pointer select-none" onClick={() => toggleSection('parallel')}>
-                      <span className="text-gray-400 text-sm">{collapsedSections.has('parallel') ? '\u25B6' : '\u25BC'}</span>
-                      <span className="text-blue-400">&#9776;</span>
-                      Comparativo Actividades en Paralelo (diario): Línea Base vs Forecast Nivelado
-                    </h2>
-                    {!collapsedSections.has('parallel') &&
-                      <button onClick={() => exportParallelChart(labels, lbPar, fcNivPar, cap, monthMap, months, dailyLb, dailyFcNiv)}
-                        className="flex items-center gap-1.5 bg-green-700 hover:bg-green-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow transition-colors shrink-0">
-                        &#128190; Exportar Excel
-                      </button>
-                    }
-                  </div>
+                <div className="bg-[#1e293b] p-4 rounded-xl border border-[#334155]">
+                  <h2 className="text-lg font-semibold text-[#e2e8f0] mb-2 flex items-center gap-2 cursor-pointer select-none" onClick={() => toggleSection('parallel')}>
+                    <span className="text-[#64748b] text-sm">{collapsedSections.has('parallel') ? '\u25B6' : '\u25BC'}</span>
+                    <span className="text-blue-400">&#9776;</span>
+                    Comparativo Actividades en Paralelo (diario): Línea Base vs Forecast Nivelado
+                  </h2>
                   {!collapsedSections.has('parallel') && <>
 
                   {/* KPI cards */}
                   <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-                    <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                    <div className="bg-[#0f172a] rounded-lg p-3 border border-blue-800/40">
                       <div className="text-[10px] uppercase text-blue-400 font-bold tracking-wider mb-1">Máximo Línea Base</div>
-                      <div className="text-xl font-bold text-blue-600">{maxLb}</div>
-                      <div className="text-xs text-gray-500">activ. simult.</div>
+                      <div className="text-xl font-bold text-blue-300">{maxLb}</div>
+                      <div className="text-xs text-slate-400">activ. simult.</div>
                     </div>
-                    <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                    <div className="bg-[#0f172a] rounded-lg p-3 border border-blue-800/40">
                       <div className="text-[10px] uppercase text-blue-400 font-bold tracking-wider mb-1">Promedio Línea Base</div>
-                      <div className="text-xl font-bold text-blue-600">{avgLb.toFixed(1)}</div>
-                      <div className="text-xs text-gray-500">activ. simult.</div>
+                      <div className="text-xl font-bold text-blue-300">{avgLb.toFixed(1)}</div>
+                      <div className="text-xs text-slate-400">activ. simult.</div>
                     </div>
-                    <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-200">
+                    <div className="bg-[#0f172a] rounded-lg p-3 border border-emerald-800/40">
                       <div className="text-[10px] uppercase text-emerald-400 font-bold tracking-wider mb-1">Máximo Forecast Nivelado</div>
-                      <div className="text-xl font-bold text-emerald-600">{maxFc}</div>
-                      <div className="text-xs text-gray-500">activ. simult.</div>
+                      <div className="text-xl font-bold text-emerald-300">{maxFc}</div>
+                      <div className="text-xs text-slate-400">activ. simult.</div>
                     </div>
-                    <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-200">
+                    <div className="bg-[#0f172a] rounded-lg p-3 border border-emerald-800/40">
                       <div className="text-[10px] uppercase text-emerald-400 font-bold tracking-wider mb-1">Promedio Forecast Nivelado</div>
-                      <div className="text-xl font-bold text-emerald-600">{avgFcNiv.toFixed(1)}</div>
-                      <div className="text-xs text-gray-500">activ. simult.</div>
+                      <div className="text-xl font-bold text-emerald-300">{avgFcNiv.toFixed(1)}</div>
+                      <div className="text-xs text-slate-400">activ. simult.</div>
                     </div>
-                    <div className={`bg-gray-50 rounded-lg p-3 border ${exceedDays > 0 ? 'border-red-300' : maxFc <= cap ? 'border-emerald-300' : 'border-gray-200'}`}>
+                    <div className={`bg-[#0f172a] rounded-lg p-3 border ${exceedDays > 0 ? 'border-red-700/60' : maxFc <= cap ? 'border-emerald-700/60' : 'border-slate-700/40'}`}>
                       <div className="text-[10px] uppercase text-emerald-400 font-bold tracking-wider mb-1">Resultado</div>
                       <div className={`text-lg font-bold ${maxFc <= cap ? 'text-emerald-400' : 'text-red-400'}`}>
                         {maxFc <= cap ? '✓ No excede cap.' : 'Excede cap.'}
                       </div>
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-slate-400">
                         {exceedDays > 0 ? exceedDays + ' días sobre cap.' : 'Dentro de capacidad'}
                       </div>
                     </div>
@@ -2448,17 +2404,17 @@
                     }}
                     style={{height:'10px', cursor:'ns-resize', display:'flex', alignItems:'center', justifyContent:'center', userSelect:'none'}}
                     title="Arrastra para cambiar altura">
-                    <div style={{width:'48px', height:'3px', background:'#d1d5db', borderRadius:'2px'}}></div>
+                    <div style={{width:'48px', height:'3px', background:'#334155', borderRadius:'2px'}}></div>
                   </div>
 
                   {/* Explanation */}
-                  <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-600 space-y-1 border border-gray-200 mt-2">
-                    <p className="font-semibold text-blue-600">Análisis (conteo diario):</p>
-                    <p>La Línea Base tiene un máximo <strong>diario</strong> de <span className="text-blue-600 font-bold">{maxLb}</span> actividades en paralelo (promedio diario <span className="text-blue-600 font-bold">{avgLb.toFixed(1)}</span>).</p>
-                    <p>El Forecast Nivelado tiene un máximo <strong>diario</strong> de <span className="text-emerald-600 font-bold">{maxFc}</span> actividades en paralelo (promedio diario <span className="text-emerald-600 font-bold">{avgFcNiv.toFixed(1)}</span>).</p>
-                    <p>La capacidad (slots) = <span className="text-red-500 font-bold">{cap}</span> soldadores simultáneos (promedio diario Línea Base).</p>
+                  <div className="bg-[#0f172a]/60 rounded-lg p-3 text-xs text-slate-300 space-y-1 border border-slate-700/30 mt-2">
+                    <p className="font-semibold text-blue-300">Análisis (conteo diario):</p>
+                    <p>La Línea Base tiene un máximo <strong>diario</strong> de <span className="text-blue-300 font-bold">{maxLb}</span> actividades en paralelo (promedio diario <span className="text-blue-300 font-bold">{avgLb.toFixed(1)}</span>).</p>
+                    <p>El Forecast Nivelado tiene un máximo <strong>diario</strong> de <span className="text-emerald-300 font-bold">{maxFc}</span> actividades en paralelo (promedio diario <span className="text-emerald-300 font-bold">{avgFcNiv.toFixed(1)}</span>).</p>
+                    <p>La capacidad (slots) = <span className="text-red-300 font-bold">{cap}</span> soldadores simultáneos (promedio diario Línea Base).</p>
                     <p>{maxFc <= cap ? <span className="text-emerald-400 font-bold">El Forecast Nivelado nunca supera la capacidad de {cap} actividades simultáneas. No se están aumentando los recursos respecto a lo comprometido en la Línea Base.</span> : <span className="text-red-400 font-bold">El Forecast Nivelado excede la capacidad en {exceedDays} días.</span>}</p>
-                    <p className="text-gray-500 text-[10px] mt-1">Barras = máx. diario por mes · KPIs = valores diarios reales</p>
+                    <p className="text-slate-500 text-[10px] mt-1">Barras = máx. diario por mes · KPIs = valores diarios reales</p>
                   </div>
                   </>}
                 </div>
@@ -2466,10 +2422,10 @@
             })()}
 
             {/* Tabla LB vs FC */}
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-              <div className="px-4 py-2 border-b border-gray-200 flex items-center justify-between bg-gray-50">
-                <span className="text-sm font-semibold text-gray-800 flex items-center gap-2 cursor-pointer select-none" onClick={() => toggleSection('tabla1')}>
-                  <span className="text-gray-400 text-xs">{collapsedSections.has('tabla1') ? '\u25B6' : '\u25BC'}</span>
+            <div className="bg-[#1e293b] rounded-xl border border-[#334155] overflow-hidden">
+              <div className="px-4 py-2 border-b border-[#334155] flex items-center justify-between bg-[#0f172a]">
+                <span className="text-sm font-semibold text-[#e2e8f0] flex items-center gap-2 cursor-pointer select-none" onClick={() => toggleSection('tabla1')}>
+                  <span className="text-[#64748b] text-xs">{collapsedSections.has('tabla1') ? '\u25B6' : '\u25BC'}</span>
                   Comparativa Línea Base vs Forecast
                 </span>
                 <button onClick={exportTable1}
@@ -2482,22 +2438,22 @@
               {!collapsedSections.has('tabla1') && (
               <div className="overflow-x-auto relative max-h-[68vh]">
                 {loading
-                  ? <div className="p-10 text-center text-gray-400 font-medium">Leyendo archivo y calculando distribución...</div>
+                  ? <div className="p-10 text-center text-[#64748b] font-medium">Leyendo archivo y calculando distribución...</div>
                   : (
                     <table className="w-full text-xs text-left border-collapse">
-                      <thead className="text-[10px] text-gray-400 uppercase bg-gray-50 sticky top-0 z-30 shadow-sm">
+                      <thead className="text-[10px] text-[#64748b] uppercase bg-[#0f172a] sticky top-0 z-30 shadow-sm">
                         <tr>
-                          <th className="px-2 py-1.5 border-b border-gray-200 sticky left-0 bg-gray-50 z-40 min-w-[200px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.08)]">Actividad / Tramo</th>
-                          <th className="px-2 py-1.5 border-b border-gray-200 min-w-[58px] text-center border-r bg-gray-50">Q Total</th>
-                          <th className="px-2 py-1.5 border-b border-gray-200 min-w-[58px] text-center border-r bg-gray-50">Tipo</th>
+                          <th className="px-2 py-1.5 border-b border-[#334155] sticky left-0 bg-[#0f172a] z-40 min-w-[200px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.4)]">Actividad / Tramo</th>
+                          <th className="px-2 py-1.5 border-b border-[#334155] min-w-[58px] text-center border-r bg-[#0f172a]">Q Total</th>
+                          <th className="px-2 py-1.5 border-b border-[#334155] min-w-[58px] text-center border-r bg-[#0f172a]">Tipo</th>
                           {filteredDates.map(h => (
-                            <th key={h.key} className="px-1.5 py-1.5 border-b border-gray-200 border-r min-w-[50px] text-center whitespace-nowrap bg-gray-50">{h.label}</th>
+                            <th key={h.key} className="px-1.5 py-1.5 border-b border-[#334155] border-r min-w-[50px] text-center whitespace-nowrap bg-[#0f172a]">{h.label}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {processedSchedule.activities.length === 0
-                          ? <tr><td colSpan={100} className="p-8 text-center text-gray-400">Sube tu archivo Excel para visualizar los datos.</td></tr>
+                          ? <tr><td colSpan={100} className="p-8 text-center text-[#64748b]">Sube tu archivo Excel para visualizar los datos.</td></tr>
                           : processedSchedule.activities.map((act, idx) => {
                               if (!isVisible(act)) return null;
                               const isSummary = act.type === 'summary';
@@ -2507,34 +2463,34 @@
                                 const sums = childSums[act.id] || { lb_qty:0, fc_qty:0, lb_spread:{}, fc_spread:{} };
                                 return (
                                   <React.Fragment key={idx}>
-                                    <tr className="bg-blue-50 border-t-2 border-blue-300 cursor-pointer hover:bg-blue-100 select-none"
+                                    <tr className="bg-[#1d3451] border-t-2 border-[#2d5a8e] cursor-pointer hover:bg-[#22405e] select-none"
                                       onClick={() => toggleCollapse(act.id)}>
-                                      <td className="py-1 font-bold text-xs text-blue-600 sticky left-0 bg-blue-50 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] truncate max-w-[200px]" style={{paddingLeft:(act.wbsLevel||1)*12+'px',paddingRight:'8px'}}>
-                                        <span className="mr-1 text-gray-400 inline-block w-3 text-center">{isCollapsed ? '▶' : '▼'}</span>
+                                      <td className="py-1 font-bold text-xs text-[#93c5fd] sticky left-0 bg-[#1d3451] z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)] truncate max-w-[200px]" style={{paddingLeft:(act.wbsLevel||1)*12+'px',paddingRight:'8px'}}>
+                                        <span className="mr-1 text-[#64748b] inline-block w-3 text-center">{isCollapsed ? '▶' : '▼'}</span>
                                         {act.id}
                                       </td>
-                                      <td className="px-2 py-1 text-center font-bold text-blue-600 border-r border-blue-300">{sums.lb_qty.toFixed(1)}</td>
-                                      <td className="px-2 py-1 border-r border-blue-300 text-center font-bold text-blue-400">LB</td>
+                                      <td className="px-2 py-1 text-center font-bold text-blue-300 border-r border-[#2d5a8e]">{sums.lb_qty.toFixed(1)}</td>
+                                      <td className="px-2 py-1 border-r border-[#2d5a8e] text-center font-bold text-blue-400">LB</td>
                                       {filteredDates.map(h => {
                                         const val = getQtyForPeriod(sums.lb_spread, h.key, viewMode);
                                         return (
-                                          <td key={`s-lb-${h.key}`} className={`px-1 py-0.5 text-center border-r border-blue-300 text-[10px] ${val>0?'text-blue-600 font-semibold':'text-gray-400'}`}>
+                                          <td key={`s-lb-${h.key}`} className={`px-1 py-0.5 text-center border-r border-[#2d5a8e] text-[10px] ${val>0?'text-blue-300 font-semibold':'text-[#475569]'}`}>
                                             {val>0?val.toFixed(1):'-'}
                                           </td>
                                         );
                                       })}
                                     </tr>
-                                    <tr className="bg-emerald-50 border-b border-emerald-300 cursor-pointer hover:bg-emerald-100 select-none"
+                                    <tr className="bg-[#162c1f] border-b border-[#1e4730] cursor-pointer hover:bg-[#1a3525] select-none"
                                       onClick={() => toggleCollapse(act.id)}>
-                                      <td className="py-0.5 sticky left-0 bg-emerald-50 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] text-xs text-emerald-400" style={{paddingLeft:((act.wbsLevel||1)*12+12)+'px',paddingRight:'8px'}}>
+                                      <td className="py-0.5 sticky left-0 bg-[#162c1f] z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)] text-xs text-emerald-400" style={{paddingLeft:((act.wbsLevel||1)*12+12)+'px',paddingRight:'8px'}}>
                                         Rem: <strong>{sums.fc_qty.toFixed(1)}</strong>
                                       </td>
-                                      <td className="px-2 py-0.5 text-center font-bold text-emerald-400 border-r border-emerald-300">{sums.fc_qty.toFixed(1)}</td>
-                                      <td className="px-2 py-0.5 border-r border-emerald-300 text-center font-bold text-emerald-400">FC</td>
+                                      <td className="px-2 py-0.5 text-center font-bold text-emerald-400 border-r border-[#1e4730]">{sums.fc_qty.toFixed(1)}</td>
+                                      <td className="px-2 py-0.5 border-r border-[#1e4730] text-center font-bold text-emerald-400">FC</td>
                                       {filteredDates.map(h => {
                                         const val = getQtyForPeriod(sums.fc_spread, h.key, viewMode);
                                         return (
-                                          <td key={`s-fc-${h.key}`} className={`px-1 py-0.5 text-center border-r border-emerald-300 text-[10px] ${val>0?'text-emerald-400 font-semibold':'text-gray-400'}`}>
+                                          <td key={`s-fc-${h.key}`} className={`px-1 py-0.5 text-center border-r border-[#1e4730] text-[10px] ${val>0?'text-emerald-400 font-semibold':'text-[#475569]'}`}>
                                             {val>0?val.toFixed(1):'-'}
                                           </td>
                                         );
@@ -2548,31 +2504,31 @@
                               return (
                                 <React.Fragment key={idx}>
                                   {/* Línea Base */}
-                                  <tr className="bg-white hover:bg-gray-50">
-                                    <td className="py-1 font-normal text-xs text-gray-700 sticky left-0 bg-white z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.08)] truncate max-w-[200px]" style={{paddingLeft:(act.wbsLevel||6)*12+'px',paddingRight:'8px'}} title={act.id}>{act.id}</td>
-                                    <td className="px-2 py-1 text-center text-gray-500 border-r border-gray-200">{act.lb_qty.toFixed(1)}</td>
-                                    <td className="px-2 py-1 border-r border-gray-200 text-center text-blue-400 bg-blue-900/20">LB</td>
+                                  <tr className="bg-[#1e293b] hover:bg-[#263348]">
+                                    <td className="py-1 font-normal text-xs text-[#cbd5e1] sticky left-0 bg-[#1e293b] z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.4)] truncate max-w-[200px]" style={{paddingLeft:(act.wbsLevel||6)*12+'px',paddingRight:'8px'}} title={act.id}>{act.id}</td>
+                                    <td className="px-2 py-1 text-center text-[#94a3b8] border-r border-[#334155]">{act.lb_qty.toFixed(1)}</td>
+                                    <td className="px-2 py-1 border-r border-[#334155] text-center text-blue-400 bg-blue-900/20">LB</td>
                                     {filteredDates.map(h => {
                                       const val = getQtyForPeriod(act.lb_spread, h.key, viewMode);
                                       return (
-                                        <td key={`lb-${h.key}`} className={`px-1 py-1 text-center border-r border-gray-200 ${val>0?'bg-blue-900/30 text-blue-600 font-medium':'text-gray-400'}`}>
+                                        <td key={`lb-${h.key}`} className={`px-1 py-1 text-center border-r border-[#334155] ${val>0?'bg-blue-900/30 text-blue-300 font-medium':'text-[#475569]'}`}>
                                           {val>0?val.toFixed(1):'-'}
                                         </td>
                                       );
                                     })}
                                   </tr>
                                   {/* Forecast */}
-                                  <tr className="bg-gray-50 hover:bg-gray-100 border-b border-gray-200">
-                                    <td className="sticky left-0 bg-gray-50 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.08)] text-xs text-gray-500 py-0.5" style={{paddingLeft:((act.wbsLevel||6)*12+8)+'px'}}>
+                                  <tr className="bg-[#182030] hover:bg-[#1e2a3e] border-b border-[#334155]">
+                                    <td className="sticky left-0 bg-[#182030] z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.4)] text-xs text-[#94a3b8] py-0.5" style={{paddingLeft:((act.wbsLevel||6)*12+8)+'px'}}>
                                       <span>Av:{act.fc_qty_adv.toFixed(0)} | Rem:<strong className="text-emerald-400">{act.fc_qty.toFixed(1)}</strong>{act.fc_dur_calc != null && <span className="ml-1 text-indigo-400">| <strong>{act.fc_dur_calc}d</strong></span>}</span>
                                     </td>
-                                    <td className="px-2 py-1 text-center text-emerald-400 border-r border-gray-200"
+                                    <td className="px-2 py-1 text-center text-emerald-400 border-r border-[#334155]"
                                       title={`Q Total LB: ${act.lb_qty.toFixed(1)} − Avance: ${act.fc_qty_adv.toFixed(1)}`}>{act.fc_qty.toFixed(1)}</td>
-                                    <td className="px-2 py-1 border-r border-gray-200 text-center text-emerald-400 bg-emerald-900/20">FC</td>
+                                    <td className="px-2 py-1 border-r border-[#334155] text-center text-emerald-400 bg-emerald-900/20">FC</td>
                                     {filteredDates.map(h => {
                                       const val = getQtyForPeriod(act.fc_spread, h.key, viewMode);
                                       return (
-                                        <td key={`fc-${h.key}`} className={`px-1 py-1 text-center border-r border-gray-200 ${val>0?'bg-emerald-900/30 text-emerald-600 font-medium':'text-gray-400'}`}>
+                                        <td key={`fc-${h.key}`} className={`px-1 py-1 text-center border-r border-[#334155] ${val>0?'bg-emerald-900/30 text-emerald-300 font-medium':'text-[#475569]'}`}>
                                           {val>0?val.toFixed(1):'-'}
                                         </td>
                                       );
@@ -2585,45 +2541,45 @@
                       </tbody>
                       {processedSchedule.activities.length > 0 && (
                         <tfoot className="sticky bottom-0 z-30 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.5)]">
-                          <tr className="bg-blue-100 border-t-2 border-blue-400">
-                            <td className="px-2 py-1.5 font-bold text-blue-600 sticky left-0 bg-blue-100 z-40 text-right uppercase shadow-[2px_0_5px_-2px_rgba(0,0,0,0.08)]">TOTAL LÍNEA BASE</td>
-                            <td className="px-2 py-1.5 text-center font-bold text-blue-600 border-r border-blue-400/50">{globalTotals.lb.toFixed(0)}</td>
-                            <td className="border-r border-blue-400/50 bg-blue-100"></td>
+                          <tr className="bg-[#1e3a5f] border-t-2 border-[#2563eb]">
+                            <td className="px-2 py-1.5 font-bold text-blue-300 sticky left-0 bg-[#1e3a5f] z-40 text-right uppercase shadow-[2px_0_5px_-2px_rgba(0,0,0,0.4)]">TOTAL LÍNEA BASE</td>
+                            <td className="px-2 py-1.5 text-center font-bold text-blue-300 border-r border-[#2563eb]/50">{globalTotals.lb.toFixed(0)}</td>
+                            <td className="border-r border-[#2563eb]/50 bg-[#1e3a5f]"></td>
                             {filteredDates.map(h => (
-                              <td key={`tot-lb-${h.key}`} className="px-1 py-1.5 text-center font-bold text-blue-600 border-r border-blue-400/50">
+                              <td key={`tot-lb-${h.key}`} className="px-1 py-1.5 text-center font-bold text-blue-300 border-r border-[#2563eb]/50">
                                 {periodTotals[h.key].lb>0?periodTotals[h.key].lb.toFixed(1):'-'}
                               </td>
                             ))}
                           </tr>
-                          <tr className="bg-emerald-100 border-t border-emerald-400/50">
-                            <td className="px-2 py-1.5 font-bold text-emerald-400 sticky left-0 bg-emerald-100 z-40 text-right uppercase shadow-[2px_0_5px_-2px_rgba(0,0,0,0.08)]">TOTAL FORECAST (Rem.)</td>
-                            <td className="px-2 py-1.5 text-center font-bold text-emerald-400 border-r border-emerald-400/50">{globalTotals.fc.toFixed(0)}</td>
-                            <td className="border-r border-emerald-400/50 bg-emerald-100"></td>
+                          <tr className="bg-[#14362a] border-t border-[#059669]/50">
+                            <td className="px-2 py-1.5 font-bold text-emerald-400 sticky left-0 bg-[#14362a] z-40 text-right uppercase shadow-[2px_0_5px_-2px_rgba(0,0,0,0.4)]">TOTAL FORECAST (Rem.)</td>
+                            <td className="px-2 py-1.5 text-center font-bold text-emerald-400 border-r border-[#059669]/50">{globalTotals.fc.toFixed(0)}</td>
+                            <td className="border-r border-[#059669]/50 bg-[#14362a]"></td>
                             {filteredDates.map(h => (
-                              <td key={`tot-fc-${h.key}`} className="px-1 py-1.5 text-center font-bold text-emerald-400 border-r border-emerald-400/50">
+                              <td key={`tot-fc-${h.key}`} className="px-1 py-1.5 text-center font-bold text-emerald-400 border-r border-[#059669]/50">
                                 {periodTotals[h.key].fc>0?periodTotals[h.key].fc.toFixed(1):'-'}
                               </td>
                             ))}
                           </tr>
-                          <tr className="bg-sky-50 border-t border-sky-400/50">
-                            <td className="px-2 py-1 font-bold text-sky-400 sticky left-0 bg-sky-50 z-40 text-right uppercase shadow-[2px_0_5px_-2px_rgba(0,0,0,0.08)] text-[10px]">PARALELO (LÍNEA BASE)</td>
-                            <td className="border-r border-sky-400/50 bg-sky-50" colSpan={2}></td>
+                          <tr className="bg-[#0c2233] border-t border-[#0284c7]/50">
+                            <td className="px-2 py-1 font-bold text-sky-400 sticky left-0 bg-[#0c2233] z-40 text-right uppercase shadow-[2px_0_5px_-2px_rgba(0,0,0,0.4)] text-[10px]">PARALELO (LÍNEA BASE)</td>
+                            <td className="border-r border-[#0284c7]/50 bg-[#0c2233]" colSpan={2}></td>
                             {filteredDates.map(h => {
                               const n = parallelCounts[h.key].lb;
                               return (
-                                <td key={`par-lb-${h.key}`} className={`px-1 py-1 text-center font-bold border-r border-sky-400/50 ${n>1?'text-sky-600 bg-sky-50':'text-gray-400'}`}>
+                                <td key={`par-lb-${h.key}`} className={`px-1 py-1 text-center font-bold border-r border-[#0284c7]/50 ${n>1?'text-sky-300 bg-sky-900/40':'text-[#475569]'}`}>
                                   {n>0?n:'-'}
                                 </td>
                               );
                             })}
                           </tr>
-                          <tr className="bg-violet-50 border-t border-violet-400/50">
-                            <td className="px-2 py-1 font-bold text-violet-400 sticky left-0 bg-violet-50 z-40 text-right uppercase shadow-[2px_0_5px_-2px_rgba(0,0,0,0.08)] text-[10px]">PARALELO (FORECAST)</td>
-                            <td className="border-r border-violet-400/50 bg-violet-50" colSpan={2}></td>
+                          <tr className="bg-[#1a1033] border-t border-[#7c3aed]/50">
+                            <td className="px-2 py-1 font-bold text-violet-400 sticky left-0 bg-[#1a1033] z-40 text-right uppercase shadow-[2px_0_5px_-2px_rgba(0,0,0,0.4)] text-[10px]">PARALELO (FORECAST)</td>
+                            <td className="border-r border-[#7c3aed]/50 bg-[#1a1033]" colSpan={2}></td>
                             {filteredDates.map(h => {
                               const n = parallelCounts[h.key].fc;
                               return (
-                                <td key={`par-fc-${h.key}`} className={`px-1 py-1 text-center font-bold border-r border-violet-400/50 ${n>1?'text-violet-600 bg-violet-50':'text-gray-400'}`}>
+                                <td key={`par-fc-${h.key}`} className={`px-1 py-1 text-center font-bold border-r border-[#7c3aed]/50 ${n>1?'text-violet-300 bg-violet-900/40':'text-[#475569]'}`}>
                                   {n>0?n:'-'}
                                 </td>
                               );
@@ -2646,29 +2602,29 @@
               const filteredLvHeaders = filterHeadersByDate(lvHeaders);
 
               return (
-                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-                  <div className="px-4 py-2 border-b border-gray-200 bg-gray-50">
+                <div className="bg-[#1e293b] rounded-xl border border-[#334155] overflow-hidden">
+                  <div className="px-4 py-2 border-b border-[#334155] bg-[#0f172a]">
                     <span className="text-sm font-semibold text-emerald-400 flex items-center gap-2 cursor-pointer select-none" onClick={() => toggleSection('niveladoTable')}>
-                      <span className="text-gray-400 text-xs">{collapsedSections.has('niveladoTable') ? '\u25B6' : '\u25BC'}</span>
+                      <span className="text-[#64748b] text-xs">{collapsedSections.has('niveladoTable') ? '\u25B6' : '\u25BC'}</span>
                       Tabla Forecast Nivelado
                     </span>
                   </div>
                   {!collapsedSections.has('niveladoTable') && (
                   <div className="overflow-x-auto relative max-h-[68vh]">
                     <table className="w-full text-xs text-left border-collapse">
-                      <thead className="text-[10px] text-gray-400 uppercase bg-gray-50 sticky top-0 z-30 shadow-sm">
+                      <thead className="text-[10px] text-[#64748b] uppercase bg-[#0f172a] sticky top-0 z-30 shadow-sm">
                         <tr>
-                          <th className="px-2 py-1.5 border-b border-gray-200 sticky left-0 bg-gray-50 z-40 min-w-[200px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.08)]">Actividad / Tramo</th>
-                          <th className="px-2 py-1.5 border-b border-gray-200 min-w-[50px] text-center border-r bg-gray-50 whitespace-nowrap">Dur. Línea Base</th>
-                          <th className="px-2 py-1.5 border-b border-gray-200 min-w-[54px] text-center border-r bg-gray-50 whitespace-nowrap">Rend. Línea Base</th>
-                          <th className="px-2 py-1.5 border-b border-gray-200 min-w-[54px] text-center border-r bg-gray-50 whitespace-nowrap">Q Rem.</th>
-                          <th className="px-2 py-1.5 border-b border-gray-200 min-w-[52px] text-center border-r bg-orange-900/30 whitespace-nowrap text-orange-400" title="Duración Forecast del contratista">Dur. Contratista</th>
-                          <th className="px-2 py-1.5 border-b border-gray-200 min-w-[52px] text-center border-r bg-blue-900/30 whitespace-nowrap text-blue-400" title="Duración Forecast calculada a rendimiento Línea Base">Dur@Línea Base</th>
-                          <th className="px-2 py-1.5 border-b border-gray-200 min-w-[46px] text-center border-r bg-red-900/30 whitespace-nowrap text-red-400" title="Días de exceso del contratista">Δ d</th>
-                          <th className="px-2 py-1.5 border-b border-gray-200 min-w-[72px] text-center border-r bg-emerald-900/30 whitespace-nowrap text-emerald-400">Inicio Nivelado</th>
-                          <th className="px-2 py-1.5 border-b border-gray-200 min-w-[72px] text-center border-r bg-emerald-900/30 whitespace-nowrap text-emerald-400">Fin Nivelado</th>
+                          <th className="px-2 py-1.5 border-b border-[#334155] sticky left-0 bg-[#0f172a] z-40 min-w-[200px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.4)]">Actividad / Tramo</th>
+                          <th className="px-2 py-1.5 border-b border-[#334155] min-w-[50px] text-center border-r bg-[#0f172a] whitespace-nowrap">Dur. Línea Base</th>
+                          <th className="px-2 py-1.5 border-b border-[#334155] min-w-[54px] text-center border-r bg-[#0f172a] whitespace-nowrap">Rend. Línea Base</th>
+                          <th className="px-2 py-1.5 border-b border-[#334155] min-w-[54px] text-center border-r bg-[#0f172a] whitespace-nowrap">Q Rem.</th>
+                          <th className="px-2 py-1.5 border-b border-[#334155] min-w-[52px] text-center border-r bg-orange-900/30 whitespace-nowrap text-orange-400" title="Duración Forecast del contratista">Dur. Contratista</th>
+                          <th className="px-2 py-1.5 border-b border-[#334155] min-w-[52px] text-center border-r bg-blue-900/30 whitespace-nowrap text-blue-400" title="Duración Forecast calculada a rendimiento Línea Base">Dur@Línea Base</th>
+                          <th className="px-2 py-1.5 border-b border-[#334155] min-w-[46px] text-center border-r bg-red-900/30 whitespace-nowrap text-red-400" title="Días de exceso del contratista">Δ d</th>
+                          <th className="px-2 py-1.5 border-b border-[#334155] min-w-[72px] text-center border-r bg-emerald-900/30 whitespace-nowrap text-emerald-400">Inicio Nivelado</th>
+                          <th className="px-2 py-1.5 border-b border-[#334155] min-w-[72px] text-center border-r bg-emerald-900/30 whitespace-nowrap text-emerald-400">Fin Nivelado</th>
                           {filteredLvHeaders.map(h => (
-                            <th key={h.key} className="px-1.5 py-1.5 border-b border-gray-200 border-r min-w-[50px] text-center whitespace-nowrap bg-gray-50">{h.label}</th>
+                            <th key={h.key} className="px-1.5 py-1.5 border-b border-[#334155] border-r min-w-[50px] text-center whitespace-nowrap bg-[#0f172a]">{h.label}</th>
                           ))}
                         </tr>
                       </thead>
@@ -2681,24 +2637,24 @@
                           if (isSummary) {
                             const sumsLv = childSumsLv[act.id] || { fc_qty:0, lb_qty:0, fc_start_lv:null, fc_end_lv:null, fc_spread_lv:{} };
                             return (
-                              <tr key={`lv-s-${idx}`} className="bg-blue-50 border-t-2 border-blue-300 cursor-pointer hover:bg-blue-100 select-none"
+                              <tr key={`lv-s-${idx}`} className="bg-[#1d3451] border-t-2 border-[#2d5a8e] cursor-pointer hover:bg-[#22405e] select-none"
                                 onClick={() => toggleCollapse(act.id)}>
-                                <td className="py-1 font-bold text-xs text-blue-600 sticky left-0 bg-blue-50 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] truncate max-w-[200px]" style={{paddingLeft:(act.wbsLevel||1)*12+'px',paddingRight:'8px'}}>
-                                  <span className="mr-1 text-gray-400 inline-block w-3 text-center">{isCollapsed ? '\u25B6' : '\u25BC'}</span>
+                                <td className="py-1 font-bold text-xs text-[#93c5fd] sticky left-0 bg-[#1d3451] z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)] truncate max-w-[200px]" style={{paddingLeft:(act.wbsLevel||1)*12+'px',paddingRight:'8px'}}>
+                                  <span className="mr-1 text-[#64748b] inline-block w-3 text-center">{isCollapsed ? '\u25B6' : '\u25BC'}</span>
                                   {act.id}
                                 </td>
-                                <td className="px-2 py-1 text-center text-gray-400 border-r border-blue-300">—</td>
-                                <td className="px-2 py-1 text-center text-gray-400 border-r border-blue-300">—</td>
-                                <td className="px-2 py-1 text-center font-bold text-emerald-400 border-r border-blue-300">{sumsLv.fc_qty.toFixed(1)}</td>
-                                <td className="px-2 py-1 text-center text-gray-400 border-r border-blue-300">—</td>
-                                <td className="px-2 py-1 text-center text-gray-400 border-r border-blue-300">—</td>
-                                <td className="px-2 py-1 text-center text-gray-400 border-r border-blue-300">—</td>
-                                <td className="px-2 py-1 text-center text-emerald-400 border-r border-blue-300 whitespace-nowrap text-xs">{fmtDate(sumsLv.fc_start_lv)}</td>
-                                <td className="px-2 py-1 text-center font-bold text-emerald-400 border-r border-blue-300 whitespace-nowrap text-xs">{fmtDate(sumsLv.fc_end_lv)}</td>
+                                <td className="px-2 py-1 text-center text-[#64748b] border-r border-[#2d5a8e]">—</td>
+                                <td className="px-2 py-1 text-center text-[#64748b] border-r border-[#2d5a8e]">—</td>
+                                <td className="px-2 py-1 text-center font-bold text-emerald-400 border-r border-[#2d5a8e]">{sumsLv.fc_qty.toFixed(1)}</td>
+                                <td className="px-2 py-1 text-center text-[#64748b] border-r border-[#2d5a8e]">—</td>
+                                <td className="px-2 py-1 text-center text-[#64748b] border-r border-[#2d5a8e]">—</td>
+                                <td className="px-2 py-1 text-center text-[#64748b] border-r border-[#2d5a8e]">—</td>
+                                <td className="px-2 py-1 text-center text-emerald-400 border-r border-[#2d5a8e] whitespace-nowrap text-xs">{fmtDate(sumsLv.fc_start_lv)}</td>
+                                <td className="px-2 py-1 text-center font-bold text-emerald-400 border-r border-[#2d5a8e] whitespace-nowrap text-xs">{fmtDate(sumsLv.fc_end_lv)}</td>
                                 {filteredLvHeaders.map(h => {
                                   const val = getQtyForPeriod(sumsLv.fc_spread_lv, h.key, viewMode);
                                   return (
-                                    <td key={`lv-sh-${h.key}`} className={`px-1 py-0.5 text-center border-r border-blue-300 text-[10px] ${val>0?'text-emerald-400 font-semibold':'text-gray-400'}`}>
+                                    <td key={`lv-sh-${h.key}`} className={`px-1 py-0.5 text-center border-r border-[#2d5a8e] text-[10px] ${val>0?'text-emerald-400 font-semibold':'text-[#475569]'}`}>
                                       {val>0?val.toFixed(1):'-'}
                                     </td>
                                   );
@@ -2717,23 +2673,23 @@
                           const excessDays = (fcDurContr != null && act.fc_dur_calc != null) ? fcDurContr - act.fc_dur_calc : null;
 
                           return (
-                            <tr key={`lv-a-${idx}`} className="bg-white hover:bg-emerald-50 border-b border-gray-200">
-                              <td className="py-1 font-normal text-xs text-gray-700 sticky left-0 bg-white z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.08)] truncate max-w-[200px]" style={{paddingLeft:(act.wbsLevel||6)*12+'px',paddingRight:'8px'}} title={act.id + (restrictions[act.id] ? ' | 🔒 Liberación: ' + restrictions[act.id] : '')}>
+                            <tr key={`lv-a-${idx}`} className="bg-[#1e293b] hover:bg-[#1f2e1a] border-b border-[#334155]">
+                              <td className="py-1 font-normal text-xs text-[#cbd5e1] sticky left-0 bg-[#1e293b] z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.4)] truncate max-w-[200px]" style={{paddingLeft:(act.wbsLevel||6)*12+'px',paddingRight:'8px'}} title={act.id + (restrictions[act.id] ? ' | 🔒 Liberación: ' + restrictions[act.id] : '')}>
                                 {restrictions[act.id] && <span className="text-rose-400 mr-1" title={'Liberación: ' + restrictions[act.id]}>🔒</span>}
                                 {act.id}
                               </td>
-                              <td className="px-2 py-1 text-center text-gray-500 border-r border-gray-200">{lbDur ?? '-'}</td>
-                              <td className="px-2 py-1 text-center text-gray-500 border-r border-gray-200">{lbRate ?? '-'}</td>
-                              <td className="px-2 py-1 text-center font-semibold text-emerald-400 border-r border-gray-200">{act.fc_qty > 0 ? act.fc_qty.toFixed(1) : <span className="text-gray-400">✓</span>}</td>
-                              <td className={`px-2 py-1 text-center font-semibold border-r border-gray-200 bg-orange-900/20 ${excessDays > 0 ? 'text-orange-400' : 'text-gray-500'}`}>{fcDurContr ?? '-'}</td>
-                              <td className="px-2 py-1 text-center font-bold text-blue-400 bg-blue-900/20 border-r border-gray-200">{act.fc_dur_calc ?? '-'}</td>
-                              <td className={`px-2 py-1 text-center font-bold border-r border-gray-200 ${excessDays > 0 ? 'text-red-400 bg-red-900/30' : excessDays != null ? 'text-emerald-400 bg-emerald-900/20' : 'text-gray-400'}`}>{excessDays != null ? (excessDays > 0 ? '+' : '') + excessDays : '-'}</td>
-                              <td className="px-2 py-1 text-center text-emerald-400 bg-emerald-900/20 border-r border-gray-200 whitespace-nowrap">{fmtDate(act.fc_start_lv)}</td>
-                              <td className="px-2 py-1 text-center font-semibold text-emerald-600 bg-emerald-900/30 border-r border-gray-200 whitespace-nowrap">{fmtDate(act.fc_end_lv)}</td>
+                              <td className="px-2 py-1 text-center text-[#94a3b8] border-r border-[#334155]">{lbDur ?? '-'}</td>
+                              <td className="px-2 py-1 text-center text-[#94a3b8] border-r border-[#334155]">{lbRate ?? '-'}</td>
+                              <td className="px-2 py-1 text-center font-semibold text-emerald-400 border-r border-[#334155]">{act.fc_qty > 0 ? act.fc_qty.toFixed(1) : <span className="text-[#475569]">✓</span>}</td>
+                              <td className={`px-2 py-1 text-center font-semibold border-r border-[#334155] bg-orange-900/20 ${excessDays > 0 ? 'text-orange-400' : 'text-[#94a3b8]'}`}>{fcDurContr ?? '-'}</td>
+                              <td className="px-2 py-1 text-center font-bold text-blue-400 bg-blue-900/20 border-r border-[#334155]">{act.fc_dur_calc ?? '-'}</td>
+                              <td className={`px-2 py-1 text-center font-bold border-r border-[#334155] ${excessDays > 0 ? 'text-red-400 bg-red-900/30' : excessDays != null ? 'text-emerald-400 bg-emerald-900/20' : 'text-[#475569]'}`}>{excessDays != null ? (excessDays > 0 ? '+' : '') + excessDays : '-'}</td>
+                              <td className="px-2 py-1 text-center text-emerald-400 bg-emerald-900/20 border-r border-[#334155] whitespace-nowrap">{fmtDate(act.fc_start_lv)}</td>
+                              <td className="px-2 py-1 text-center font-semibold text-emerald-300 bg-emerald-900/30 border-r border-[#334155] whitespace-nowrap">{fmtDate(act.fc_end_lv)}</td>
                               {filteredLvHeaders.map(h => {
                                 const val = getQtyForPeriod(act.fc_spread_lv, h.key, viewMode);
                                 return (
-                                  <td key={`lv-ah-${h.key}`} className={`px-1 py-1 text-center border-r border-gray-200 ${val>0?'bg-emerald-900/30 text-emerald-600 font-medium':'text-gray-400'}`}>
+                                  <td key={`lv-ah-${h.key}`} className={`px-1 py-1 text-center border-r border-[#334155] ${val>0?'bg-emerald-900/30 text-emerald-300 font-medium':'text-[#475569]'}`}>
                                     {val>0?val.toFixed(1):'-'}
                                   </td>
                                 );
@@ -2743,8 +2699,8 @@
                         })}
                       </tbody>
                       <tfoot className="sticky bottom-0 z-30 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.5)]">
-                        <tr className="bg-emerald-100 border-t-2 border-[#10b981]">
-                          <td className="px-2 py-1.5 font-bold text-emerald-400 sticky left-0 bg-emerald-100 z-40 text-right uppercase text-[10px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.08)]">
+                        <tr className="bg-[#0a1f15] border-t-2 border-[#10b981]">
+                          <td className="px-2 py-1.5 font-bold text-emerald-400 sticky left-0 bg-[#0a1f15] z-40 text-right uppercase text-[10px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.4)]">
                             TOTAL FC NIV. <span className="font-normal text-emerald-600">(cap.{leveledSchedule.capacity}/d)</span>
                           </td>
                           <td className="border-r border-[#10b981]/50" colSpan={8}></td>
@@ -2754,15 +2710,15 @@
                             </td>
                           ))}
                         </tr>
-                        <tr className="bg-gray-100 border-t border-gray-200">
-                          <td className="px-2 py-1 font-bold text-gray-500 sticky left-0 bg-gray-100 z-40 text-right uppercase text-[10px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.08)]">
+                        <tr className="bg-[#111827] border-t border-[#334155]">
+                          <td className="px-2 py-1 font-bold text-[#94a3b8] sticky left-0 bg-[#111827] z-40 text-right uppercase text-[10px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.4)]">
                             PARALELO (NIVELADO)
                           </td>
-                          <td className="border-r border-gray-200" colSpan={8}></td>
+                          <td className="border-r border-[#334155]" colSpan={8}></td>
                           {filteredLvHeaders.map(h => {
                             const n = lvParallel[h.key];
                             return (
-                              <td key={`lv-par-${h.key}`} className={`px-1 py-1 text-center font-bold border-r border-gray-200 ${n>leveledSchedule.capacity?'bg-red-50 text-red-600':n>0?'bg-white text-gray-500':'text-gray-400'}`}>
+                              <td key={`lv-par-${h.key}`} className={`px-1 py-1 text-center font-bold border-r border-[#334155] ${n>leveledSchedule.capacity?'bg-red-900/50 text-red-400':n>0?'bg-[#1e293b] text-[#94a3b8]':'text-[#475569]'}`}>
                                 {n>0?n:'-'}
                               </td>
                             );

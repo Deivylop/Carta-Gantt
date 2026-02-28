@@ -388,6 +388,59 @@ export default function ScenarioGanttProvider({ scenario, children }: Props) {
                 return;
             }
 
+            /* ── Predecessor / Successor link edits ────────────────── */
+            case 'ADD_PRED': {
+                const act = scenario.activities[action.actIdx];
+                if (!act) return;
+                const newPreds = [...(act.preds || []).filter(p => p.id !== action.pred.id), action.pred as any];
+                realDispatch({ type: 'UPDATE_SCENARIO_ACTIVITY', scenarioId: scenario.id, activityIndex: action.actIdx, updates: { preds: newPreds } });
+                realDispatch({ type: 'RECALC_SCENARIO_CPM', scenarioId: scenario.id });
+                return;
+            }
+
+            case 'UPDATE_PRED': {
+                const act = scenario.activities[action.actIdx];
+                if (!act?.preds?.[action.predIdx]) return;
+                const newPreds = [...act.preds];
+                newPreds[action.predIdx] = { ...newPreds[action.predIdx], ...action.updates };
+                realDispatch({ type: 'UPDATE_SCENARIO_ACTIVITY', scenarioId: scenario.id, activityIndex: action.actIdx, updates: { preds: newPreds } });
+                realDispatch({ type: 'RECALC_SCENARIO_CPM', scenarioId: scenario.id });
+                return;
+            }
+
+            case 'REMOVE_PRED': {
+                const act = scenario.activities[action.actIdx];
+                if (!act?.preds) return;
+                const newPreds = [...act.preds];
+                newPreds.splice(action.predIdx, 1);
+                realDispatch({ type: 'UPDATE_SCENARIO_ACTIVITY', scenarioId: scenario.id, activityIndex: action.actIdx, updates: { preds: newPreds } });
+                realDispatch({ type: 'RECALC_SCENARIO_CPM', scenarioId: scenario.id });
+                return;
+            }
+
+            case 'ADD_SUC': {
+                const fromAct = scenario.activities[action.fromIdx];
+                const sucAct = scenario.activities[action.sucIdx];
+                if (!fromAct || !sucAct) return;
+                const newPreds = [...(sucAct.preds || []).filter(p => p.id !== fromAct.id),
+                    { id: fromAct.id, type: action.linkType as any, lag: action.lag }];
+                realDispatch({ type: 'UPDATE_SCENARIO_ACTIVITY', scenarioId: scenario.id, activityIndex: action.sucIdx, updates: { preds: newPreds } });
+                realDispatch({ type: 'RECALC_SCENARIO_CPM', scenarioId: scenario.id });
+                return;
+            }
+
+            case 'REMOVE_SUC': {
+                const sucIdx = scenario.activities.findIndex(a => a.id === action.sucId);
+                if (sucIdx < 0) return;
+                const sucAct = scenario.activities[sucIdx];
+                if (!sucAct?.preds) return;
+                const newPreds = [...sucAct.preds];
+                newPreds.splice(action.predIdx, 1);
+                realDispatch({ type: 'UPDATE_SCENARIO_ACTIVITY', scenarioId: scenario.id, activityIndex: sucIdx, updates: { preds: newPreds } });
+                realDispatch({ type: 'RECALC_SCENARIO_CPM', scenarioId: scenario.id });
+                return;
+            }
+
             default:
                 // Pass through all other actions (SET_SELECTION, SET_COL_WIDTH, TOGGLE_COLLAPSE, etc.)
                 realDispatch(action);
