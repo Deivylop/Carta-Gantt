@@ -54,7 +54,7 @@ interface DragPreview {
 
 export default function GanttTimeline() {
     const { state, dispatch } = useGantt();
-    const { visRows, zoom, totalDays, timelineStart: projStart, statusDate, _cpmStatusDate, selIdx, selIndices, lightMode, activities, defCal, pxPerDay, showProjRow: _showProjRow, showTodayLine, showStatusLine, showDependencies, mfpConfig, chainIds, chainTrace, spotlightEnabled, spotlightEnd, leanRestrictions, _scenarioMode, _masterActivities } = state;
+    const { visRows, zoom, totalDays, timelineStart: projStart, statusDate, _cpmStatusDate, selIdx, selIndices, lightMode, activities, defCal, pxPerDay, showProjRow: _showProjRow, showTodayLine, showStatusLine, showDependencies, mfpConfig, chainIds, chainTrace, spotlightEnabled, spotlightEnd, leanRestrictions } = state;
     // For bar rendering, use the statusDate from last CPM calc (not the live one from the picker)
     const barStatusDate = _cpmStatusDate || statusDate;
     const PX = pxPerDay;
@@ -336,53 +336,6 @@ export default function GanttTimeline() {
         if (showStatusLine && statusDate) {
             const sx = (dayDiff(projStart, statusDate) + 1) * PX;  // end of status date
             if (sx >= 0 && sx <= W) { ctx.fillStyle = t.statusLine; ctx.fillRect(sx, 0, 2, H); }
-        }
-
-        // ─── Ghost bars (master schedule in scenario mode) ──────
-        if (_scenarioMode && _masterActivities) {
-            // Build lookup: activityId → master activity
-            const masterById = new Map<string, any>();
-            _masterActivities.forEach(ma => { masterById.set(ma.id, ma); });
-
-            ctx.save();
-            ctx.globalAlpha = 0.20;
-            visRows.forEach((r, i) => {
-                const ma = masterById.get(r.id);
-                if (!ma || !ma.ES) return;
-                const y = i * ROW_H;
-                const gx = Math.max(0, dayDiff(projStart, ma.ES) * PX);
-                const gex = ma.EF ? dayDiff(projStart, ma.EF) * PX : gx;
-                const gw = Math.max(ma.type === 'milestone' ? 0 : 4, gex - gx);
-                const gy = y + 5, gh = ROW_H - 10;
-
-                if (ma.type === 'milestone') {
-                    // Ghost diamond
-                    const mx = gx, my = y + ROW_H / 2, sz = 7;
-                    ctx.save(); ctx.globalAlpha = 0.25;
-                    ctx.translate(mx, my); ctx.rotate(Math.PI / 4);
-                    ctx.fillStyle = '#94a3b8'; ctx.beginPath(); ctx.rect(-sz / 2, -sz / 2, sz, sz); ctx.fill();
-                    ctx.restore();
-                } else if (ma.type === 'summary') {
-                    // Ghost summary bar (thin)
-                    const sy = y + 6, sh = 6;
-                    ctx.fillStyle = '#94a3b8';
-                    ctx.fillRect(gx, sy, Math.max(gw, 2), sh);
-                } else {
-                    // Ghost task bar
-                    ctx.fillStyle = lightMode ? '#94a3b8' : '#64748b';
-                    rrect(ctx, gx, gy, gw, gh, 3); ctx.fill();
-                    // Ghost bar hatching pattern (diagonal lines)
-                    ctx.strokeStyle = lightMode ? '#64748b' : '#475569';
-                    ctx.lineWidth = 0.5;
-                    for (let hx = gx; hx < gx + gw; hx += 6) {
-                        ctx.beginPath();
-                        ctx.moveTo(hx, gy);
-                        ctx.lineTo(hx + gh, gy + gh);
-                        ctx.stroke();
-                    }
-                }
-            });
-            ctx.restore();
         }
 
         // Draw bars

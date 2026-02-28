@@ -309,6 +309,47 @@ export interface ProgressHistoryEntry {
     snapshots?: Record<string, ProgressActivitySnapshot>; // activity_id -> full snapshot
 }
 
+// ─── What-If Scenarios ──────────────────────────────────────────
+
+/** A single field-level change recorded in a What-If scenario */
+export interface ScenarioChange {
+    id: string;
+    activityId: string;
+    field: string;            // 'dur', 'preds', 'constraint', etc.
+    oldValue: any;
+    newValue: any;
+    timestamp: string;        // ISO datetime
+}
+
+/** Comparison result for one activity between master and scenario */
+export interface ScenarioComparisonResult {
+    activityId: string;
+    activityName: string;
+    masterES: Date | null;
+    masterEF: Date | null;
+    scenarioES: Date | null;
+    scenarioEF: Date | null;
+    deltaStart: number;       // work days difference
+    deltaFinish: number;
+    masterCrit: boolean;
+    scenarioCrit: boolean;
+    masterTF: number | null;
+    scenarioTF: number | null;
+}
+
+/** A self-contained What-If scenario with its own activity set */
+export interface WhatIfScenario {
+    id: string;
+    name: string;
+    description: string;
+    createdAt: string;              // ISO datetime
+    baseSnapshotDate: string;       // when snapshot was taken
+    activities: Activity[];         // deep copy of master activities
+    changes: ScenarioChange[];      // log of all changes
+    color: string;                  // for charts/overlay
+    simStatusDate?: string;         // simulated status date (ISO) — for "what if status date moves"
+}
+
 // ─── Custom Filters ─────────────────────────────────────────────
 export type FilterOperator = 'equals' | 'not_equals' | 'contains' | 'not_contains' | 'greater_than' | 'less_than' | 'greater_than_or_equal' | 'less_than_or_equal' | 'is_empty' | 'is_not_empty';
 

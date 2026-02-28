@@ -29,6 +29,7 @@ import InicioPage from './components/modules/InicioPage';
 import LookAheadPage from './components/modules/LookAheadPage';
 import DashboardPage from './components/modules/DashboardPage';
 import ConfigPage from './components/modules/ConfigPage';
+import WhatIfPage from './components/modules/WhatIfPage';
 import { newActivity } from './utils/cpm';
 import { autoId } from './utils/helpers';
 import { saveToSupabase, loadFromSupabase } from './utils/supabaseSync';
@@ -37,7 +38,11 @@ function AppInner() {
   const { state, dispatch } = useGantt();
   const [formH, setFormH] = useState(200);
   const [resizing, setResizing] = useState<'v' | 'h' | null>(null);
-  const [activeModule, setActiveModule] = useState<ModuleId>('inicio');
+  const [activeModule, setActiveModule] = useState<ModuleId>(() => {
+    const saved = localStorage.getItem('gantt_active_module');
+    const valid: ModuleId[] = ['inicio', 'gantt', 'lookAhead', 'dashboard', 'whatIf', 'config'];
+    return saved && valid.includes(saved as ModuleId) ? saved as ModuleId : 'inicio';
+  });
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Theme toggle on body
@@ -77,6 +82,7 @@ function AppInner() {
           if (data.progressHistory) dispatch({ type: 'SET_PROGRESS_HISTORY', history: data.progressHistory });
           if (data.ppcHistory && data.ppcHistory.length) dispatch({ type: 'SET_PPC_HISTORY', history: data.ppcHistory });
           if (data.leanRestrictions && data.leanRestrictions.length) dispatch({ type: 'SET_LEAN_RESTRICTIONS', restrictions: data.leanRestrictions });
+          if ((data as any).scenarios && (data as any).scenarios.length) dispatch({ type: 'SET_SCENARIOS', scenarios: (data as any).scenarios });
           return;
         } catch (err) {
           console.warn('Could not auto-load from Supabase, starting fresh', err);
@@ -103,9 +109,9 @@ function AppInner() {
       } catch (err) {
         console.error('Auto-save error:', err);
       }
-    }, 3000);
+    }, 800);
     return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
-  }, [state.activities, state.resourcePool, state.projName, state.projStart, state.defCal, state.statusDate, state.ppcHistory, state.leanRestrictions, state.progressHistory]);
+  }, [state.activities, state.resourcePool, state.projName, state.projStart, state.defCal, state.statusDate, state.ppcHistory, state.leanRestrictions, state.progressHistory, state.scenarios]);
 
   // 3. Listen to Supabase Events
   useEffect(() => {
@@ -120,6 +126,7 @@ function AppInner() {
         dispatch({ type: 'SET_PROGRESS_HISTORY', history: data.progressHistory || [] });
         if (data.ppcHistory && data.ppcHistory.length) dispatch({ type: 'SET_PPC_HISTORY', history: data.ppcHistory });
         if (data.leanRestrictions && data.leanRestrictions.length) dispatch({ type: 'SET_LEAN_RESTRICTIONS', restrictions: data.leanRestrictions });
+        if ((data as any).scenarios && (data as any).scenarios.length) dispatch({ type: 'SET_SCENARIOS', scenarios: (data as any).scenarios });
         localStorage.setItem('sb_current_project_id', pid);
         alert('Proyecto cargado exitosamente');
       } catch (err: any) {
@@ -231,13 +238,18 @@ function AppInner() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
+  const handleModuleChange = useCallback((m: ModuleId) => {
+    setActiveModule(m);
+    localStorage.setItem('gantt_active_module', m);
+  }, []);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       {/* ── Module Tabs ── */}
-      <ModuleTabs active={activeModule} onChange={setActiveModule} />
+      <ModuleTabs active={activeModule} onChange={handleModuleChange} />
 
       {/* ── Module: Inicio ── */}
-      {activeModule === 'inicio' && <div style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0, overflow:'hidden' }}><InicioPage onNavigate={setActiveModule} /></div>}
+      {activeModule === 'inicio' && <div style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0, overflow:'hidden' }}><InicioPage onNavigate={handleModuleChange} /></div>}
 
       {/* ── Module: Look Ahead ── */}
       {activeModule === 'lookAhead' && <div style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0, overflow:'hidden' }}><LookAheadPage /></div>}
@@ -247,6 +259,9 @@ function AppInner() {
 
       {/* ── Module: Configuración ── */}
       {activeModule === 'config' && <div style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0, overflow:'hidden' }}><ConfigPage /></div>}
+
+      {/* ── Module: What-If Scenarios ── */}
+      {activeModule === 'whatIf' && <div style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0, overflow:'hidden' }}><WhatIfPage /></div>}
 
       {/* ── Module: Carta Gantt (existing) ── */}
       {activeModule === 'gantt' && (<>

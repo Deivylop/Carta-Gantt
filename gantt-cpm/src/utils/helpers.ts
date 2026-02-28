@@ -113,6 +113,7 @@ export function exportJSON(
             id: a.id, name: a.name, type: a.type, dur: a.dur, remDur: a.remDur, cal: a.cal,
             pct: a.pct, preds: a.preds, lv: a.lv, constraint: a.constraint,
             constraintDate: a.constraintDate, manual: a.manual, actualStart: a.actualStart || null, actualFinish: a.actualFinish || null,
+            encargado: a.encargado || '',
             res: a.res, work: a.work || 0,
             weight: a.weight, resources: a.resources || [], notes: a.notes,
             blDur: a.blDur, blES: a.blES ? isoDate(a.blES) : null, blEF: a.blEF ? isoDate(a.blEF) : null,
@@ -175,14 +176,14 @@ export function exportCSV(
     activities: Activity[], projName: string,
     defCal: CalendarType
 ): void {
-    const h = 'ID,Nombre,Tipo,Duracion,DurRestante,Calendario,Avance%,Predecesoras,Nivel,Restriccion,FechaRestriccion,Recursos,Trabajo,Peso,Manual,Notas,DurLB,InicioLB,FinLB,Recursos_JSON,Texto1,Texto2,Texto3,Texto4,Texto5';
+    const h = 'ID,Nombre,Tipo,Duracion,DurRestante,Calendario,Avance%,Predecesoras,Nivel,Restriccion,FechaRestriccion,Recursos,Trabajo,Peso,Manual,Notas,DurLB,InicioLB,FinLB,Recursos_JSON,Texto1,Texto2,Texto3,Texto4,Texto5,Encargado';
     const q = (v: any) => '"' + String(v || '').replace(/"/g, '""') + '"';
     const rows = activities.filter(a => !a._isProjRow).map(a => [
         a.id, q(a.name), a.type, a.dur, a.remDur != null ? a.remDur : '', a.cal || defCal, a.pct || 0,
         q(predsToStr(a.preds)), a.lv, a.constraint || '', a.constraintDate || '',
         q(a.res), a.work || 0, a.weight != null ? a.weight : '', a.manual ? 1 : 0, q(a.notes),
         a.blDur != null ? a.blDur : '', a.blES ? isoDate(a.blES) : '', a.blEF ? isoDate(a.blEF) : '',
-        q(JSON.stringify(a.resources || [])), q(a.txt1 || ''), q(a.txt2 || ''), q(a.txt3 || ''), q(a.txt4 || ''), q(a.txt5 || ''),
+        q(JSON.stringify(a.resources || [])), q(a.txt1 || ''), q(a.txt2 || ''), q(a.txt3 || ''), q(a.txt4 || ''), q(a.txt5 || ''), q(a.encargado || ''),
     ].join(','));
     const csv = [h, ...rows].join('\n');
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
@@ -239,6 +240,7 @@ export function importCSVData(text: string, defCal: CalendarType, pool: PoolReso
             if (!a.resources || !a.resources.length) syncResFromString(a, pool);
             a.txt1 = g(col('Texto1')); a.txt2 = g(col('Texto2')); a.txt3 = g(col('Texto3'));
             a.txt4 = g(col('Texto4')); a.txt5 = g(col('Texto5'));
+            a.encargado = g(col('Encargado'));
             na.push(a);
         }
         return na;

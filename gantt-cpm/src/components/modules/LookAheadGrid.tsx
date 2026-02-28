@@ -1041,8 +1041,11 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
               const pred = predIdx !== undefined ? activitiesInWindow[predIdx] : allActMap.get(p.id);
               if (!pred || !pred.ES || !pred.EF) return;
 
-              const predStart = pred.ES!;
-              const predEnd = pred.EF!;
+              // Use visual dates (_start/_end) that match rendered bars.
+              // _end = addDays(EF, -1) for non-milestones, so arrows align with bar edges.
+              const predActEx = pred as ActEx;
+              const predStart = predActEx._start ?? pred.ES!;
+              const predEnd = predActEx._end ?? pred.EF!;
               const sucStart = suc._start;
               const sucEnd = suc._end;
               const linkType = p.type || 'FS';

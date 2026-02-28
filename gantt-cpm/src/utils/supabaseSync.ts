@@ -111,6 +111,35 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
                 lv: -1,
             } as any);
         }
+        // Inject What-If scenarios as a hidden activity
+        if (state.scenarios && state.scenarios.length > 0) {
+            // Serialize scenarios – strip Date objects, keep ISO strings
+            const safeISO = (v: any): string | null => {
+                if (!v) return null;
+                if (v instanceof Date) return isNaN(v.getTime()) ? null : v.toISOString();
+                if (typeof v === 'string') return v; // already an ISO string
+                return null;
+            };
+            const scenariosData = state.scenarios.map(sc => ({
+                ...sc,
+                activities: sc.activities.map(a => ({
+                    ...a,
+                    ES: safeISO(a.ES),
+                    EF: safeISO(a.EF),
+                    LS: safeISO(a.LS),
+                    LF: safeISO(a.LF),
+                    blES: safeISO(a.blES),
+                    blEF: safeISO(a.blEF),
+                })),
+            }));
+            acts.push({
+                ...newActivity('__SCENARIOS__', defCal),
+                name: '__WHATIF_SCENARIOS__',
+                type: 'milestone',
+                notes: JSON.stringify(scenariosData),
+                lv: -1,
+            } as any);
+        }
         // Build & inject deps backup as hidden activity (safeguard against dep-insert failures)
         const depsBackup: Record<string, { id: string; type: string; lag: number }[]> = {};
         state.activities.forEach(a => {
@@ -140,6 +169,7 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
                     TF: a.TF != null ? a.TF : null, crit: !!a.crit,
                     bldur: a.blDur != null ? a.blDur : null, bles: a.blES ? a.blES.toISOString() : null,
                     blef: a.blEF ? a.blEF.toISOString() : null,
+                    encargado: a.encargado || '',
                     txt1: a.txt1 || '', txt2: a.txt2 || '', txt3: a.txt3 || '',
                     txt4: (a.actualStart || a.actualFinish || a.suspendDate || a.resumeDate) ? ('__AS__' + (a.actualStart || '') + '|' + (a.actualFinish || '') + '|' + (a.suspendDate || '') + '|' + (a.resumeDate || '')) : (a.txt4 || ''),
                     txt5: (a.baselines && a.baselines.some((b: any) => b))
@@ -248,6 +278,7 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
     let ppcHistory: any[] = [];
     let leanRestrictions: any[] = [];
     let depsBackup: Record<string, { id: string; type: string; lag: number }[]> = {};
+    let scenarios: any[] = [];
 
     // Build activities
     const activities = (actData as any[]).map(a => {
@@ -258,6 +289,7 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
         na.notes = a.notes || ''; na.res = a.res || ''; na.work = parseFloat(a.work) || 0;
         na.weight = a.weight != null ? parseFloat(a.weight) : null; na.lv = a.lv || 0;
         na.constraint = (a.constraint_type as any) || ''; na.constraintDate = a.constraintdate || '';
+        na.encargado = a.encargado || '';
         na.manual = !!a.manual;
         na.blDur = a.bldur != null ? parseFloat(a.bldur) : null;
         na.blES = a.bles ? new Date(a.bles) : null; na.blEF = a.blef ? new Date(a.blef) : null;
@@ -325,6 +357,29 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
             try { leanRestrictions = JSON.parse(na.notes); } catch (e) { }
             return false;
         }
+        // Extract hidden What-If scenarios if found
+        if (na.id === '__SCENARIOS__') {
+            try {
+                const raw = JSON.parse(na.notes);
+                scenarios = (raw as any[]).map((sc: any) => ({
+                    ...sc,
+                    activities: (sc.activities || []).map((a: any) => ({
+                        ...a,
+                        ES: a.ES ? new Date(a.ES) : null,
+                        EF: a.EF ? new Date(a.EF) : null,
+                        LS: a.LS ? new Date(a.LS) : null,
+                        LF: a.LF ? new Date(a.LF) : null,
+                        blES: a.blES ? new Date(a.blES) : null,
+                        blEF: a.blEF ? new Date(a.blEF) : null,
+                        preds: a.preds || [],
+                        resources: a.resources || [],
+                        baselines: a.baselines || [],
+                    })),
+                    changes: sc.changes || [],
+                }));
+            } catch (e) { }
+            return false;
+        }
         // Extract hidden deps backup if found
         if (na.id === '__DEPS__') {
             try { depsBackup = JSON.parse(na.notes); } catch (e) { }
@@ -354,6 +409,7 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
         customFilters,
         filtersMatchAll,
         ppcHistory,
-        leanRestrictions
+        leanRestrictions,
+        scenarios
     };
 }

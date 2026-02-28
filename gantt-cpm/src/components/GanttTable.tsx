@@ -8,6 +8,11 @@ import { fmtDate, addDays, isoDate, newActivity, parseDate } from '../utils/cpm'
 import { predsToStr, getWeightPct, strToPreds, autoId, syncResFromString } from '../utils/helpers';
 import ColumnPickerModal from './ColumnPickerModal';
 import RowContextMenu from './RowContextMenu';
+import ScenarioAlertModal, {
+    type ScenarioAlert,
+    validateProgressDataDate,
+    validateOutOfSequence,
+} from './modules/ScenarioAlertModal';
 
 const EditableNumberCell = ({ rawValue, displayValue, onUpdate, onFocus, isRowSelected, step, min, max }: { rawValue: string, displayValue: string, onUpdate: (val: string) => void, onFocus: () => void, isRowSelected: boolean, step?: number, min?: number, max?: number }) => {
     const [isEditing, setIsEditing] = useState(false);
@@ -139,7 +144,7 @@ const FILL_DOWN_KEYS = new Set(['name', 'id', 'dur', 'remDur', 'pct', 'work', 'w
 
 export default function GanttTable() {
     const { state, dispatch } = useGantt();
-    const { visRows, columns, colWidths, selIdx, selIndices, activities, lightMode, defCal, chainIds, chainTrace, spotlightEnabled, spotlightEnd, statusDate } = state;
+    const { visRows, columns, colWidths, selIdx, selIndices, activities, lightMode, defCal, chainIds, chainTrace, spotlightEnabled, spotlightEnd, statusDate, _scenarioMode, _scenarioChangedFields, _scenarioDiffs } = state;
     const bodyRef = useRef<HTMLDivElement>(null);
     const [colResize, setColResize] = useState<{ idx: number; startX: number; startW: number } | null>(null);
     const [colPickerOpen, setColPickerOpen] = useState(false);
@@ -147,6 +152,13 @@ export default function GanttTable() {
     const touchedRowsRef = useRef<Set<number>>(new Set());
     const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
     const [ctxColKey, setCtxColKey] = useState<string | null>(null);
+
+    // ── Alert modal state for Data Date / Out-of-Sequence validation ──
+    const [alert, setAlert] = useState<ScenarioAlert | null>(null);
+    const pendingPctRef = useRef<{ idx: number; val: number } | null>(null);
+
+    // ── Scenario diff tooltip state ──
+    const [diffTip, setDiffTip] = useState<{ x: number; y: number; actId: string } | null>(null);
 
     const visCols = columns.filter(c => c.visible);
     const totalW = visCols.reduce((s, c) => s + colWidths[columns.indexOf(c)], 0);
@@ -354,8 +366,37 @@ export default function GanttTable() {
     }, []);
 
     const handleBlur = useCallback((idx: number, key: string, val: string) => {
+        // ── Intercept pct edits for Data Date / Out-of-Sequence validation ──
+        if (key === 'pct') {
+            const a = activities[idx];
+            if (a && !a._isProjRow && a.type !== 'summary') {
+                const n = Math.min(100, Math.max(0, parseInt(val.trim()) || 0));
+
+                // Validation 1: Data Date check (Avance Improcedente)
+                const ddAlert = validateProgressDataDate(a, n, statusDate, fmtDate);
+                if (ddAlert) { setAlert(ddAlert); return; }
+
+                // Validation 2: Out-of-sequence check (Lógica Rota)
+                const oosAlert = validateOutOfSequence(a, n, activities);
+                if (oosAlert) {
+                    pendingPctRef.current = { idx, val: n };
+                    setAlert(oosAlert);
+                    return;
+                }
+            }
+        }
         dispatch({ type: 'PUSH_UNDO' });
         dispatch({ type: 'COMMIT_EDIT', index: idx, key, value: val.trim() });
+    }, [dispatch, activities, statusDate]);
+
+    // Handle "proceed anyway" from lógica-rota warning in main Gantt
+    const handleAlertProceed = useCallback(() => {
+        const pending = pendingPctRef.current;
+        if (pending) {
+            dispatch({ type: 'PUSH_UNDO' });
+            dispatch({ type: 'COMMIT_EDIT', index: pending.idx, key: 'pct', value: String(pending.val) });
+            pendingPctRef.current = null;
+        }
     }, [dispatch]);
 
     // Fill Down – copies cell value from topmost selected row to all others in the same column
@@ -509,6 +550,13 @@ export default function GanttTable() {
                                 ...chainStyle
                             }}
                                 onMouseDown={() => { (document.activeElement as HTMLElement)?.blur?.(); }}
+                                onMouseEnter={(e) => {
+                                    if (_scenarioMode && _scenarioDiffs && _scenarioDiffs.has(a.id)) {
+                                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                        setDiffTip({ x: rect.right + 8, y: rect.top, actId: a.id });
+                                    }
+                                }}
+                                onMouseLeave={() => { if (diffTip) setDiffTip(null); }}
                                 onClick={(e) => { touchedRowsRef.current = new Set([vr._idx]); dispatch({ type: 'SET_SELECTION', index: vr._idx, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey }); }}
                                 onContextMenu={(e) => {
                                     e.preventDefault();
@@ -525,6 +573,13 @@ export default function GanttTable() {
                                     const ci = columns.indexOf(c);
                                     const val = getCellValue(a, c, vi);
                                     const style: React.CSSProperties = { width: colWidths[ci] };
+
+                                    // ── Scenario mode: yellow highlight for changed fields ──
+                                    const isChangedCell = _scenarioMode && _scenarioChangedFields && _scenarioChangedFields.has(a.id) && _scenarioChangedFields.get(a.id)!.has(c.key);
+                                    if (isChangedCell) {
+                                        style.background = lightMode ? '#fef9c3' : 'rgba(250, 204, 21, 0.18)';
+                                        style.borderBottom = '2px solid #facc15';
+                                    }
 
                                     // Name cell indent
                                     if (c.key === 'name') {
@@ -680,8 +735,8 @@ export default function GanttTable() {
                         );
                     })}
 
-                    {/* Empty row for quick add */}
-                    <EmptyAddRow visCols={visCols} columns={columns} colWidths={colWidths} totalW={totalW} rowNum={visRows.length + 1} dispatch={dispatch} state={state} />
+                    {/* Empty row for quick add (hidden in scenario mode) */}
+                    {!_scenarioMode && <EmptyAddRow visCols={visCols} columns={columns} colWidths={colWidths} totalW={totalW} rowNum={visRows.length + 1} dispatch={dispatch} state={state} />}
 
                     {/* Visual empty rows */}
                     {Array.from({ length: 15 }).map((_, i) => (
@@ -699,11 +754,61 @@ export default function GanttTable() {
 
             {/* Tooltip moved */}
 
+            {/* ── Scenario diff tooltip ── */}
+            {diffTip && _scenarioDiffs && _scenarioDiffs.has(diffTip.actId) && (() => {
+                const diffs = _scenarioDiffs.get(diffTip.actId)!;
+                const fieldLabels: Record<string, string> = {
+                    name: 'Nombre', dur: 'Duración', remDur: 'Dur. Restante', pct: '% Avance',
+                    startDate: 'Inicio', endDate: 'Fin', predStr: 'Predecesoras',
+                    work: 'Trabajo', TF: 'Holgura Total', crit: 'Crítica', cal: 'Calendario',
+                    res: 'Recursos', weight: 'Peso'
+                };
+                return (
+                    <div style={{
+                        position: 'fixed', left: Math.min(diffTip.x, window.innerWidth - 340), top: diffTip.y,
+                        zIndex: 9999, minWidth: 280, maxWidth: 340,
+                        background: lightMode ? '#fff' : '#1e293b', color: lightMode ? '#1e293b' : '#e2e8f0',
+                        border: `1px solid ${lightMode ? '#e5e7eb' : '#334155'}`,
+                        borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,.25)', padding: '8px 12px',
+                        fontSize: 11, lineHeight: 1.5, pointerEvents: 'none'
+                    }}>
+                        <div style={{ fontWeight: 700, marginBottom: 4, fontSize: 12, borderBottom: `1px solid ${lightMode ? '#e5e7eb' : '#334155'}`, paddingBottom: 4 }}>
+                            Cambios en escenario
+                        </div>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                                <tr style={{ borderBottom: `1px solid ${lightMode ? '#e5e7eb' : '#334155'}` }}>
+                                    <th style={{ textAlign: 'left', padding: '2px 4px', fontWeight: 600 }}>Campo</th>
+                                    <th style={{ textAlign: 'left', padding: '2px 4px', fontWeight: 600 }}>Maestro</th>
+                                    <th style={{ textAlign: 'left', padding: '2px 4px', fontWeight: 600 }}>Escenario</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {Object.entries(diffs).map(([field, v]) => (
+                                    <tr key={field}>
+                                        <td style={{ padding: '2px 4px', fontWeight: 500 }}>{fieldLabels[field] || field}</td>
+                                        <td style={{ padding: '2px 4px', color: '#ef4444', textDecoration: 'line-through' }}>{v.master}</td>
+                                        <td style={{ padding: '2px 4px', color: '#22c55e', fontWeight: 600 }}>{v.scenario}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                );
+            })()}
+
             {/* Column picker modal (P6-style) */}
             {colPickerOpen && <ColumnPickerModal onClose={() => setColPickerOpen(false)} />}
 
             {/* Row right-click context menu */}
             {ctxMenu && <RowContextMenu x={ctxMenu.x} y={ctxMenu.y} onClose={() => setCtxMenu(null)} onOpenColumns={() => setColPickerOpen(true)} colKey={ctxColKey} selCount={selIndices.size} onFillDown={() => { if (ctxColKey) handleFillDown(ctxColKey); }} onFillUp={() => { if (ctxColKey) handleFillUp(ctxColKey); }} />}
+
+            {/* ── Data Date / Out-of-Sequence Validation Alert ── */}
+            <ScenarioAlertModal
+                alert={alert}
+                onClose={() => { setAlert(null); pendingPctRef.current = null; }}
+                onProceed={handleAlertProceed}
+            />
         </div>
     );
 }

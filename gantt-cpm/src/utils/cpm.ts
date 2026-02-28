@@ -82,7 +82,9 @@ export function addDays(d: Date, n: number): Date {
 }
 
 export function dayDiff(a: Date, b: Date): number {
-    return Math.round((b.getTime() - a.getTime()) / 864e5);
+    const ad = a instanceof Date ? a : new Date(a as any);
+    const bd = b instanceof Date ? b : new Date(b as any);
+    return Math.round((bd.getTime() - ad.getTime()) / 864e5);
 }
 
 export function calWorkDays(a: Date, b: Date, cal: CalendarType): number {
@@ -629,7 +631,8 @@ export function calcCPM(
     const totalDays = Math.max(projectDays, dayDiff(projStart, projEnd) + 30 + 60);
 
     activities.forEach(a => { a.LF = new Date(projEnd); });
-    const sorted = [...activities].sort((a, b) => (b.EF || projEnd).getTime() - (a.EF || projEnd).getTime());
+    const toD = (v: any): Date => v instanceof Date ? v : new Date(v);
+    const sorted = [...activities].sort((a, b) => toD(b.EF || projEnd).getTime() - toD(a.EF || projEnd).getTime());
 
     // Función auxiliar: duración efectiva en días calendario (ES→EF) para el backward pass
     const effCalDays = (a: Activity): number => {

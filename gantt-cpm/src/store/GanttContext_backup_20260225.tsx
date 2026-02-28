@@ -3,8 +3,7 @@
 // All state management matching HTML globals + actions
 // ═══════════════════════════════════════════════════════════════════
 import React, { createContext, useContext, useReducer, type ReactNode } from 'react';
-import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, VisibleRow, ProgressHistoryEntry, BaselineEntry, CustomCalendar, CustomFilter, MFPConfig, LeanRestriction, PPCWeekRecord, CNCEntry, WhatIfScenario } from '../types/gantt';
-import { createScenario, deepCloneActivities, recalcScenarioCPM, recordChange } from '../utils/whatIfEngine';
+import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, VisibleRow, ProgressHistoryEntry, BaselineEntry, CustomCalendar, CustomFilter, MFPConfig, LeanRestriction, PPCWeekRecord, CNCEntry } from '../types/gantt';
 import { calcCPM, calcMultipleFloatPaths, traceChain, newActivity, isoDate, parseDate, addDays, calWorkDays, fmtDate } from '../utils/cpm';
 import { autoId, computeOutlineNumbers, syncResFromString, deriveResString, distributeWork, strToPreds, predsToStr, newPoolResource } from '../utils/helpers';
 
@@ -140,14 +139,6 @@ export interface GanttState {
     // Lean Construction / Last Planner System
     leanRestrictions: LeanRestriction[];
     ppcHistory: PPCWeekRecord[];
-    // What-If Scenarios
-    scenarios: WhatIfScenario[];
-    activeScenarioId: string | null;
-    // Scenario mode fields (set by ScenarioGanttProvider)
-    _scenarioMode?: boolean;
-    _masterActivities?: Activity[];
-    _scenarioChangedFields?: Map<string, Set<string>>; // actId → changed column keys
-    _scenarioDiffs?: Map<string, Record<string, { master: string; scenario: string }>>; // actId → field → values
 }
 
 // ─── Actions ────────────────────────────────────────────────────
@@ -246,19 +237,7 @@ export type Action =
     | { type: 'ADD_CNC_ENTRY'; weekId: string; entry: CNCEntry }
     | { type: 'DELETE_CNC_ENTRY'; weekId: string; entryId: string }
     | { type: 'SET_PPC_HISTORY'; history: PPCWeekRecord[] }
-    | { type: 'SET_LEAN_RESTRICTIONS'; restrictions: LeanRestriction[] }
-    // What-If Scenario actions
-    | { type: 'CREATE_SCENARIO'; name: string; description?: string }
-    | { type: 'DELETE_SCENARIO'; id: string }
-    | { type: 'RENAME_SCENARIO'; id: string; name: string; description?: string }
-    | { type: 'SET_ACTIVE_SCENARIO'; id: string | null }
-    | { type: 'UPDATE_SCENARIO_ACTIVITY'; scenarioId: string; activityIndex: number; updates: Partial<Activity> }
-    | { type: 'RECALC_SCENARIO_CPM'; scenarioId: string }
-    | { type: 'RECALC_SCENARIO_CPM_WITH_DATE'; scenarioId: string; statusDate: string }
-    | { type: 'SET_SCENARIO_SIM_STATUS_DATE'; scenarioId: string; simStatusDate: string | null }
-    | { type: 'MERGE_SCENARIO'; scenarioId: string }
-    | { type: 'DUPLICATE_SCENARIO'; scenarioId: string }
-    | { type: 'SET_SCENARIOS'; scenarios: WhatIfScenario[] };
+    | { type: 'SET_LEAN_RESTRICTIONS'; restrictions: LeanRestriction[] };
 
 // Module-level restriction cache (set synchronously in reducer before buildVisRows)
 let _moduleRestrictions: LeanRestriction[] = [];
@@ -882,13 +861,11 @@ function reducer(state: GanttState, action: Action): GanttState {
             else if (key === 'startDate') {
                 const d = parseDate(val);
                 if (d) {
-                    // No asignar MSO automáticamente; solo fijar fecha manualmente.
-                    // Si el usuario ya tenía un constraint explícito, conservarlo.
-                    a.constraintDate = isoDate(d); a.manual = true;
+                    a.constraint = 'MSO'; a.constraintDate = isoDate(d); a.manual = true;
                     // Si tiene avance, actualizar también el Actual Start
                     if ((a.pct || 0) > 0) a.actualStart = isoDate(d);
                 }
-                else { a.constraintDate = ''; a.manual = false; }
+                else { a.constraint = ''; a.constraintDate = ''; a.manual = false; }
             }
             else if (key === 'endDate') {
                 const d = parseDate(val);
@@ -920,24 +897,13 @@ function reducer(state: GanttState, action: Action): GanttState {
                 const newPct = Math.min(100, Math.max(0, parseInt(val) || 0));
                 a.pct = newPct;
                 // Cuando pasa de 0 a >0, guardar la fecha de inicio real
-                // REGLA DATA DATE: Solo auto-asignar actualStart si ES <= statusDate.
-                // Si ES es posterior al Data Date, NO auto-completar — el usuario debe
-                // establecer manualmente el Actual Start.
                 if (oldPct === 0 && newPct > 0 && !a.actualStart) {
-                    const effectiveStatusDate = state._cpmStatusDate || state.statusDate;
-                    const esIsBeforeOrAtDataDate = a.ES && effectiveStatusDate
-                        ? a.ES.getTime() <= effectiveStatusDate.getTime()
-                        : true; // Si no hay Data Date, permitir
-                    if (esIsBeforeOrAtDataDate) {
-                        if (a.ES) {
-                            a.actualStart = isoDate(a.ES);
-                        } else if (a.constraintDate) {
-                            a.actualStart = a.constraintDate;
-                        }
+                    // Guardar la fecha de comienzo actual (ES o constraintDate) como Actual Start
+                    if (a.ES) {
+                        a.actualStart = isoDate(a.ES);
+                    } else if (a.constraintDate) {
+                        a.actualStart = a.constraintDate;
                     }
-                    // Si ES > Data Date → no asignar actualStart automáticamente.
-                    // La validación en GanttTable ya bloqueó esto con un modal,
-                    // pero como defensa adicional, no reprogramamos nada.
                 }
                 // Si vuelve a 0, limpiar actualStart y actualFinish
                 if (newPct === 0) {
@@ -954,7 +920,6 @@ function reducer(state: GanttState, action: Action): GanttState {
                     a.actualFinish = null;
                 }
                 // Recalcular duración restante basado en el nuevo avance
-                // NUNCA modificar la duración original — solo remDur
                 a.remDur = Math.round((a.dur || 0) * (100 - newPct) / 100);
                 // Solo guardar — NO recalcular CPM. El usuario debe presionar "Calcular CPM"
                 acts[action.index] = a;
@@ -1672,123 +1637,6 @@ function reducer(state: GanttState, action: Action): GanttState {
         case 'CLEAR_CHAIN_TRACE':
             return { ...state, chainTrace: null, chainIds: new Set<string>() };
 
-        // ═══ What-If Scenarios ═══
-        case 'CREATE_SCENARIO': {
-            const sc = createScenario(action.name, action.description || '', state.activities);
-            // Run CPM on the new scenario immediately
-            const recalced = recalcScenarioCPM(sc, state.projStart, state.defCal, state._cpmStatusDate, state.projName, state.activeBaselineIdx, state.customCalendars);
-            return { ...state, scenarios: [...state.scenarios, recalced], activeScenarioId: recalced.id };
-        }
-
-        case 'DELETE_SCENARIO': {
-            const filtered = state.scenarios.filter(s => s.id !== action.id);
-            const newActive = state.activeScenarioId === action.id ? null : state.activeScenarioId;
-            return { ...state, scenarios: filtered, activeScenarioId: newActive };
-        }
-
-        case 'RENAME_SCENARIO': {
-            const scenarios = state.scenarios.map(s =>
-                s.id === action.id
-                    ? { ...s, name: action.name, description: action.description !== undefined ? action.description : s.description }
-                    : s
-            );
-            return { ...state, scenarios };
-        }
-
-        case 'SET_ACTIVE_SCENARIO':
-            return { ...state, activeScenarioId: action.id };
-
-        case 'UPDATE_SCENARIO_ACTIVITY': {
-            const scenarios = state.scenarios.map(s => {
-                if (s.id !== action.scenarioId) return s;
-                const acts = [...s.activities];
-                const orig = acts[action.activityIndex];
-                if (!orig) return s;
-                const updated = { ...orig, ...action.updates };
-                // Log the change for each updated field
-                const newChanges = [...s.changes];
-                for (const [k, v] of Object.entries(action.updates)) {
-                    recordChange(
-                        { ...s, changes: newChanges },
-                        orig.id,
-                        k,
-                        (orig as any)[k],
-                        v
-                    );
-                }
-                acts[action.activityIndex] = updated;
-                return { ...s, activities: acts, changes: newChanges };
-            });
-            return { ...state, scenarios };
-        }
-
-        case 'RECALC_SCENARIO_CPM': {
-            const scenarios = state.scenarios.map(s => {
-                if (s.id !== action.scenarioId) return s;
-                return recalcScenarioCPM(s, state.projStart, state.defCal, state._cpmStatusDate, state.projName, state.activeBaselineIdx, state.customCalendars);
-            });
-            return { ...state, scenarios };
-        }
-
-        case 'RECALC_SCENARIO_CPM_WITH_DATE': {
-            const simDate = new Date(action.statusDate);
-            const scenarios = state.scenarios.map(s => {
-                if (s.id !== action.scenarioId) return s;
-                return recalcScenarioCPM(s, state.projStart, state.defCal, simDate, state.projName, state.activeBaselineIdx, state.customCalendars);
-            });
-            return { ...state, scenarios };
-        }
-
-        case 'SET_SCENARIO_SIM_STATUS_DATE': {
-            const scenarios = state.scenarios.map(s => {
-                if (s.id !== action.scenarioId) return s;
-                return { ...s, simStatusDate: action.simStatusDate || undefined };
-            });
-            return { ...state, scenarios };
-        }
-
-        case 'MERGE_SCENARIO': {
-            const sc = state.scenarios.find(s => s.id === action.scenarioId);
-            if (!sc) return state;
-            // Replace master activities with scenario activities
-            const newState = { ...state, activities: deepCloneActivities(sc.activities) };
-            return recalc(newState);
-        }
-
-        case 'DUPLICATE_SCENARIO': {
-            const src = state.scenarios.find(s => s.id === action.scenarioId);
-            if (!src) return state;
-            const dup = createScenario(src.name + ' (copia)', src.description, src.activities);
-            dup.changes = [...src.changes];
-            return { ...state, scenarios: [...state.scenarios, dup], activeScenarioId: dup.id };
-        }
-
-        case 'SET_SCENARIOS': {
-            // Hydrate Date fields — data from Supabase may have ISO strings
-            const hydrateDate = (v: any): Date | null => {
-                if (!v) return null;
-                if (v instanceof Date) return v;
-                const d = new Date(v);
-                return isNaN(d.getTime()) ? null : d;
-            };
-            const hydrated = action.scenarios.map(sc => ({
-                ...sc,
-                activities: (sc.activities || []).map(a => ({
-                    ...a,
-                    ES: hydrateDate(a.ES),
-                    EF: hydrateDate(a.EF),
-                    LS: hydrateDate(a.LS),
-                    LF: hydrateDate(a.LF),
-                    blES: hydrateDate(a.blES),
-                    blEF: hydrateDate(a.blEF),
-                    preds: a.preds || [],
-                    resources: a.resources || [],
-                    baselines: a.baselines || [],
-                })),
-            }));
-            return { ...state, scenarios: hydrated };
-        }
-
         default:
             return state;
     }
@@ -1869,8 +1717,6 @@ const initialState: GanttState = {
     spotlightEnd: null,
     leanRestrictions: [],
     ppcHistory: [],
-    scenarios: [],
-    activeScenarioId: null,
 };
 
 // ─── Context ────────────────────────────────────────────────────
@@ -1879,7 +1725,7 @@ interface GanttContextType {
     dispatch: React.Dispatch<Action>;
 }
 
-export const GanttContext = createContext<GanttContextType | null>(null);
+const GanttContext = createContext<GanttContextType | null>(null);
 
 export function GanttProvider({ children }: { children: ReactNode }) {
     const [state, dispatch] = useReducer(reducer, initialState);
