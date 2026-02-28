@@ -22,14 +22,8 @@ export default function LinkModal() {
     const save = () => {
         dispatch({ type: 'PUSH_UNDO' });
         if (data.isEdit) {
-            // Editing existing link
-            const acts = [...state.activities];
-            const suc = acts[data.sucIdx];
-            if (suc && suc.preds && suc.preds[data.predIdx]) {
-                suc.preds[data.predIdx].type = linkType as any;
-                suc.preds[data.predIdx].lag = lag;
-                dispatch({ type: 'SET_ACTIVITIES', activities: acts });
-            }
+            // Editing existing link — use UPDATE_PRED so it works in both master & scenario mode
+            dispatch({ type: 'UPDATE_PRED', actIdx: data.sucIdx, predIdx: data.predIdx, updates: { type: linkType, lag } });
         } else {
             // New link
             const toIdx = state.activities.findIndex(a => a.id === data.toId);

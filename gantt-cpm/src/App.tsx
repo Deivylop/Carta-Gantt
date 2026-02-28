@@ -365,7 +365,8 @@ function AppInner() {
       {/* Modals */}
       <ActivityModal />
       <ProjectModal />
-      <LinkModal />
+      {/* Suppress LinkModal when a what-if scenario is active — WhatIfPage renders its own inside ScenarioGanttProvider */}
+      {!(activeModule === 'whatIf' && state.activeScenarioId) && <LinkModal />}
       <SupabaseModal />
       <SaveProgressModal />
       <BaselineModal />

@@ -14,6 +14,7 @@ import { validateScenarioForMerge, default as ScenarioAlertModal, type ScenarioA
 import GanttTable from '../GanttTable';
 import GanttTimeline from '../GanttTimeline';
 import ActivityDetailPanel from '../ActivityDetailPanel';
+import LinkModal from '../modals/LinkModal';
 import { GitBranch, GanttChart, BarChart3, Play, CheckCircle, XCircle, CalendarDays } from 'lucide-react';
 
 type SubTab = 'editor' | 'comparison';
@@ -293,6 +294,8 @@ export default function WhatIfPage() {
                       <ActivityDetailPanel />
                     </div>
                   </div>
+                  {/* LinkModal inside ScenarioGanttProvider so links route to scenario */}
+                  <LinkModal />
                   </ScenarioErrorBoundary>
                 </ScenarioGanttProvider>
               )}
