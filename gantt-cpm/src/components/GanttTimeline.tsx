@@ -292,7 +292,7 @@ export default function GanttTimeline() {
             hCtx.strokeStyle = t.hdrBotBorder;
             hCtx.beginPath(); hCtx.moveTo(0, 33); hCtx.lineTo(W, 33); hCtx.stroke();
         }
-        const today = new Date(); const todayX = (dayDiff(projStart, today) + 1) * PX;
+        const today = new Date(); const todayX = dayDiff(projStart, today) * PX;
         if (showTodayLine && todayX >= 0 && todayX <= W) { hCtx.fillStyle = '#f59e0b'; hCtx.fillRect(todayX, 0, 2, hdrH); }
         if (showStatusLine && statusDate) {
             const sdx = (dayDiff(projStart, statusDate) + 1) * PX;
@@ -330,9 +330,8 @@ export default function GanttTimeline() {
             else cur.setDate(cur.getDate() + 1);
         }
 
-        // Today + Status Date lines (positioned at END of the day)
-        const txEnd = tx + PX;  // end of today
-        if (showTodayLine && txEnd >= 0 && txEnd <= W) { ctx.fillStyle = t.todayLine; ctx.fillRect(txEnd, 0, 2, H); }
+        // Today + Status Date lines
+        if (showTodayLine && tx >= 0 && tx <= W) { ctx.fillStyle = t.todayLine; ctx.fillRect(tx, 0, 2, H); }
         if (showStatusLine && statusDate) {
             const sx = (dayDiff(projStart, statusDate) + 1) * PX;  // end of status date
             if (sx >= 0 && sx <= W) { ctx.fillStyle = t.statusLine; ctx.fillRect(sx, 0, 2, H); }

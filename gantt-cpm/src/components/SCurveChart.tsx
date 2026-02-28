@@ -630,7 +630,7 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
         }
 
         // ─── Today line (amber) ──────────────────────────
-        const todayX = (dayDiff(projStart, new Date()) + 1) * PX;
+        const todayX = dayDiff(projStart, new Date()) * PX;
         if (todayX >= 0 && todayX <= width) {
             ctx.fillStyle = '#f59e0b';
             ctx.fillRect(todayX, chartTop, 2, chartH);
