@@ -251,24 +251,29 @@ export default function GanttTable() {
                 }
             }
 
-            // ── simRealPct: project actual progress at target by velocity ──
+            // ── simRealPct: project actual progress at target ──
             let simReal = 0;
             const pct = a.pct || 0;
             if (pct >= 100) {
                 simReal = 100;
-            } else if (pct > 0 && a.ES) {
-                const actStart = a.actualStart ? new Date(a.actualStart) : new Date(a.ES);
-                actStart.setHours(0, 0, 0, 0);
-                const elapsedWd = getExactWorkDays(actStart, sd, cal);
-                if (elapsedWd > 0) {
-                    const rate = pct / elapsedWd; // % per work day
-                    const projWd = getExactWorkDays(actStart, target, cal);
-                    simReal = Math.min(100, Math.max(pct, rate * projWd));
-                } else {
-                    simReal = pct;
+            } else if (a.EF) {
+                const efObj = new Date(a.EF); efObj.setHours(0, 0, 0, 0);
+                if (target >= efObj) {
+                    // Reflector is past the scheduled finish → activity expected complete
+                    simReal = 100;
+                } else if (pct > 0 && a.ES) {
+                    const actStart = a.actualStart ? new Date(a.actualStart) : new Date(a.ES);
+                    actStart.setHours(0, 0, 0, 0);
+                    const elapsedWd = getExactWorkDays(actStart, sd, cal);
+                    if (elapsedWd > 0) {
+                        const rate = pct / elapsedWd; // % per work day
+                        const projWd = getExactWorkDays(actStart, target, cal);
+                        simReal = Math.min(100, Math.max(pct, rate * projWd));
+                    } else {
+                        simReal = pct;
+                    }
                 }
             }
-            // pct === 0 → simReal stays 0
 
             map.set(a.id, { simReal: Math.round(simReal * 10) / 10, simProg: Math.round(simProg * 10) / 10 });
         }
