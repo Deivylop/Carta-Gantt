@@ -611,8 +611,9 @@ export default function GanttTable() {
                 <div style={{ width: totalW }}>
                     {visRows.map((vr, vi) => {
                         if (vr._isGroupHeader) {
+                            const ghH = isUsageView ? MIN_ROW_H : undefined;
                             return (
-                                <div key={vi} className="trow trow-group" style={{ width: totalW }}>
+                                <div key={vi} className="trow trow-group" style={{ width: totalW, ...(ghH ? { height: ghH, minHeight: ghH, maxHeight: ghH } : {}) }}>
                                     <div className="tcell" style={{ width: totalW, paddingLeft: 8 }}>
                                         ▼ <b>{vr._groupLabel}</b> <span style={{ fontWeight: 400, opacity: 0.7, fontSize: 10 }}>({vr._groupCount} actividades)</span>
                                     </div>
@@ -646,14 +647,17 @@ export default function GanttTable() {
                             ? { background: lightMode ? '#fef9c3' : '#3d3100' }
                             : {};
 
-                        // In usage view, non-summary rows expand to fit multiple metric lines
-                        const needsTallRow = isUsageView && !isProj && !isSummary && usageModes.length > 1;
-                        const rowHeight = needsTallRow ? usageRowH : undefined;
+                        // In usage view, force explicit row heights to stay pixel-aligned with TaskUsageGrid canvas
+                        const usageRowHeight = isUsageView
+                            ? (isProj || isSummary || vr._isGroupHeader
+                                ? MIN_ROW_H
+                                : usageRowH)
+                            : undefined;
 
                         return (
                             <div key={vi} className={rowCls} style={{
                                 width: totalW,
-                                ...(rowHeight ? { height: rowHeight, minHeight: rowHeight } : {}),
+                                ...(usageRowHeight ? { height: usageRowHeight, minHeight: usageRowHeight, maxHeight: usageRowHeight } : {}),
                                 ...(isResRow ? {
                                     fontStyle: 'italic',
                                     opacity: 0.85,
