@@ -99,6 +99,42 @@ export function recordChange(
   return change;
 }
 
+// ─── Rebase a scenario onto fresh master activities ─────────────
+// Takes the latest master activities, applies the scenario's recorded
+// changes on top, so the scenario always works from up-to-date data.
+export function rebaseScenario(
+  scenario: WhatIfScenario,
+  masterActivities: Activity[]
+): WhatIfScenario {
+  const acts = deepCloneActivities(masterActivities);
+  const byId = new Map<string, number>();
+  acts.forEach((a, i) => byId.set(a.id, i));
+
+  // Build a map of latest value per (activityId, field) from the changes log
+  // (last write wins — only apply the most recent change for each field)
+  const latestChanges = new Map<string, Map<string, any>>();
+  for (const ch of scenario.changes) {
+    if (!latestChanges.has(ch.activityId)) latestChanges.set(ch.activityId, new Map());
+    latestChanges.get(ch.activityId)!.set(ch.field, ch.newValue);
+  }
+
+  // Apply changes onto the fresh master clone
+  for (const [actId, fields] of latestChanges) {
+    const idx = byId.get(actId);
+    if (idx === undefined) continue;
+    const a = acts[idx];
+    for (const [field, value] of fields) {
+      (a as any)[field] = value;
+    }
+  }
+
+  return {
+    ...scenario,
+    activities: acts,
+    baseSnapshotDate: new Date().toISOString(),
+  };
+}
+
 // ─── Compare master vs scenario activities ──────────────────────
 export function compareScenario(
   master: Activity[],

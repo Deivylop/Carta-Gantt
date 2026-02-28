@@ -4,7 +4,7 @@
 // ═══════════════════════════════════════════════════════════════════
 import React, { createContext, useContext, useReducer, type ReactNode } from 'react';
 import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, VisibleRow, ProgressHistoryEntry, BaselineEntry, CustomCalendar, CustomFilter, MFPConfig, LeanRestriction, PPCWeekRecord, CNCEntry, WhatIfScenario } from '../types/gantt';
-import { createScenario, deepCloneActivities, recalcScenarioCPM, recordChange } from '../utils/whatIfEngine';
+import { createScenario, deepCloneActivities, rebaseScenario, recalcScenarioCPM, recordChange } from '../utils/whatIfEngine';
 import { calcCPM, calcMultipleFloatPaths, traceChain, newActivity, isoDate, parseDate, addDays, calWorkDays, fmtDate } from '../utils/cpm';
 import { autoId, computeOutlineNumbers, syncResFromString, deriveResString, distributeWork, strToPreds, predsToStr, newPoolResource } from '../utils/helpers';
 
@@ -1696,8 +1696,19 @@ function reducer(state: GanttState, action: Action): GanttState {
             return { ...state, scenarios };
         }
 
-        case 'SET_ACTIVE_SCENARIO':
-            return { ...state, activeScenarioId: action.id };
+        case 'SET_ACTIVE_SCENARIO': {
+            if (!action.id) return { ...state, activeScenarioId: null };
+            // Rebase the scenario onto current master activities before activating
+            const sc = state.scenarios.find(s => s.id === action.id);
+            if (!sc) return { ...state, activeScenarioId: action.id };
+            // Only rebase if scenario has changes to replay; otherwise just clone master
+            const rebased = sc.changes.length > 0
+                ? rebaseScenario(sc, state.activities)
+                : { ...sc, activities: deepCloneActivities(state.activities), baseSnapshotDate: new Date().toISOString() };
+            const recalced = recalcScenarioCPM(rebased, state.projStart, state.defCal, state._cpmStatusDate, state.projName, state.activeBaselineIdx, state.customCalendars);
+            const updatedScenarios = state.scenarios.map(s => s.id === action.id ? recalced : s);
+            return { ...state, scenarios: updatedScenarios, activeScenarioId: action.id };
+        }
 
         case 'UPDATE_SCENARIO_ACTIVITY': {
             const scenarios = state.scenarios.map(s => {
@@ -1781,7 +1792,25 @@ function reducer(state: GanttState, action: Action): GanttState {
             };
             // Use recalcInternal with the scenario's status date (retained logic)
             try {
-                return recalcInternal(newState, mergedStatusDate, false);
+                const mergedState = recalcInternal(newState, mergedStatusDate, false);
+                // After merge: sync ALL scenarios back to the new master
+                // so they always work from up-to-date data
+                const updatedScenarios = mergedState.scenarios.map(s => {
+                    // The merged scenario: reset to new master (changes already applied)
+                    if (s.id === action.scenarioId) {
+                        return {
+                            ...s,
+                            activities: deepCloneActivities(mergedState.activities),
+                            changes: [],
+                            simStatusDate: undefined,
+                            baseSnapshotDate: new Date().toISOString(),
+                        };
+                    }
+                    // Other scenarios: rebase onto new master, keep their changes
+                    const rebased = rebaseScenario(s, mergedState.activities);
+                    return recalcScenarioCPM(rebased, mergedState.projStart, mergedState.defCal, mergedState._cpmStatusDate, mergedState.projName, mergedState.activeBaselineIdx, mergedState.customCalendars);
+                });
+                return { ...mergedState, scenarios: updatedScenarios };
             } catch (err) {
                 console.error('[MERGE_SCENARIO] recalc failed:', err);
                 // Fallback: set activities without recalc rather than losing data
