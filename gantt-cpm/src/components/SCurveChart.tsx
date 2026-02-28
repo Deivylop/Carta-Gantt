@@ -420,7 +420,7 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                                 labelFormatter={(label: any) => new Date(label).toLocaleDateString()}
                             />
                             <Legend verticalAlign="top" height={36} />
-                            <ReferenceLine x={data.statusDateMs} stroke="red" strokeDasharray="3 3" label={{ position: 'insideTopLeft', value: 'Fecha de Corte', fill: 'red', fontSize: 12 }} />
+                            <ReferenceLine x={data.statusDateMs} stroke="#06b6d4" strokeWidth={2} label={{ position: 'insideTopLeft', value: 'Fecha de Corte', fill: '#06b6d4', fontSize: 12 }} />
                             <Line type="monotone" dataKey="planned" name={data.isHoursMode ? "HH Programadas" : "Avance Programado"} stroke={plannedColor} strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 6 }} />
                             <Line type="monotone" dataKey="actual" name={data.isHoursMode ? "HH Reales" : "Avance Real"} stroke={actualColor} strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} connectNulls={true} />
                         </LineChart>
@@ -616,18 +616,14 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
             return dayDiff(projStart, date) * PX;
         };
 
-        // ─── Status Date line (red dashed) ───────────────
+        // ─── Status Date line (cyan solid, matching Gantt) ───────────
         if (statusDateMs) {
             const sdX = msToX(statusDateMs);
             if (sdX >= 0 && sdX <= width) {
-                ctx.strokeStyle = '#ef4444';
-                ctx.setLineDash([4, 4]);
-                ctx.lineWidth = 1.5;
-                ctx.beginPath(); ctx.moveTo(sdX, chartTop); ctx.lineTo(sdX, chartBot); ctx.stroke();
-                ctx.setLineDash([]);
-                ctx.lineWidth = 1;
+                ctx.fillStyle = '#06b6d4';
+                ctx.fillRect(sdX, chartTop, 2, chartH);
                 // Label
-                ctx.fillStyle = '#ef4444';
+                ctx.fillStyle = '#06b6d4';
                 ctx.font = 'bold 10px Segoe UI';
                 ctx.fillText('Fecha de Corte', sdX + 4, chartTop + 12);
             }
@@ -735,7 +731,7 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
             ctx.fillStyle = '#f59e0b'; ctx.fillRect(todayX, axisTop, 2, HDR_H);
         }
         if (statusDate) {
-            const sdx = dayDiff(projStart, statusDate) * PX;
+            const sdx = (dayDiff(projStart, statusDate) + 1) * PX;  // end of status date, matching Gantt
             if (sdx >= 0 && sdx <= width) {
                 ctx.fillStyle = '#06b6d4'; ctx.fillRect(sdx, axisTop, 2, HDR_H);
             }
