@@ -7,6 +7,7 @@
 export interface EPSNode {
     id: string;
     name: string;
+    epsCode: string;           // short EPS ID code e.g. "EPS-001" (P6 "EPS ID")
     parentId: string | null;   // null = root-level
     type: 'eps';               // only folders
     color?: string;            // visual accent for grouping
@@ -41,6 +42,7 @@ export interface PortfolioState {
     expandedIds: Set<string>;  // expanded EPS folders
     selectedId: string | null; // selected EPS or project ID
     activeProjectId: string | null; // currently opened project
+    clipboard: { mode: 'cut' | 'copy'; projectId: string } | null; // cut/copy clipboard
 }
 
 /** Combined tree node for rendering */

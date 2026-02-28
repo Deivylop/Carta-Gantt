@@ -91,8 +91,10 @@ function AppInner() {
   const [activeModule, setActiveModule] = useState<ModuleId>(() => {
     const saved = localStorage.getItem('gantt_active_module');
     const valid: ModuleId[] = ['inicio', 'projects', 'gantt', 'lookAhead', 'dashboard', 'whatIf', 'config'];
-    return saved && valid.includes(saved as ModuleId) ? saved as ModuleId : 'inicio';
+    return saved && valid.includes(saved as ModuleId) ? saved as ModuleId : 'projects';
   });
+
+  const hasActiveProject = !!pState.activeProjectId;
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Theme toggle on body
@@ -407,7 +409,7 @@ function AppInner() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       {/* ── Module Tabs ── */}
-      <ModuleTabs active={activeModule} onChange={handleModuleChange} activeProjectName={pState.activeProjectId ? (pState.projects.find(p => p.id === pState.activeProjectId)?.name || null) : null} />
+      <ModuleTabs active={activeModule} onChange={handleModuleChange} activeProjectName={pState.activeProjectId ? (pState.projects.find(p => p.id === pState.activeProjectId)?.name || null) : null} hasActiveProject={hasActiveProject} />
 
       {/* ── Module: Inicio ── */}
       {activeModule === 'inicio' && <div style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0, overflow:'hidden' }}><InicioPage onNavigate={handleModuleChange} /></div>}

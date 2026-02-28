@@ -65,8 +65,9 @@ export function buildTree(eps: EPSNode[], projects: ProjectMeta[], expanded: Set
 // ─── Actions ────────────────────────────────────────────────────
 type PortfolioAction =
     | { type: 'LOAD'; state: { epsNodes: EPSNode[]; projects: ProjectMeta[]; expandedIds: string[]; activeProjectId: string | null } }
-    | { type: 'ADD_EPS'; parentId: string | null; name: string }
+    | { type: 'ADD_EPS'; parentId: string | null; name: string; epsCode?: string }
     | { type: 'RENAME_EPS'; id: string; name: string }
+    | { type: 'UPDATE_EPS'; id: string; updates: Partial<EPSNode> }
     | { type: 'DELETE_EPS'; id: string }
     | { type: 'ADD_PROJECT'; epsId: string | null; name: string; code: string }
     | { type: 'UPDATE_PROJECT'; id: string; updates: Partial<ProjectMeta> }
@@ -75,7 +76,11 @@ type PortfolioAction =
     | { type: 'SELECT'; id: string | null }
     | { type: 'SET_ACTIVE_PROJECT'; id: string | null }
     | { type: 'EXPAND_ALL' }
-    | { type: 'COLLAPSE_ALL' };
+    | { type: 'COLLAPSE_ALL' }
+    | { type: 'CUT_PROJECT'; id: string }
+    | { type: 'COPY_PROJECT'; id: string }
+    | { type: 'PASTE_PROJECT'; targetEpsId: string | null }
+    | { type: 'MOVE_PROJECT'; id: string; targetEpsId: string | null };
 
 // ─── Initial State ──────────────────────────────────────────────
 const initialState: PortfolioState = {
@@ -84,15 +89,21 @@ const initialState: PortfolioState = {
     expandedIds: new Set<string>(),
     selectedId: null,
     activeProjectId: null,
+    clipboard: null,
 };
 
 // ─── Reducer ────────────────────────────────────────────────────
 function portfolioReducer(state: PortfolioState, action: PortfolioAction): PortfolioState {
     switch (action.type) {
         case 'LOAD': {
+            // Backward compat: ensure epsCode exists on old EPS nodes
+            const epsNodes = (action.state.epsNodes || []).map((e, i) => ({
+                ...e,
+                epsCode: e.epsCode || ('EPS-' + String(i + 1).padStart(3, '0')),
+            }));
             return {
                 ...state,
-                epsNodes: action.state.epsNodes,
+                epsNodes,
                 projects: action.state.projects,
                 expandedIds: new Set(action.state.expandedIds),
                 activeProjectId: action.state.activeProjectId,
@@ -100,9 +111,11 @@ function portfolioReducer(state: PortfolioState, action: PortfolioAction): Portf
         }
 
         case 'ADD_EPS': {
+            const epsCount = state.epsNodes.length + 1;
             const node: EPSNode = {
                 id: 'eps_' + uid(),
                 name: action.name,
+                epsCode: action.epsCode || ('EPS-' + String(epsCount).padStart(3, '0')),
                 parentId: action.parentId,
                 type: 'eps',
             };
@@ -115,6 +128,13 @@ function portfolioReducer(state: PortfolioState, action: PortfolioAction): Portf
             return {
                 ...state,
                 epsNodes: state.epsNodes.map(e => e.id === action.id ? { ...e, name: action.name } : e),
+            };
+        }
+
+        case 'UPDATE_EPS': {
+            return {
+                ...state,
+                epsNodes: state.epsNodes.map(e => e.id === action.id ? { ...e, ...action.updates } : e),
             };
         }
 
@@ -205,6 +225,59 @@ function portfolioReducer(state: PortfolioState, action: PortfolioAction): Portf
 
         case 'COLLAPSE_ALL':
             return { ...state, expandedIds: new Set<string>() };
+
+        case 'CUT_PROJECT':
+            return { ...state, clipboard: { mode: 'cut', projectId: action.id } };
+
+        case 'COPY_PROJECT':
+            return { ...state, clipboard: { mode: 'copy', projectId: action.id } };
+
+        case 'PASTE_PROJECT': {
+            if (!state.clipboard) return state;
+            const src = state.projects.find(p => p.id === state.clipboard!.projectId);
+            if (!src) return { ...state, clipboard: null };
+
+            if (state.clipboard.mode === 'cut') {
+                // Move the project to the target EPS
+                return {
+                    ...state,
+                    projects: state.projects.map(p =>
+                        p.id === src.id ? { ...p, epsId: action.targetEpsId, updatedAt: nowISO() } : p
+                    ),
+                    clipboard: null,
+                };
+            } else {
+                // Copy: create a duplicate with new ID
+                const copy: ProjectMeta = {
+                    ...src,
+                    id: 'proj_' + uid(),
+                    epsId: action.targetEpsId,
+                    name: src.name + ' (Copia)',
+                    code: src.code + '-C',
+                    createdAt: nowISO(),
+                    updatedAt: nowISO(),
+                    supabaseId: null,
+                };
+                const expanded = new Set(state.expandedIds);
+                if (action.targetEpsId) expanded.add(action.targetEpsId);
+                return {
+                    ...state,
+                    projects: [...state.projects, copy],
+                    expandedIds: expanded,
+                    selectedId: copy.id,
+                    clipboard: null,
+                };
+            }
+        }
+
+        case 'MOVE_PROJECT': {
+            return {
+                ...state,
+                projects: state.projects.map(p =>
+                    p.id === action.id ? { ...p, epsId: action.targetEpsId, updatedAt: nowISO() } : p
+                ),
+            };
+        }
 
         default:
             return state;

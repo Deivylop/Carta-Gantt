@@ -1,7 +1,8 @@
 // ═══════════════════════════════════════════════════════════════════
 // ModuleTabs – Top-level navigation between application modules
+// Tabs beyond 'Proyectos' are hidden until a project is opened.
 // ═══════════════════════════════════════════════════════════════════
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Home, CalendarRange, BarChart3, Settings, GanttChart, GitBranch, Building2, Briefcase } from 'lucide-react';
 
 export type ModuleId = 'inicio' | 'projects' | 'gantt' | 'lookAhead' | 'dashboard' | 'whatIf' | 'config';
@@ -10,25 +11,31 @@ interface Tab {
   id: ModuleId;
   label: string;
   icon: React.ReactNode;
+  requiresProject?: boolean;  // true = hidden until a project is opened
 }
 
 const TABS: Tab[] = [
   { id: 'inicio',     label: 'Inicio',          icon: <Home size={16} /> },
   { id: 'projects',   label: 'Proyectos',       icon: <Building2 size={16} /> },
-  { id: 'gantt',      label: 'Carta Gantt',     icon: <GanttChart size={16} /> },
-  { id: 'lookAhead',  label: 'Look Ahead',      icon: <CalendarRange size={16} /> },
-  { id: 'whatIf',     label: 'What-If',         icon: <GitBranch size={16} /> },
-  { id: 'dashboard',  label: 'Dashboard',       icon: <BarChart3 size={16} /> },
-  { id: 'config',     label: 'Configuración',   icon: <Settings size={16} /> },
+  { id: 'gantt',      label: 'Carta Gantt',     icon: <GanttChart size={16} />,     requiresProject: true },
+  { id: 'lookAhead',  label: 'Look Ahead',      icon: <CalendarRange size={16} />,  requiresProject: true },
+  { id: 'whatIf',     label: 'What-If',         icon: <GitBranch size={16} />,      requiresProject: true },
+  { id: 'dashboard',  label: 'Dashboard',       icon: <BarChart3 size={16} />,      requiresProject: true },
+  { id: 'config',     label: 'Configuración',   icon: <Settings size={16} />,       requiresProject: true },
 ];
 
 interface Props {
   active: ModuleId;
   onChange: (id: ModuleId) => void;
   activeProjectName?: string | null;
+  hasActiveProject?: boolean;
 }
 
-export default function ModuleTabs({ active, onChange, activeProjectName }: Props) {
+export default function ModuleTabs({ active, onChange, activeProjectName, hasActiveProject }: Props) {
+  const visibleTabs = useMemo(() => {
+    return TABS.filter(t => !t.requiresProject || hasActiveProject);
+  }, [hasActiveProject]);
+
   return (
     <div
       style={{
@@ -43,7 +50,7 @@ export default function ModuleTabs({ active, onChange, activeProjectName }: Prop
         flexShrink: 0,
       }}
     >
-      {TABS.map((t) => {
+      {visibleTabs.map((t) => {
         const isActive = active === t.id;
         return (
           <button
