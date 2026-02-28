@@ -75,6 +75,60 @@ const EditableNumberCell = ({ rawValue, displayValue, onUpdate, onFocus, isRowSe
     );
 };
 
+const EditableTextCell = ({ rawValue, displayHtml, onUpdate, onFocus, isRowSelected }: { rawValue: string, displayHtml: string, onUpdate: (val: string) => void, onFocus: () => void, isRowSelected: boolean }) => {
+    const [isEditing, setIsEditing] = useState(false);
+    const [val, setVal] = useState(rawValue);
+    const wasSelectedRef = useRef(false);
+
+    useEffect(() => { setVal(rawValue); }, [rawValue]);
+    useEffect(() => { wasSelectedRef.current = isRowSelected; }, [isRowSelected]);
+
+    useEffect(() => {
+        if (!isRowSelected && isEditing) { setIsEditing(false); onUpdate(val); }
+    }, [isRowSelected]);
+
+    const enterEdit = (e: React.MouseEvent) => {
+        e.preventDefault(); e.stopPropagation();
+        setIsEditing(true); onFocus();
+    };
+
+    if (isEditing) {
+        return (
+            <div style={{ width: '100%', height: '100%', display: 'flex' }} onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
+                <input
+                    type="text"
+                    style={{ background: 'transparent', outline: 'none', border: '1px solid #3b82f6', color: 'inherit', padding: '0 2px', margin: 0, width: '100%', height: '100%', fontSize: 'inherit', fontFamily: 'inherit', boxSizing: 'border-box', textAlign: 'inherit' }}
+                    autoFocus
+                    ref={el => { if (el) { el.select(); } }}
+                    value={val}
+                    onChange={e => setVal(e.target.value)}
+                    onBlur={() => { setIsEditing(false); onUpdate(val); }}
+                    onKeyDown={e => {
+                        if (e.key === 'Enter') e.currentTarget.blur();
+                        if (e.key === 'Escape') setIsEditing(false);
+                    }}
+                    onFocus={onFocus}
+                    onContextMenu={e => { e.preventDefault(); setIsEditing(false); }}
+                />
+            </div>
+        );
+    }
+
+    return (
+        <span
+            style={{ cursor: 'text', display: 'flex', alignItems: 'center', justifyContent: 'inherit', width: '100%', height: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            onMouseDown={(e) => {
+                if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
+                if (isRowSelected || wasSelectedRef.current) { enterEdit(e); return; }
+                wasSelectedRef.current = true;
+            }}
+            onDoubleClick={(e) => { if (!isEditing) enterEdit(e); }}
+            onClick={(e) => { if ((isRowSelected || wasSelectedRef.current) && !e.ctrlKey && !e.metaKey && !e.shiftKey) e.stopPropagation(); }}
+            dangerouslySetInnerHTML={{ __html: displayHtml }}
+        />
+    );
+};
+
 const EditableDateCell = ({ dateValue, displayValue, onUpdate, onFocus, isRowSelected }: { dateValue: Date | null | undefined, displayValue: string, onUpdate: (val: string) => void, onFocus: () => void, isRowSelected: boolean }) => {
     const [isEditing, setIsEditing] = useState(false);
     const wasSelectedRef = useRef(false);
@@ -563,17 +617,6 @@ export default function GanttTable() {
         return () => window.removeEventListener('keydown', handler);
     }, [ctxColKey, handleFillDown, handleFillUp]);
 
-    const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            (e.target as HTMLElement).blur();
-        }
-        if (e.key === 'Escape') {
-            e.preventDefault();
-            (e.target as HTMLElement).blur();
-        }
-    }, []);
-
     // Tooltip moved to GanttTimeline
 
     const getTFColor = (a: any): string | undefined => {
@@ -824,41 +867,15 @@ export default function GanttTable() {
                                         }
 
                                         return (
-                                            <div key={c.key} data-colkey={c.key} className={`tcell ${c.cls}`}
-                                                style={style}
-                                                contentEditable={!false}
-                                                suppressContentEditableWarning
-                                                spellCheck={false}
-                                                onMouseDown={e => {
-                                                    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) {
-                                                        e.preventDefault(); return;
-                                                    }
-                                                    const alreadySel = selIndices.has(vr._idx) || touchedRowsRef.current.has(vr._idx);
-                                                    if (!alreadySel) {
-                                                        e.preventDefault(); // first click selects row
-                                                        touchedRowsRef.current = new Set([vr._idx]);
-                                                    }
-                                                }}
-                                                onContextMenu={e => { e.preventDefault(); e.currentTarget.blur(); }}
-                                                onFocus={e => {
-                                                    dispatch({ type: 'SET_SELECTION', index: vr._idx });
-                                                    // Mover cursor al final del texto
-                                                    const el = e.currentTarget;
-                                                    requestAnimationFrame(() => {
-                                                        const sel = window.getSelection();
-                                                        if (sel && el.childNodes.length) {
-                                                            const range = document.createRange();
-                                                            range.selectNodeContents(el);
-                                                            range.collapse(false);
-                                                            sel.removeAllRanges();
-                                                            sel.addRange(range);
-                                                        }
-                                                    });
-                                                }}
-                                                onBlur={e => handleBlur(vr._idx, c.key, e.currentTarget.textContent || '')}
-                                                onKeyDown={handleKeyDown}
-                                                dangerouslySetInnerHTML={{ __html: c.key === 'name' ? val : getRawValue(a, c.key) || val }}
-                                            />
+                                            <div key={c.key} data-colkey={c.key} className={`tcell ${c.cls}`} style={style}>
+                                                <EditableTextCell
+                                                    rawValue={getRawValue(a, c.key)}
+                                                    displayHtml={c.key === 'name' ? val : (getRawValue(a, c.key) || val)}
+                                                    onUpdate={(newVal) => handleBlur(vr._idx, c.key, newVal)}
+                                                    onFocus={() => dispatch({ type: 'SET_SELECTION', index: vr._idx })}
+                                                    isRowSelected={selIndices.has(vr._idx)}
+                                                />
+                                            </div>
                                         );
                                     }
 
