@@ -4,7 +4,7 @@
 // ═══════════════════════════════════════════════════════════════════
 import React, { useCallback, useMemo, useRef, useState, useEffect } from 'react';
 import { useGantt } from '../store/GanttContext';
-import { fmtDate, addDays, isoDate, newActivity, parseDate, getExactWorkDays, getExactElapsedRatio } from '../utils/cpm';
+import { fmtDate, addDays, isoDate, newActivity, parseDate, getExactWorkDays } from '../utils/cpm';
 import { predsToStr, getWeightPct, strToPreds, autoId, syncResFromString } from '../utils/helpers';
 import ColumnPickerModal from './ColumnPickerModal';
 import RowContextMenu from './RowContextMenu';
@@ -216,6 +216,7 @@ export default function GanttTable() {
             const cal = a.cal || defCal;
 
             // ── simProgPct: planned progress at target from BASELINE dates ──
+            // Simple linear: consumed work-days / baseline dur × 100
             // If no active baseline exists → 0%
             let simProg = 0;
             const activeBlIdx = state.activeBaselineIdx ?? 0;
@@ -226,28 +227,18 @@ export default function GanttTable() {
                 if (blStart && blEnd) {
                     const stObj = new Date(blStart); stObj.setHours(0, 0, 0, 0);
                     const endObj = new Date(blEnd); endObj.setHours(0, 0, 0, 0);
-                    if (target <= stObj) { simProg = 0; }
-                    else if (target >= endObj) { simProg = 100; }
-                    else if (activeBl.pct != null && activeBl.statusDate) {
-                        const blPct = activeBl.pct;
-                        if (blPct === 0) {
-                            simProg = getExactElapsedRatio(blStart, blEnd, target, cal) * 100;
-                        } else {
-                            const blStatusEnd = new Date(activeBl.statusDate); blStatusEnd.setHours(0, 0, 0, 0);
-                            blStatusEnd.setDate(blStatusEnd.getDate() + 1);
-                            if (target <= blStatusEnd) {
-                                const totalWd = getExactWorkDays(stObj, blStatusEnd, cal);
-                                const elapsed = getExactWorkDays(stObj, target, cal);
-                                simProg = totalWd > 0 ? (elapsed / totalWd) * blPct : blPct;
-                            } else {
-                                const totalWd = getExactWorkDays(blStatusEnd, endObj, cal);
-                                const elapsed = getExactWorkDays(blStatusEnd, target, cal);
-                                const ratio = totalWd > 0 ? elapsed / totalWd : 1;
-                                simProg = blPct + ratio * (100 - blPct);
-                            }
-                        }
-                    } else {
-                        simProg = getExactElapsedRatio(blStart, blEnd, target, cal) * 100;
+                    const blCal = activeBl.cal || cal;
+                    const blDur = activeBl.dur || getExactWorkDays(stObj, endObj, blCal);
+                    if (target <= stObj) {
+                        simProg = 0;
+                    } else if (target >= endObj) {
+                        simProg = 100;
+                    } else if (blDur > 0) {
+                        // target day is consumed (end-of-day semantics) → count up to target+1
+                        const dayAfterTarget = new Date(target);
+                        dayAfterTarget.setDate(dayAfterTarget.getDate() + 1);
+                        const consumed = getExactWorkDays(stObj, dayAfterTarget, blCal);
+                        simProg = Math.min(100, (consumed / blDur) * 100);
                     }
                 }
             }
