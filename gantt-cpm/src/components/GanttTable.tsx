@@ -79,9 +79,13 @@ const EditableTextCell = ({ rawValue, displayHtml, onUpdate, onFocus, isRowSelec
     const [isEditing, setIsEditing] = useState(false);
     const [val, setVal] = useState(rawValue);
     const wasSelectedRef = useRef(false);
+    const cellTouchedRef = useRef(false);
 
     useEffect(() => { setVal(rawValue); }, [rawValue]);
-    useEffect(() => { wasSelectedRef.current = isRowSelected; }, [isRowSelected]);
+    useEffect(() => {
+        wasSelectedRef.current = isRowSelected;
+        if (!isRowSelected) cellTouchedRef.current = false;
+    }, [isRowSelected]);
 
     useEffect(() => {
         if (!isRowSelected && isEditing) { setIsEditing(false); onUpdate(val); }
@@ -119,7 +123,13 @@ const EditableTextCell = ({ rawValue, displayHtml, onUpdate, onFocus, isRowSelec
             style={{ cursor: 'text', display: 'flex', alignItems: 'center', justifyContent: 'inherit', width: '100%', height: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
             onMouseDown={(e) => {
                 if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
-                if (isRowSelected || wasSelectedRef.current) { enterEdit(e); return; }
+                // 1er click: seleccionar fila. 2do click: entrar en edición.
+                if (cellTouchedRef.current) { enterEdit(e); return; }
+                if (isRowSelected || wasSelectedRef.current) {
+                    e.stopPropagation();
+                    cellTouchedRef.current = true;
+                    return;
+                }
                 wasSelectedRef.current = true;
             }}
             onDoubleClick={(e) => { if (!isEditing) enterEdit(e); }}
