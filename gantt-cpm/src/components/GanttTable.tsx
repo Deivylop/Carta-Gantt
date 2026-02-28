@@ -120,7 +120,7 @@ const EditableTextCell = ({ rawValue, displayHtml, onUpdate, onFocus, isRowSelec
 
     return (
         <span
-            style={{ cursor: 'text', display: 'flex', alignItems: 'center', justifyContent: 'inherit', width: '100%', height: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            style={{ cursor: cellTouchedRef.current ? 'text' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'inherit', width: '100%', height: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', userSelect: 'none' }}
             onMouseDown={(e) => {
                 if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
                 // Celda ya tocada → entrar en edición
