@@ -850,7 +850,8 @@ function reducer(state: GanttState, action: Action): GanttState {
                     if ((a.pct || 0) > 0 && a.remDur != null) {
                         a.remDur = Math.max(0, a.remDur + delta);
                     } else if ((a.pct || 0) === 0) {
-                        a.remDur = null;
+                        // pct=0: remDur must always equal dur
+                        a.remDur = Math.max(0, (a.dur || 0) + delta);
                     }
                     // Ajustar dur modelo por el delta (no asignar newDur directo)
                     a.dur = Math.max(0, (a.dur || 0) + delta);
@@ -1751,8 +1752,19 @@ function reducer(state: GanttState, action: Action): GanttState {
             const sc = state.scenarios.find(s => s.id === action.scenarioId);
             if (!sc) return state;
             // Replace master activities with scenario activities
-            const newState = { ...state, activities: deepCloneActivities(sc.activities) };
-            return recalc(newState);
+            // Transfer the scenario's simStatusDate to the master if it exists
+            const mergedStatusDate = sc.simStatusDate ? (() => {
+                const d = new Date(sc.simStatusDate + 'T00:00:00');
+                return isNaN(d.getTime()) ? state.statusDate : d;
+            })() : state.statusDate;
+            const newState = {
+                ...state,
+                activities: deepCloneActivities(sc.activities),
+                statusDate: mergedStatusDate,
+                _cpmStatusDate: mergedStatusDate,
+            };
+            // Use recalcInternal with the scenario's status date (retained logic)
+            return recalcInternal(newState, mergedStatusDate, false);
         }
 
         case 'DUPLICATE_SCENARIO': {

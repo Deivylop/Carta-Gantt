@@ -83,10 +83,11 @@ function parseCommitEdit(
             if ((a.pct || 0) > 0 && a.remDur != null) {
                 newRemDur = Math.max(0, a.remDur + delta);
             } else if ((a.pct || 0) === 0) {
-                newRemDur = undefined as any;
+                // pct=0: remDur must always equal dur
+                newRemDur = Math.max(0, (a.dur || 0) + delta);
             }
             updates.dur = Math.max(0, (a.dur || 0) + delta);
-            if (newRemDur !== undefined) updates.remDur = newRemDur;
+            updates.remDur = newRemDur;
             if (newDur === 0) updates.type = 'milestone';
             else if (a.type === 'milestone') updates.type = 'task';
         }
