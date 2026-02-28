@@ -404,10 +404,16 @@ export function calcCPM(
                 // _remES / _remEF = dónde empieza y termina el trabajo restante
                 a._remES = newES;
                 a._remEF = newEF;
-                // _isSplit = true cuando hay un gap entre la parte hecha y la parte restante
-                // (la actividad empezó pero la predecesora aún no terminó, out-of-sequence)
+                // _isSplit = true ONLY when a predecessor forces the remaining work
+                // to start later than the status-date boundary (out-of-sequence).
+                // A normal gap between _actualEnd and sd does NOT count as a split —
+                // that's just the standard retained-logic reprogramming.
+                // Also, suspend/resume splits are handled separately below.
                 if (a._actualEnd && a._remES) {
-                    a._isSplit = a._remES.getTime() > a._actualEnd.getTime();
+                    // Only split if remaining start was pushed BEYOND the status date
+                    // by a predecessor (i.e. newES > sd)
+                    const sdSnapped = snapToWorkDay(sd, a.cal || defCal);
+                    a._isSplit = a._remES.getTime() > sdSnapped.getTime();
                 } else {
                     a._isSplit = false;
                 }
