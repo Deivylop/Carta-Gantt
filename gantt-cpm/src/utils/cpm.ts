@@ -1098,7 +1098,8 @@ export function getUsageDailyValues(
         for (const h of history) {
             const pctVal = h.details ? h.details[actId] : undefined;
             if (pctVal !== undefined && pctVal > 0) {
-                const d = new Date(h.date); d.setHours(0, 0, 0, 0);
+                // Parse as local date (avoid UTC shift with 'T00:00:00')
+                const d = new Date(h.date + 'T00:00:00'); d.setHours(0, 0, 0, 0);
                 entries.push({ date: d, pct: pctVal });
             }
         }
@@ -1106,7 +1107,7 @@ export function getUsageDailyValues(
         for (const h of history) {
             const pctVal = h.details ? h.details[actId] : undefined;
             if (pctVal === 0) {
-                const d = new Date(h.date); d.setHours(0, 0, 0, 0);
+                const d = new Date(h.date + 'T00:00:00'); d.setHours(0, 0, 0, 0);
                 // Only add if not already present
                 if (!entries.some(e => e.date.getTime() === d.getTime())) {
                     entries.push({ date: d, pct: 0 });
