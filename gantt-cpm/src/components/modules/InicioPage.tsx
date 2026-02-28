@@ -3,8 +3,8 @@
 // ═══════════════════════════════════════════════════════════════════
 import React, { useMemo } from 'react';
 import { useGantt } from '../../store/GanttContext';
-import { isoDate, fmtDate } from '../../utils/cpm';
-import { GanttChart, CalendarRange, BarChart3, Settings, FolderOpen, Clock, TrendingUp, TrendingDown, CalendarCheck } from 'lucide-react';
+import { fmtDate } from '../../utils/cpm';
+import { GanttChart, CalendarRange, BarChart3, Settings, FolderOpen, Clock, TrendingUp, TrendingDown, CalendarCheck, Building2 } from 'lucide-react';
 import type { ModuleId } from '../ModuleTabs';
 
 interface Props {
@@ -15,6 +15,7 @@ export default function InicioPage({ onNavigate }: Props) {
   const { state } = useGantt();
 
   const cards: { id: ModuleId; icon: React.ReactNode; title: string; desc: string; color: string }[] = [
+    { id: 'projects',  icon: <Building2 size={28} />,     title: 'Cartera de Proyectos', desc: 'Gestión de portafolio con estructura EPS. Cree, organice y administre múltiples proyectos.', color: '#8b5cf6' },
     { id: 'gantt',     icon: <GanttChart size={28} />,    title: 'Carta Gantt',    desc: 'Programa CPM completo con Ruta Crítica, Float Paths, recursos y líneas base.',                   color: '#6366f1' },
     { id: 'lookAhead', icon: <CalendarRange size={28} />,  title: 'Look Ahead',     desc: 'Planificación a corto plazo con ventana deslizante de 3 semanas.',                                color: '#0ea5e9' },
     { id: 'dashboard', icon: <BarChart3 size={28} />,      title: 'Dashboard',      desc: 'Indicadores clave del proyecto: SPI, CPI, curvas S y desempeño de recursos.',                    color: '#22c55e' },
@@ -137,6 +138,10 @@ export default function InicioPage({ onNavigate }: Props) {
       <div style={{ marginTop: 32, background: 'var(--bg-panel)', border: '1px solid var(--border-primary)', borderRadius: 10, padding: '20px 24px' }}>
         <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-heading)', marginBottom: 10 }}>Acciones rápidas</h3>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <button onClick={() => onNavigate('projects')}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--bg-input)', border: '1px solid var(--border-secondary)', borderRadius: 8, padding: '8px 14px', color: 'var(--text-primary)', fontSize: 12, cursor: 'pointer' }}>
+            <Building2 size={14} /> Cartera de Proyectos
+          </button>
           <button onClick={() => onNavigate('gantt')}
             style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--bg-input)', border: '1px solid var(--border-secondary)', borderRadius: 8, padding: '8px 14px', color: 'var(--text-primary)', fontSize: 12, cursor: 'pointer' }}>
             <FolderOpen size={14} /> Abrir Carta Gantt

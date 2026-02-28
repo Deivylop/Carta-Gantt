@@ -30,17 +30,67 @@ import LookAheadPage from './components/modules/LookAheadPage';
 import DashboardPage from './components/modules/DashboardPage';
 import ConfigPage from './components/modules/ConfigPage';
 import WhatIfPage from './components/modules/WhatIfPage';
+import ProjectsPage from './components/modules/ProjectsPage';
+import { PortfolioProvider, usePortfolio } from './store/PortfolioContext';
 import { newActivity } from './utils/cpm';
 import { autoId } from './utils/helpers';
 import { saveToSupabase, loadFromSupabase } from './utils/supabaseSync';
 
+/** Serialize GanttState to a plain JSON-safe object for localStorage */
+function serializeGanttState(state: any): any {
+  return {
+    projName: state.projName,
+    projStart: state.projStart instanceof Date ? state.projStart.toISOString() : state.projStart,
+    defCal: state.defCal,
+    statusDate: state.statusDate instanceof Date ? state.statusDate.toISOString() : state.statusDate,
+    activities: state.activities.map((a: any) => ({
+      ...a,
+      ES: a.ES ? (a.ES instanceof Date ? a.ES.toISOString() : a.ES) : null,
+      EF: a.EF ? (a.EF instanceof Date ? a.EF.toISOString() : a.EF) : null,
+      LS: a.LS ? (a.LS instanceof Date ? a.LS.toISOString() : a.LS) : null,
+      LF: a.LF ? (a.LF instanceof Date ? a.LF.toISOString() : a.LF) : null,
+      blES: a.blES ? (a.blES instanceof Date ? a.blES.toISOString() : a.blES) : null,
+      blEF: a.blEF ? (a.blEF instanceof Date ? a.blEF.toISOString() : a.blEF) : null,
+      _remES: a._remES ? (a._remES instanceof Date ? a._remES.toISOString() : a._remES) : null,
+      _remEF: a._remEF ? (a._remEF instanceof Date ? a._remEF.toISOString() : a._remEF) : null,
+      baselines: (a.baselines || []).map((bl: any) => bl ? {
+        ...bl,
+        ES: bl.ES ? (bl.ES instanceof Date ? bl.ES.toISOString() : bl.ES) : null,
+        EF: bl.EF ? (bl.EF instanceof Date ? bl.EF.toISOString() : bl.EF) : null,
+      } : null),
+    })),
+    resourcePool: state.resourcePool,
+    progressHistory: state.progressHistory,
+    ppcHistory: state.ppcHistory,
+    leanRestrictions: state.leanRestrictions,
+    scenarios: state.scenarios ? state.scenarios.map((sc: any) => ({
+      ...sc,
+      activities: (sc.activities || []).map((a: any) => ({
+        ...a,
+        ES: a.ES ? (a.ES instanceof Date ? a.ES.toISOString() : a.ES) : null,
+        EF: a.EF ? (a.EF instanceof Date ? a.EF.toISOString() : a.EF) : null,
+        LS: a.LS ? (a.LS instanceof Date ? a.LS.toISOString() : a.LS) : null,
+        LF: a.LF ? (a.LF instanceof Date ? a.LF.toISOString() : a.LF) : null,
+        blES: a.blES ? (a.blES instanceof Date ? a.blES.toISOString() : a.blES) : null,
+        blEF: a.blEF ? (a.blEF instanceof Date ? a.blEF.toISOString() : a.blEF) : null,
+      })),
+    })) : [],
+    customCalendars: state.customCalendars,
+    customFilters: state.customFilters,
+    filtersMatchAll: state.filtersMatchAll,
+    activeBaselineIdx: state.activeBaselineIdx,
+    showProjRow: state.showProjRow,
+  };
+}
+
 function AppInner() {
   const { state, dispatch } = useGantt();
+  const { state: pState, dispatch: pDispatch, saveProjectState, loadProjectState } = usePortfolio();
   const [formH, setFormH] = useState(200);
   const [resizing, setResizing] = useState<'v' | 'h' | null>(null);
   const [activeModule, setActiveModule] = useState<ModuleId>(() => {
     const saved = localStorage.getItem('gantt_active_module');
-    const valid: ModuleId[] = ['inicio', 'gantt', 'lookAhead', 'dashboard', 'whatIf', 'config'];
+    const valid: ModuleId[] = ['inicio', 'projects', 'gantt', 'lookAhead', 'dashboard', 'whatIf', 'config'];
     return saved && valid.includes(saved as ModuleId) ? saved as ModuleId : 'inicio';
   });
   const containerRef = useRef<HTMLDivElement>(null);
@@ -238,18 +288,132 @@ function AppInner() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
+  // Auto-save active portfolio project on window close / refresh
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (pState.activeProjectId && state.activities.length > 0) {
+        const snapshot = serializeGanttState(state);
+        try { localStorage.setItem('gantt-cpm-project-' + pState.activeProjectId, JSON.stringify(snapshot)); } catch { }
+        // Update project metadata
+        const tasks = state.activities.filter(a => (a.type === 'task' || a.type === 'milestone') && !a._isProjRow);
+        const projRow = state.activities.find(a => a._isProjRow);
+        const meta = pState.projects.map(p => p.id === pState.activeProjectId ? {
+          ...p, name: state.projName,
+          activityCount: tasks.length,
+          completedCount: tasks.filter(a => a.pct === 100).length,
+          criticalCount: tasks.filter(a => a.crit).length,
+          globalPct: projRow ? Math.round((projRow.pct || 0) * 10) / 10 : 0,
+          plannedPct: projRow ? Math.round((projRow._plannedPct || 0) * 10) / 10 : 0,
+          updatedAt: new Date().toISOString(),
+        } : p);
+        try {
+          const portfolioData = {
+            epsNodes: pState.epsNodes,
+            projects: meta,
+            expandedIds: Array.from(pState.expandedIds),
+            activeProjectId: pState.activeProjectId,
+          };
+          localStorage.setItem('gantt-cpm-portfolio', JSON.stringify(portfolioData));
+        } catch { }
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [pState, state]);
+
   const handleModuleChange = useCallback((m: ModuleId) => {
+    // Auto-save current project state when navigating away from gantt modules
+    if (pState.activeProjectId && state.activities.length > 0) {
+      const snapshot = serializeGanttState(state);
+      saveProjectState(pState.activeProjectId, snapshot);
+      // Update project metadata
+      const tasks = state.activities.filter(a => (a.type === 'task' || a.type === 'milestone') && !a._isProjRow);
+      const projRow = state.activities.find(a => a._isProjRow);
+      pDispatch({
+        type: 'UPDATE_PROJECT', id: pState.activeProjectId, updates: {
+          name: state.projName,
+          activityCount: tasks.length,
+          completedCount: tasks.filter(a => a.pct === 100).length,
+          criticalCount: tasks.filter(a => a.crit).length,
+          globalPct: projRow ? Math.round((projRow.pct || 0) * 10) / 10 : 0,
+          plannedPct: projRow ? Math.round((projRow._plannedPct || 0) * 10) / 10 : 0,
+          startDate: state.projStart ? state.projStart.toISOString() : null,
+          statusDate: state.statusDate ? state.statusDate.toISOString() : null,
+          supabaseId: localStorage.getItem('sb_current_project_id') || null,
+        }
+      });
+    }
     setActiveModule(m);
     localStorage.setItem('gantt_active_module', m);
-  }, []);
+  }, [pState.activeProjectId, state, saveProjectState, pDispatch]);
+
+  // ── Open a project from the portfolio ──
+  const handleOpenProject = useCallback((projectId: string) => {
+    // Save current project first if any
+    if (pState.activeProjectId && pState.activeProjectId !== projectId && state.activities.length > 0) {
+      const snapshot = serializeGanttState(state);
+      saveProjectState(pState.activeProjectId, snapshot);
+    }
+
+    // Load the target project
+    const saved = loadProjectState(projectId);
+    if (saved) {
+      // Restore dates from ISO strings
+      if (saved.projStart && typeof saved.projStart === 'string') saved.projStart = new Date(saved.projStart);
+      if (saved.statusDate && typeof saved.statusDate === 'string') saved.statusDate = new Date(saved.statusDate);
+      if (saved.activities) {
+        saved.activities = saved.activities.map((a: any) => ({
+          ...a,
+          ES: a.ES ? new Date(a.ES) : null,
+          EF: a.EF ? new Date(a.EF) : null,
+          LS: a.LS ? new Date(a.LS) : null,
+          LF: a.LF ? new Date(a.LF) : null,
+          blES: a.blES ? new Date(a.blES) : null,
+          blEF: a.blEF ? new Date(a.blEF) : null,
+          _remES: a._remES ? new Date(a._remES) : null,
+          _remEF: a._remEF ? new Date(a._remEF) : null,
+          collapsed: undefined,
+          baselines: (a.baselines || []).map((bl: any) => bl ? {
+            ...bl,
+            ES: bl.ES ? new Date(bl.ES) : null,
+            EF: bl.EF ? new Date(bl.EF) : null,
+          } : null),
+        }));
+      }
+      dispatch({ type: 'LOAD_STATE', state: saved });
+      // Restore Supabase project ID link if available
+      const proj = pState.projects.find(p => p.id === projectId);
+      if (proj?.supabaseId) {
+        localStorage.setItem('sb_current_project_id', proj.supabaseId);
+      } else {
+        localStorage.removeItem('sb_current_project_id');
+      }
+    } else {
+      // No saved state — start fresh with project name
+      const proj = pState.projects.find(p => p.id === projectId);
+      const freshActs = [
+        { ...newActivity('PROY', state.defCal), name: proj?.name || 'Nuevo Proyecto', type: 'summary' as const, lv: -1, _isProjRow: true },
+      ];
+      dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: proj?.name || 'Nuevo Proyecto', projStart: new Date(), defCal: 6 as any, statusDate: new Date() } });
+      dispatch({ type: 'SET_ACTIVITIES', activities: freshActs });
+      localStorage.removeItem('sb_current_project_id');
+    }
+
+    pDispatch({ type: 'SET_ACTIVE_PROJECT', id: projectId });
+    setActiveModule('gantt');
+    localStorage.setItem('gantt_active_module', 'gantt');
+  }, [pState.activeProjectId, pState.projects, state, saveProjectState, loadProjectState, dispatch, pDispatch]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       {/* ── Module Tabs ── */}
-      <ModuleTabs active={activeModule} onChange={handleModuleChange} />
+      <ModuleTabs active={activeModule} onChange={handleModuleChange} activeProjectName={pState.activeProjectId ? (pState.projects.find(p => p.id === pState.activeProjectId)?.name || null) : null} />
 
       {/* ── Module: Inicio ── */}
       {activeModule === 'inicio' && <div style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0, overflow:'hidden' }}><InicioPage onNavigate={handleModuleChange} /></div>}
+
+      {/* ── Module: Proyectos (Portfolio) ── */}
+      {activeModule === 'projects' && <div style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0, overflow:'hidden' }}><ProjectsPage onNavigate={handleModuleChange} onOpenProject={handleOpenProject} /></div>}
 
       {/* ── Module: Look Ahead ── */}
       {activeModule === 'lookAhead' && <div style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0, overflow:'hidden' }}><LookAheadPage /></div>}
@@ -379,8 +543,10 @@ function AppInner() {
 
 export default function App() {
   return (
-    <GanttProvider>
-      <AppInner />
-    </GanttProvider>
+    <PortfolioProvider>
+      <GanttProvider>
+        <AppInner />
+      </GanttProvider>
+    </PortfolioProvider>
   );
 }

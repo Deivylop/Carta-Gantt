@@ -1,0 +1,309 @@
+// ═══════════════════════════════════════════════════════════════════
+// PortfolioContext – State management for EPS / multi-project
+// Persists to localStorage under 'gantt-cpm-portfolio'
+// Individual project states under 'gantt-cpm-project-{id}'
+// ═══════════════════════════════════════════════════════════════════
+import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
+import type { EPSNode, ProjectMeta, PortfolioState, TreeNode } from '../types/portfolio';
+
+const STORAGE_KEY = 'gantt-cpm-portfolio';
+const PROJECT_PREFIX = 'gantt-cpm-project-';
+
+// ─── Helpers ────────────────────────────────────────────────────
+function uid(): string {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+function nowISO(): string {
+    return new Date().toISOString();
+}
+
+// ─── Build flat list of TreeNodes for rendering ─────────────────
+export function buildTree(eps: EPSNode[], projects: ProjectMeta[], expanded: Set<string>): TreeNode[] {
+    const result: TreeNode[] = [];
+
+    // Build eps children map
+    const epsChildren = new Map<string | null, EPSNode[]>();
+    eps.forEach(e => {
+        const key = e.parentId;
+        if (!epsChildren.has(key)) epsChildren.set(key, []);
+        epsChildren.get(key)!.push(e);
+    });
+
+    // Build project children map  (epsId → projects)
+    const projChildren = new Map<string | null, ProjectMeta[]>();
+    projects.forEach(p => {
+        const key = p.epsId;
+        if (!projChildren.has(key)) projChildren.set(key, []);
+        projChildren.get(key)!.push(p);
+    });
+
+    function walk(parentId: string | null, depth: number) {
+        // EPS folders first
+        const folders = epsChildren.get(parentId) || [];
+        folders.sort((a, b) => a.name.localeCompare(b.name));
+        for (const folder of folders) {
+            const hasKids = epsChildren.has(folder.id) || projChildren.has(folder.id);
+            const isExpanded = expanded.has(folder.id);
+            result.push({ kind: 'eps', data: folder, depth, hasChildren: hasKids, expanded: isExpanded });
+            if (isExpanded) {
+                walk(folder.id, depth + 1);
+            }
+        }
+        // Then projects at this level
+        const projs = projChildren.get(parentId) || [];
+        projs.sort((a, b) => a.priority - b.priority || a.name.localeCompare(b.name));
+        for (const p of projs) {
+            result.push({ kind: 'project', data: p, depth });
+        }
+    }
+
+    walk(null, 0);
+    return result;
+}
+
+// ─── Actions ────────────────────────────────────────────────────
+type PortfolioAction =
+    | { type: 'LOAD'; state: { epsNodes: EPSNode[]; projects: ProjectMeta[]; expandedIds: string[]; activeProjectId: string | null } }
+    | { type: 'ADD_EPS'; parentId: string | null; name: string }
+    | { type: 'RENAME_EPS'; id: string; name: string }
+    | { type: 'DELETE_EPS'; id: string }
+    | { type: 'ADD_PROJECT'; epsId: string | null; name: string; code: string }
+    | { type: 'UPDATE_PROJECT'; id: string; updates: Partial<ProjectMeta> }
+    | { type: 'DELETE_PROJECT'; id: string }
+    | { type: 'TOGGLE_EXPAND'; id: string }
+    | { type: 'SELECT'; id: string | null }
+    | { type: 'SET_ACTIVE_PROJECT'; id: string | null }
+    | { type: 'EXPAND_ALL' }
+    | { type: 'COLLAPSE_ALL' };
+
+// ─── Initial State ──────────────────────────────────────────────
+const initialState: PortfolioState = {
+    epsNodes: [],
+    projects: [],
+    expandedIds: new Set<string>(),
+    selectedId: null,
+    activeProjectId: null,
+};
+
+// ─── Reducer ────────────────────────────────────────────────────
+function portfolioReducer(state: PortfolioState, action: PortfolioAction): PortfolioState {
+    switch (action.type) {
+        case 'LOAD': {
+            return {
+                ...state,
+                epsNodes: action.state.epsNodes,
+                projects: action.state.projects,
+                expandedIds: new Set(action.state.expandedIds),
+                activeProjectId: action.state.activeProjectId,
+            };
+        }
+
+        case 'ADD_EPS': {
+            const node: EPSNode = {
+                id: 'eps_' + uid(),
+                name: action.name,
+                parentId: action.parentId,
+                type: 'eps',
+            };
+            const expanded = new Set(state.expandedIds);
+            if (action.parentId) expanded.add(action.parentId);
+            return { ...state, epsNodes: [...state.epsNodes, node], expandedIds: expanded, selectedId: node.id };
+        }
+
+        case 'RENAME_EPS': {
+            return {
+                ...state,
+                epsNodes: state.epsNodes.map(e => e.id === action.id ? { ...e, name: action.name } : e),
+            };
+        }
+
+        case 'DELETE_EPS': {
+            // Recursively collect EPS ids to delete
+            const toDelete = new Set<string>();
+            function collect(id: string) {
+                toDelete.add(id);
+                state.epsNodes.filter(e => e.parentId === id).forEach(e => collect(e.id));
+            }
+            collect(action.id);
+            // Also delete projects inside those EPS folders → move to root
+            const updatedProjects = state.projects.map(p =>
+                p.epsId && toDelete.has(p.epsId) ? { ...p, epsId: null } : p
+            );
+            return {
+                ...state,
+                epsNodes: state.epsNodes.filter(e => !toDelete.has(e.id)),
+                projects: updatedProjects,
+                selectedId: state.selectedId && toDelete.has(state.selectedId) ? null : state.selectedId,
+            };
+        }
+
+        case 'ADD_PROJECT': {
+            const now = nowISO();
+            const proj: ProjectMeta = {
+                id: 'proj_' + uid(),
+                epsId: action.epsId,
+                name: action.name,
+                code: action.code,
+                priority: state.projects.length + 1,
+                description: '',
+                status: 'Planificación',
+                startDate: null,
+                endDate: null,
+                statusDate: null,
+                activityCount: 0,
+                completedCount: 0,
+                criticalCount: 0,
+                globalPct: 0,
+                plannedPct: 0,
+                createdAt: now,
+                updatedAt: now,
+                supabaseId: null,
+            };
+            const expanded = new Set(state.expandedIds);
+            if (action.epsId) expanded.add(action.epsId);
+            return { ...state, projects: [...state.projects, proj], expandedIds: expanded, selectedId: proj.id };
+        }
+
+        case 'UPDATE_PROJECT': {
+            return {
+                ...state,
+                projects: state.projects.map(p =>
+                    p.id === action.id ? { ...p, ...action.updates, updatedAt: nowISO() } : p
+                ),
+            };
+        }
+
+        case 'DELETE_PROJECT': {
+            // Also remove saved project state from localStorage
+            try { localStorage.removeItem(PROJECT_PREFIX + action.id); } catch { }
+            return {
+                ...state,
+                projects: state.projects.filter(p => p.id !== action.id),
+                selectedId: state.selectedId === action.id ? null : state.selectedId,
+                activeProjectId: state.activeProjectId === action.id ? null : state.activeProjectId,
+            };
+        }
+
+        case 'TOGGLE_EXPAND': {
+            const expanded = new Set(state.expandedIds);
+            if (expanded.has(action.id)) expanded.delete(action.id);
+            else expanded.add(action.id);
+            return { ...state, expandedIds: expanded };
+        }
+
+        case 'SELECT':
+            return { ...state, selectedId: action.id };
+
+        case 'SET_ACTIVE_PROJECT':
+            return { ...state, activeProjectId: action.id };
+
+        case 'EXPAND_ALL': {
+            const all = new Set(state.epsNodes.map(e => e.id));
+            return { ...state, expandedIds: all };
+        }
+
+        case 'COLLAPSE_ALL':
+            return { ...state, expandedIds: new Set<string>() };
+
+        default:
+            return state;
+    }
+}
+
+// ─── Context ────────────────────────────────────────────────────
+interface PortfolioContextValue {
+    state: PortfolioState;
+    dispatch: React.Dispatch<PortfolioAction>;
+    treeNodes: TreeNode[];
+    savePortfolio: () => void;
+    saveProjectState: (projectId: string, ganttState: any) => void;
+    loadProjectState: (projectId: string) => any | null;
+}
+
+const PortfolioContext = createContext<PortfolioContextValue | null>(null);
+
+export function usePortfolio() {
+    const ctx = useContext(PortfolioContext);
+    if (!ctx) throw new Error('usePortfolio must be inside PortfolioProvider');
+    return ctx;
+}
+
+// ─── Provider ───────────────────────────────────────────────────
+export function PortfolioProvider({ children }: { children: React.ReactNode }) {
+    const [state, dispatch] = useReducer(portfolioReducer, initialState);
+
+    // Load from localStorage on mount
+    useEffect(() => {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (raw) {
+                const data = JSON.parse(raw);
+                dispatch({
+                    type: 'LOAD',
+                    state: {
+                        epsNodes: data.epsNodes || [],
+                        projects: data.projects || [],
+                        expandedIds: data.expandedIds || [],
+                        activeProjectId: data.activeProjectId || null,
+                    },
+                });
+            }
+        } catch (e) {
+            console.warn('Failed to load portfolio from localStorage', e);
+        }
+    }, []);
+
+    // Auto-save to localStorage on state changes
+    const savePortfolio = useCallback(() => {
+        try {
+            const data = {
+                epsNodes: state.epsNodes,
+                projects: state.projects,
+                expandedIds: Array.from(state.expandedIds),
+                activeProjectId: state.activeProjectId,
+            };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        } catch (e) {
+            console.error('Failed to save portfolio', e);
+        }
+    }, [state]);
+
+    useEffect(() => {
+        // Debounce save
+        const t = setTimeout(() => savePortfolio(), 300);
+        return () => clearTimeout(t);
+    }, [savePortfolio]);
+
+    // Save an individual project's gantt state
+    const saveProjectState = useCallback((projectId: string, ganttState: any) => {
+        try {
+            localStorage.setItem(PROJECT_PREFIX + projectId, JSON.stringify(ganttState));
+        } catch (e) {
+            console.error('Failed to save project state', e);
+        }
+    }, []);
+
+    // Load an individual project's gantt state
+    const loadProjectState = useCallback((projectId: string): any | null => {
+        try {
+            const raw = localStorage.getItem(PROJECT_PREFIX + projectId);
+            return raw ? JSON.parse(raw) : null;
+        } catch (e) {
+            console.error('Failed to load project state', e);
+            return null;
+        }
+    }, []);
+
+    // Build tree for rendering
+    const treeNodes = React.useMemo(
+        () => buildTree(state.epsNodes, state.projects, state.expandedIds),
+        [state.epsNodes, state.projects, state.expandedIds]
+    );
+
+    return (
+        <PortfolioContext.Provider value={{ state, dispatch, treeNodes, savePortfolio, saveProjectState, loadProjectState }}>
+            {children}
+        </PortfolioContext.Provider>
+    );
+}

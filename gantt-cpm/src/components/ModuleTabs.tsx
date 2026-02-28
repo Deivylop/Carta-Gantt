@@ -2,9 +2,9 @@
 // ModuleTabs – Top-level navigation between application modules
 // ═══════════════════════════════════════════════════════════════════
 import React from 'react';
-import { Home, CalendarRange, BarChart3, Settings, GanttChart, GitBranch } from 'lucide-react';
+import { Home, CalendarRange, BarChart3, Settings, GanttChart, GitBranch, Building2, Briefcase } from 'lucide-react';
 
-export type ModuleId = 'inicio' | 'gantt' | 'lookAhead' | 'dashboard' | 'whatIf' | 'config';
+export type ModuleId = 'inicio' | 'projects' | 'gantt' | 'lookAhead' | 'dashboard' | 'whatIf' | 'config';
 
 interface Tab {
   id: ModuleId;
@@ -14,6 +14,7 @@ interface Tab {
 
 const TABS: Tab[] = [
   { id: 'inicio',     label: 'Inicio',          icon: <Home size={16} /> },
+  { id: 'projects',   label: 'Proyectos',       icon: <Building2 size={16} /> },
   { id: 'gantt',      label: 'Carta Gantt',     icon: <GanttChart size={16} /> },
   { id: 'lookAhead',  label: 'Look Ahead',      icon: <CalendarRange size={16} /> },
   { id: 'whatIf',     label: 'What-If',         icon: <GitBranch size={16} /> },
@@ -24,9 +25,10 @@ const TABS: Tab[] = [
 interface Props {
   active: ModuleId;
   onChange: (id: ModuleId) => void;
+  activeProjectName?: string | null;
 }
 
-export default function ModuleTabs({ active, onChange }: Props) {
+export default function ModuleTabs({ active, onChange, activeProjectName }: Props) {
   return (
     <div
       style={{
@@ -76,6 +78,31 @@ export default function ModuleTabs({ active, onChange }: Props) {
           </button>
         );
       })}
+
+      {/* Active project indicator on the right */}
+      {activeProjectName && (
+        <>
+          <div style={{ flex: 1 }} />
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              paddingRight: 16,
+              fontSize: 11,
+              color: 'var(--text-muted)',
+              cursor: 'pointer',
+            }}
+            onClick={() => onChange('projects')}
+            title="Ir a Cartera de Proyectos"
+          >
+            <Briefcase size={13} style={{ color: '#6366f1' }} />
+            <span style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {activeProjectName}
+            </span>
+          </div>
+        </>
+      )}
     </div>
   );
 }
