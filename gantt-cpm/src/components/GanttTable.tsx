@@ -270,7 +270,11 @@ export default function GanttTable() {
                         simReal = pct;
                     } else {
                         // How many remaining work-days are still ahead of the reflector?
-                        const remWdFromTarget = getExactWorkDays(target, efObj, cal);
+                        // target day itself is consumed (reflector covers through end-of-day),
+                        // so remaining starts from the day AFTER target.
+                        const dayAfterTarget = new Date(target);
+                        dayAfterTarget.setDate(dayAfterTarget.getDate() + 1);
+                        const remWdFromTarget = getExactWorkDays(dayAfterTarget, efObj, cal);
                         // Days already consumed by the reflector position
                         const consumed = Math.max(0, remDur - remWdFromTarget);
                         const ratio = Math.min(1, consumed / remDur);
