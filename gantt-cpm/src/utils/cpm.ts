@@ -691,7 +691,10 @@ export function calcCPM(
         a.LS = calcLateStart(a.LF, dur, a.cal || defCal);
         a.TF = (a.ES && a.LS) ? Math.max(0, getExactWorkDays(a.ES, a.LS, a.cal || defCal)) : 0;
         a.crit = a.TF === 0;
-        if (a.remDur === null || a.remDur === undefined) {
+        if (a.type === 'summary' || a._isProjRow) {
+            // Summary remDur = always recalculated from dur and pct
+            a.remDur = Math.round((a.dur || 0) * (100 - (a.pct || 0)) / 100);
+        } else if (a.remDur === null || a.remDur === undefined) {
             a.remDur = Math.round((a.dur || 0) * (100 - (a.pct || 0)) / 100);
         }
     });

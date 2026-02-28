@@ -208,26 +208,26 @@ export default function GanttTable() {
         const map = new Map<string, { simReal: number; simProg: number }>();
         if (!spotlightEnabled || !spotlightEnd) return map;
         const target = new Date(spotlightEnd); target.setHours(0, 0, 0, 0);
-        const sd = new Date(statusDate); sd.setHours(0, 0, 0, 0);
-        const activeBlIdx = state.activeBaselineIdx ?? 0;
 
         // ── Leaf activities ──
         for (const a of activities) {
             if (a._isProjRow || a.type === 'summary') continue;
             const cal = a.cal || defCal;
 
-            // ── simProgPct: planned progress at target (two-segment baseline interp.) ──
+            // ── simProgPct: planned progress at target from BASELINE dates ──
+            // If no active baseline exists → 0%
             let simProg = 0;
-            const blStart = a.blES || a.ES;
-            const blEnd = a.blEF || a.EF;
-            if (blStart && blEnd) {
-                const stObj = new Date(blStart); stObj.setHours(0, 0, 0, 0);
-                const endObj = new Date(blEnd); endObj.setHours(0, 0, 0, 0);
-                if (target <= stObj) { simProg = 0; }
-                else if (target >= endObj) { simProg = 100; }
-                else {
-                    const activeBl = (a.baselines || [])[activeBlIdx] || null;
-                    if (activeBl && activeBl.pct != null && activeBl.statusDate) {
+            const activeBlIdx = state.activeBaselineIdx ?? 0;
+            const activeBl = (a.baselines || [])[activeBlIdx] || null;
+            if (activeBl && activeBl.ES) {
+                const blStart = a.blES || a.ES;
+                const blEnd = a.blEF || a.EF;
+                if (blStart && blEnd) {
+                    const stObj = new Date(blStart); stObj.setHours(0, 0, 0, 0);
+                    const endObj = new Date(blEnd); endObj.setHours(0, 0, 0, 0);
+                    if (target <= stObj) { simProg = 0; }
+                    else if (target >= endObj) { simProg = 100; }
+                    else if (activeBl.pct != null && activeBl.statusDate) {
                         const blPct = activeBl.pct;
                         if (blPct === 0) {
                             simProg = getExactElapsedRatio(blStart, blEnd, target, cal) * 100;
@@ -251,27 +251,20 @@ export default function GanttTable() {
                 }
             }
 
-            // ── simRealPct: project actual progress at target ──
+            // ── simRealPct: linear time-based proration on CURRENT schedule (ES/EF) ──
             let simReal = 0;
             const pct = a.pct || 0;
             if (pct >= 100) {
                 simReal = 100;
-            } else if (a.EF) {
+            } else if (a.ES && a.EF) {
+                const esObj = new Date(a.ES); esObj.setHours(0, 0, 0, 0);
                 const efObj = new Date(a.EF); efObj.setHours(0, 0, 0, 0);
                 if (target >= efObj) {
-                    // Reflector is past the scheduled finish → activity expected complete
                     simReal = 100;
-                } else if (pct > 0 && a.ES) {
-                    const actStart = a.actualStart ? new Date(a.actualStart) : new Date(a.ES);
-                    actStart.setHours(0, 0, 0, 0);
-                    const elapsedWd = getExactWorkDays(actStart, sd, cal);
-                    if (elapsedWd > 0) {
-                        const rate = pct / elapsedWd; // % per work day
-                        const projWd = getExactWorkDays(actStart, target, cal);
-                        simReal = Math.min(100, Math.max(pct, rate * projWd));
-                    } else {
-                        simReal = pct;
-                    }
+                } else if (target <= esObj) {
+                    simReal = 0;
+                } else {
+                    simReal = getExactElapsedRatio(a.ES, a.EF, target, cal) * 100;
                 }
             }
 
