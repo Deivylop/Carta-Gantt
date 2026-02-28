@@ -529,7 +529,7 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
         const gridColor = lightMode ? '#e2e8f0' : '#1e293b';
         const textColor = lightMode ? '#334155' : '#94a3b8';
         const plannedColor = '#3b82f6';
-        const actualColor = '#06b6d4';
+        const actualColor = '#10b981';
 
         // ─── Background ──────────────────────────────────
         ctx.fillStyle = bgColor;
@@ -930,7 +930,7 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
                         {tooltip.date}
                     </div>
                     <div style={{ color: '#3b82f6', marginBottom: 2 }}>Programado: <strong>{tooltip.planned}</strong></div>
-                    <div style={{ color: '#06b6d4' }}>Real: <strong>{tooltip.actual}</strong></div>
+                    <div style={{ color: '#10b981' }}>Real: <strong>{tooltip.actual}</strong></div>
                 </div>
             )}
         </div>
