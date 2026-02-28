@@ -54,6 +54,8 @@ export default function WhatIfPage() {
   const [subTab, setSubTab] = useState<SubTab>('editor');
   const [sidebarW] = useState(240);
   const [resizing, setResizing] = useState(false);
+  const [hResizing, setHResizing] = useState(false);
+  const [formH, setFormH] = useState(200);
   const [mergeAlert, setMergeAlert] = useState<ScenarioAlert | null>(null);
   const [showMergeConfirm, setShowMergeConfirm] = useState(false);
 
@@ -127,6 +129,22 @@ export default function WhatIfPage() {
     window.addEventListener('mouseup', handleMouseUp);
     return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
   }, [resizing, sidebarW, dispatch]);
+
+  /* ── Resize handle for horizontal divider (detail panel height) ── */
+  useEffect(() => {
+    if (!hResizing) return;
+    const handleMove = (e: MouseEvent) => {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setFormH(Math.max(60, Math.min(rect.bottom - e.clientY, 500)));
+    };
+    const handleUp = () => { setHResizing(false); document.body.style.cursor = ''; document.body.style.userSelect = ''; };
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', handleMove);
+    document.addEventListener('mouseup', handleUp);
+    return () => { document.removeEventListener('mousemove', handleMove); document.removeEventListener('mouseup', handleUp); };
+  }, [hResizing]);
 
   const SUB_TABS: { id: SubTab; label: string; icon: React.ReactNode }[] = [
     { id: 'editor',     label: 'Edición',     icon: <GanttChart size={13} /> },
@@ -289,8 +307,12 @@ export default function WhatIfPage() {
                       </div>
                     </div>
 
-                    {/* Detail Panel at bottom (optional — for activity editing) */}
-                    <div style={{ height: 180, flexShrink: 0, overflow: 'hidden', borderTop: '1px solid var(--border-primary)' }}>
+                    {/* Horizontal Resize Handle */}
+                    <div className={`h-resize ${hResizing ? 'rsz' : ''}`}
+                      onMouseDown={() => setHResizing(true)} />
+
+                    {/* Detail Panel at bottom — resizable */}
+                    <div style={{ height: formH, flexShrink: 0, overflow: 'hidden', borderTop: '1px solid var(--border-primary)' }}>
                       <ActivityDetailPanel />
                     </div>
                   </div>
