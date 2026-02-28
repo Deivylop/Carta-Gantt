@@ -63,6 +63,17 @@ function calcEF(es: Date, dur: number, cal: CalendarType): Date {
     return addDays(lastWorkDay, 1); // EF is exclusive (day after last work day)
 }
 
+/** Compute Late Start from Late Finish (exclusive) and work-day duration — inverse of calcEF */
+function calcLateStart(lf: Date, dur: number, cal: CalendarType): Date {
+    if (dur <= 0) return new Date(lf);
+    // LF is exclusive (day after the latest allowable last work day)
+    // Find the latest last-work-day: go backward from lf-1 to a work day
+    let lastWD = addDays(lf, -1);
+    while (!isWorkDayForCal(lastWD, cal)) lastWD = addDays(lastWD, -1);
+    // Go backward dur-1 work days to find LS
+    return dur === 1 ? new Date(lastWD) : addWorkDays(lastWD, -(dur - 1), cal);
+}
+
 export function addWorkDays(d: Date, wd: number, cal: CalendarType): Date {
     if (wd === 0) return new Date(d);
     const r = new Date(d);
@@ -634,25 +645,33 @@ export function calcCPM(
     const toD = (v: any): Date => v instanceof Date ? v : new Date(v);
     const sorted = [...activities].sort((a, b) => toD(b.EF || projEnd).getTime() - toD(a.EF || projEnd).getTime());
 
-    // Función auxiliar: duración efectiva en días calendario (ES→EF) para el backward pass
-    const effCalDays = (a: Activity): number => {
+    // Función auxiliar: duración efectiva en días laborales (ES→EF) para el backward pass
+    const effWorkDur = (a: Activity): number => {
         if (a.type === 'milestone') return 0;
-        // Usar la distancia real ES→EF (que refleja la reprogramación)
-        if (a.ES && a.EF) return Math.max(0, dayDiff(a.ES, a.EF));
-        // Fallback: estimate from duration (only used if ES/EF not computed)
-        return Math.max(0, dayDiff(new Date(), addWorkDays(new Date(), a.dur || 0, a.cal || defCal)));
+        if (a.ES && a.EF) return Math.max(0, calWorkDays(a.ES, a.EF, a.cal || defCal));
+        return a.dur || 0;
     };
 
     sorted.forEach(a => {
-        a.LS = addDays(a.LF!, -effCalDays(a));
+        const dur = effWorkDur(a);
+        a.LS = calcLateStart(a.LF!, dur, a.cal || defCal);
         if (a.preds) {
             a.preds.forEach(p => {
                 const pred = byId[p.id]; if (!pred) return;
                 let newLF: Date; const lag = p.lag || 0;
-                if (p.type === 'FS') newLF = addWorkDays(a.LS!, -lag, pred.cal || defCal);
-                else if (p.type === 'SS') newLF = addDays(addWorkDays(a.LS!, -lag, pred.cal || defCal), effCalDays(pred));
-                else if (p.type === 'FF') newLF = addWorkDays(a.LF!, -lag, pred.cal || defCal);
-                else newLF = addWorkDays(a.LS!, -lag, pred.cal || defCal);
+                if (p.type === 'FS') {
+                    newLF = addWorkDays(a.LS!, -lag, pred.cal || defCal);
+                } else if (p.type === 'SS') {
+                    // SS backward: latest pred ES such that suc.LS respects the SS link
+                    const latestPredES = addWorkDays(a.LS!, -lag, pred.cal || defCal);
+                    newLF = calcEF(latestPredES, effWorkDur(pred), pred.cal || defCal);
+                } else if (p.type === 'FF') {
+                    newLF = addWorkDays(a.LF!, -lag, pred.cal || defCal);
+                } else {
+                    // SF backward: latest pred ES then derive LF
+                    const latestPredES = addWorkDays(a.LF!, -lag, pred.cal || defCal);
+                    newLF = calcEF(latestPredES, effWorkDur(pred), pred.cal || defCal);
+                }
                 if (!pred.LF || newLF < pred.LF) {
                     pred.LF = new Date(newLF);
                 }
@@ -662,10 +681,10 @@ export function calcCPM(
 
     activities.forEach(a => {
         if (!a.LF) a.LF = new Date(projEnd);
-        a.LS = addDays(a.LF, -effCalDays(a));
-        const tf = dayDiff(a.ES || projStart, a.LS || projStart);
-        a.TF = Math.max(0, tf);
-        a.crit = a.TF <= 1;
+        const dur = effWorkDur(a);
+        a.LS = calcLateStart(a.LF, dur, a.cal || defCal);
+        a.TF = (a.ES && a.LS) ? Math.max(0, getExactWorkDays(a.ES, a.LS, a.cal || defCal)) : 0;
+        a.crit = a.TF === 0;
         if (a.remDur === null || a.remDur === undefined) {
             a.remDur = Math.round((a.dur || 0) * (100 - (a.pct || 0)) / 100);
         }
