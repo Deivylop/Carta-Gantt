@@ -8,11 +8,14 @@ import { DEFAULT_RISK_STATE } from '../types/risk';
 
 // Maps Calendar factors directly as in original HTML
 let isSaving = false;
+let pendingSave: { state: GanttState; projectId: string | null } | null = null;
 
 export async function saveToSupabase(state: GanttState, projectId: string | null): Promise<string | null> {
     if (isSaving) {
-        console.warn('Supabase save already in progress, skipping concurrent save.');
-        return null; // Skip this save attempt
+        // Queue latest state so it gets saved once the current save finishes
+        pendingSave = { state, projectId };
+        console.warn('Supabase save already in progress — queued for retry.');
+        return null;
     }
     isSaving = true;
 
@@ -246,6 +249,13 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
         return currentId as string;
     } finally {
         isSaving = false;
+        // Process queued save (latest state wins)
+        if (pendingSave) {
+            const { state: ps, projectId: pp } = pendingSave;
+            pendingSave = null;
+            console.log('[Supabase] Processing queued save…');
+            setTimeout(() => saveToSupabase(ps, pp).catch(e => console.error('Queued save failed:', e)), 150);
+        }
     }
 }
 
@@ -253,15 +263,20 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
 async function saveRiskDataToSupabase(projectId: string, riskState: RiskAnalysisState | undefined): Promise<void> {
     if (!riskState) return;
 
+    // Helper to check Supabase errors
+    const chk = (res: { error: any }, label: string) => {
+        if (res.error) { console.error(`[RiskSync] ${label}:`, res.error); throw res.error; }
+    };
+
     // 7a. Clear old risk data (cascade-safe order — children before parents)
     // risk_simulation_runs CASCADE → percentiles, histogram, activity stats, criticality, sensitivity, snapshots
-    await supabase.from('risk_simulation_runs').delete().eq('project_id', projectId);
-    await supabase.from('risk_sim_params').delete().eq('project_id', projectId);
-    await supabase.from('risk_distributions').delete().eq('project_id', projectId);
+    chk(await supabase.from('risk_simulation_runs').delete().eq('project_id', projectId), 'del sim_runs');
+    chk(await supabase.from('risk_sim_params').delete().eq('project_id', projectId), 'del sim_params');
+    chk(await supabase.from('risk_distributions').delete().eq('project_id', projectId), 'del distributions');
     // risk_events CASCADE → risk_task_impacts
-    await supabase.from('risk_events').delete().eq('project_id', projectId);
+    chk(await supabase.from('risk_events').delete().eq('project_id', projectId), 'del events');
     // risk_scoring_config CASCADE → probability_scale, impact_scale, impact_types, tolerance_levels
-    await supabase.from('risk_scoring_config').delete().eq('project_id', projectId);
+    chk(await supabase.from('risk_scoring_config').delete().eq('project_id', projectId), 'del scoring_config');
 
     // 7b. Risk Scoring Config
     const scoring = riskState.riskScoring;
@@ -427,41 +442,41 @@ async function saveRiskDataToSupabase(projectId: string, riskState: RiskAnalysis
             // Duration percentiles
             const pctlEntries = Object.entries(run.durationPercentiles || {});
             if (pctlEntries.length) {
-                await supabase.from('risk_run_percentiles').insert(
+                chk(await supabase.from('risk_run_percentiles').insert(
                     pctlEntries.map(([p, d]) => ({ run_id: runUuid, percentile: Number(p), duration: d }))
-                );
+                ), 'ins run_percentiles');
             }
 
             // Date percentiles
             const datePctlEntries = Object.entries(run.datePercentiles || {});
             if (datePctlEntries.length) {
-                await supabase.from('risk_run_date_percentiles').insert(
+                chk(await supabase.from('risk_run_date_percentiles').insert(
                     datePctlEntries.map(([p, d]) => ({ run_id: runUuid, percentile: Number(p), finish_date: d }))
-                );
+                ), 'ins run_date_percentiles');
             }
 
             // Histogram
             if (run.histogram?.length) {
-                await supabase.from('risk_run_histogram').insert(
+                chk(await supabase.from('risk_run_histogram').insert(
                     run.histogram.map((h, i) => ({
                         run_id: runUuid, bin_start: h.binStart, bin_end: h.binEnd,
                         count: h.count, cum_pct: h.cumPct, sort_order: i,
                     }))
-                );
+                ), 'ins run_histogram');
             }
 
             // Activity stats + per-activity percentiles
             const actPctlEntries = Object.entries(run.activityPercentiles || {});
             if (actPctlEntries.length) {
                 // Deterministic stats
-                await supabase.from('risk_run_activity_stats').insert(
+                chk(await supabase.from('risk_run_activity_stats').insert(
                     actPctlEntries.map(([actId, s]) => ({
                         run_id: runUuid, activity_local_id: actId,
                         deterministic_start: s.deterministicStart || null,
                         deterministic_finish: s.deterministicFinish || null,
                         deterministic_duration: s.deterministicDuration ?? null,
                     }))
-                );
+                ), 'ins run_activity_stats');
 
                 // Activity finish date percentiles
                 const adpRows: any[] = [];
@@ -470,7 +485,7 @@ async function saveRiskDataToSupabase(projectId: string, riskState: RiskAnalysis
                         adpRows.push({ run_id: runUuid, activity_local_id: actId, percentile: Number(p), finish_date: d });
                     });
                 });
-                if (adpRows.length) await supabase.from('risk_run_act_date_pctls').insert(adpRows);
+                if (adpRows.length) chk(await supabase.from('risk_run_act_date_pctls').insert(adpRows), 'ins act_date_pctls');
 
                 // Activity start date percentiles
                 const aspRows: any[] = [];
@@ -479,7 +494,7 @@ async function saveRiskDataToSupabase(projectId: string, riskState: RiskAnalysis
                         aspRows.push({ run_id: runUuid, activity_local_id: actId, percentile: Number(p), start_date: d });
                     });
                 });
-                if (aspRows.length) await supabase.from('risk_run_act_start_pctls').insert(aspRows);
+                if (aspRows.length) chk(await supabase.from('risk_run_act_start_pctls').insert(aspRows), 'ins act_start_pctls');
 
                 // Activity duration percentiles
                 const adurRows: any[] = [];
@@ -488,42 +503,42 @@ async function saveRiskDataToSupabase(projectId: string, riskState: RiskAnalysis
                         adurRows.push({ run_id: runUuid, activity_local_id: actId, percentile: Number(p), duration: d });
                     });
                 });
-                if (adurRows.length) await supabase.from('risk_run_act_dur_pctls').insert(adurRows);
+                if (adurRows.length) chk(await supabase.from('risk_run_act_dur_pctls').insert(adurRows), 'ins act_dur_pctls');
             }
 
             // Criticality index
             const critEntries = Object.entries(run.criticalityIndex || {});
             if (critEntries.length) {
-                await supabase.from('risk_run_criticality').insert(
+                chk(await supabase.from('risk_run_criticality').insert(
                     critEntries.map(([actId, ci]) => ({ run_id: runUuid, activity_local_id: actId, criticality_index: ci }))
-                );
+                ), 'ins criticality');
             }
 
             // Sensitivity index
             const sensEntries = Object.entries(run.sensitivityIndex || {});
             if (sensEntries.length) {
-                await supabase.from('risk_run_sensitivity').insert(
+                chk(await supabase.from('risk_run_sensitivity').insert(
                     sensEntries.map(([actId, si]) => ({ run_id: runUuid, activity_local_id: actId, sensitivity_index: si }))
-                );
+                ), 'ins sensitivity');
             }
 
             // Distribution snapshot
             const dSnapEntries = Object.entries(run.distributionsSnapshot || {});
             if (dSnapEntries.length) {
-                await supabase.from('risk_run_dist_snapshot').insert(
+                chk(await supabase.from('risk_run_dist_snapshot').insert(
                     dSnapEntries.map(([actId, d]) => ({
                         run_id: runUuid, activity_local_id: actId,
                         dist_type: d.type, dist_min: d.min ?? null,
                         most_likely: d.mostLikely ?? null, dist_max: d.max ?? null,
                     }))
-                );
+                ), 'ins dist_snapshot');
             }
 
             // Events snapshot (JSONB)
             if (run.riskEventsSnapshot?.length) {
-                await supabase.from('risk_run_events_snapshot').insert(
+                chk(await supabase.from('risk_run_events_snapshot').insert(
                     run.riskEventsSnapshot.map((ev, i) => ({ run_id: runUuid, event_data: ev, sort_order: i }))
-                );
+                ), 'ins events_snapshot');
             }
         }
     }
