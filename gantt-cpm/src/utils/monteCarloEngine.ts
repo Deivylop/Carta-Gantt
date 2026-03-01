@@ -5,10 +5,10 @@
 import type { Activity, CalendarType, CustomCalendar } from '../types/gantt';
 import type {
   DurationDistribution, RiskEvent, SimulationParams,
-  IterationResult, SimulationResult, HistogramBin, RiskTaskImpact,
+  IterationResult, SimulationResult, HistogramBin,
 } from '../types/risk';
 import { deepCloneActivities } from './whatIfEngine';
-import { calcCPM, isoDate, calWorkDays } from './cpm';
+import { calcCPM, calWorkDays } from './cpm';
 import { computeOutlineNumbers } from './helpers';
 
 // ─── Seeded PRNG (Mulberry32) ───────────────────────────────────
@@ -122,12 +122,28 @@ export function runIteration(
   const acts = deepCloneActivities(masterActivities);
   const sampledDurations: Record<string, number> = {};
 
+  // 1b. Ensure remDur is initialised for every task-level activity
+  //     (guards against imported data where remDur was never set)
+  for (const a of acts) {
+    if (a._isProjRow || a.type === 'summary' || a.type === 'milestone') continue;
+    if (a.remDur == null) {
+      const pct = a.pct || 0;
+      if (pct >= 100) {
+        a.remDur = 0;
+      } else if (pct > 0) {
+        a.remDur = Math.max(1, Math.round((a.dur || 0) * (1 - pct / 100)));
+      } else {
+        a.remDur = a.dur || 0;
+      }
+    }
+  }
+
   // 2. Apply duration distributions
   for (const a of acts) {
     if (a._isProjRow || a.type === 'summary') continue;
     const dist = distributions[a.id];
     if (!dist || dist.type === 'none') {
-      sampledDurations[a.id] = a.dur;
+      sampledDurations[a.id] = a.remDur ?? a.dur;
       continue;
     }
     const sampled = sampleDuration(dist, rng);
@@ -136,22 +152,26 @@ export function runIteration(
       continue;
     }
 
-    const newDur = Math.max(1, Math.round(sampled));
-    // If activity has progress, only vary remaining portion
-    if ((a.pct || 0) > 0 && (a.pct || 0) < 100) {
-      const pctDone = (a.pct || 0) / 100;
-      const newRemDur = Math.max(1, Math.round(newDur * (1 - pctDone)));
-      a.remDur = newRemDur;
-      a.dur = Math.round(newDur);
-    } else if ((a.pct || 0) >= 100) {
+    const newRemDur = Math.max(1, Math.round(sampled));
+    // Distribution is defined over remaining duration.
+    // For activities with progress: sampled value replaces remDur directly,
+    // dur is recalculated as doneDur + newRemDur.
+    // For activities without progress: remDur === dur.
+    if ((a.pct || 0) >= 100) {
       // Already completed, don't vary
-      sampledDurations[a.id] = a.dur;
+      sampledDurations[a.id] = 0;
       continue;
-    } else {
-      a.dur = newDur;
-      a.remDur = newDur;
     }
-    sampledDurations[a.id] = newDur;
+    const pct = a.pct || 0;
+    if (pct > 0) {
+      const doneDur = Math.round((a.dur || 0) * pct / 100);
+      a.remDur = newRemDur;
+      a.dur = doneDur + newRemDur;
+    } else {
+      a.dur = newRemDur;
+      a.remDur = newRemDur;
+    }
+    sampledDurations[a.id] = a.remDur;
   }
 
   // 3. Apply risk events (new P6-style risk drivers + legacy fallback)
@@ -180,10 +200,11 @@ export function runIteration(
           };
           const sampledDays = sampleDuration(schDist, rng);
           if (sampledDays > 0) {
+            // Additive model: risk duration is ADDED to base duration
             const addDays = Math.max(0, Math.round(sampledDays));
-            act.dur = Math.max(1, (act.dur || 0) + addDays);
-            if (act.remDur != null) act.remDur = Math.max(1, (act.remDur || 0) + addDays);
-            sampledDurations[ti.taskId] = act.dur;
+            act.dur = (act.dur || 0) + addDays;
+            if (act.remDur != null) act.remDur = (act.remDur || 0) + addDays;
+            sampledDurations[ti.taskId] = act.remDur ?? act.dur;
           }
         }
       }
@@ -208,7 +229,7 @@ export function runIteration(
           act.dur = Math.max(1, Math.round((act.dur || 1) * factor));
           if (act.remDur != null) act.remDur = Math.max(1, Math.round((act.remDur || 1) * factor));
         }
-        sampledDurations[actId] = act.dur;
+        sampledDurations[actId] = act.remDur ?? act.dur;
       }
     }
   }
@@ -221,20 +242,36 @@ export function runIteration(
   const projRow = result.activities.find(a => a._isProjRow);
   const critIds: string[] = [];
   let maxEF: Date | null = null;
+  const activityFinishDates: Record<string, string> = {};
+  const activityStartDates: Record<string, string> = {};
   for (const a of result.activities) {
     if (a._isProjRow || a.type === 'summary') continue;
     if (a.crit) critIds.push(a.id);
     if (a.EF && (!maxEF || a.EF > maxEF)) maxEF = a.EF;
+    // Store inclusive finish date (EF is exclusive = day after last work day)
+    if (a.EF) {
+      const inclusiveEF = new Date(a.EF);
+      inclusiveEF.setDate(inclusiveEF.getDate() - 1);
+      activityFinishDates[a.id] = inclusiveEF.toISOString();
+    }
+    if (a.ES) activityStartDates[a.id] = a.ES.toISOString();
   }
 
   const finishDate = projRow?.EF || maxEF || projStart;
-  const projectDuration = calWorkDays(projStart, finishDate, defCal);
+  // Project remaining duration: from statusDate (or projStart) to finish
+  const remStart = statusDate ? new Date(statusDate) : projStart;
+  const projectDuration = calWorkDays(remStart, finishDate, defCal);
+  // Store inclusive finish date for project too
+  const inclusiveFinish = new Date(finishDate);
+  inclusiveFinish.setDate(inclusiveFinish.getDate() - 1);
 
   return {
-    finishDate: finishDate.toISOString(),
+    finishDate: inclusiveFinish.toISOString(),
     projectDuration,
     criticalActivityIds: critIds,
     sampledDurations,
+    activityFinishDates,
+    activityStartDates,
   };
 }
 
@@ -267,7 +304,28 @@ export function runSimulation(
     if (a.EF && (!detMaxEF || a.EF > detMaxEF)) detMaxEF = a.EF;
   }
   const detFinish = detProjRow?.EF || detMaxEF || projStart;
-  const detDuration = calWorkDays(projStart, detFinish, defCal);
+  // Remaining duration: from statusDate (or projStart) to finish
+  const detRemStart = statusDate ? new Date(statusDate) : projStart;
+  const detDuration = calWorkDays(detRemStart, detFinish, defCal);
+  // Store inclusive finish (EF is exclusive)
+  const detFinishInclusive = new Date(detFinish);
+  detFinishInclusive.setDate(detFinishInclusive.getDate() - 1);
+
+  // Collect deterministic per-activity data for percentile comparison
+  // Use remaining duration (remDur) as the basis — completed work is not uncertain
+  const detActivityData: Record<string, { finish: string; start: string; duration: number }> = {};
+  for (const a of detResult.activities) {
+    if (a._isProjRow || a.type === 'summary') continue;
+    if (a.EF) {
+      const inclEF = new Date(a.EF);
+      inclEF.setDate(inclEF.getDate() - 1);
+      detActivityData[a.id] = {
+        finish: inclEF.toISOString(),
+        start: a.ES ? a.ES.toISOString() : '',
+        duration: a.remDur ?? a.dur ?? 0,
+      };
+    }
+  }
 
   // Run iterations
   const iterations: IterationResult[] = [];
@@ -284,7 +342,7 @@ export function runSimulation(
   if (onProgress) onProgress(100);
 
   // Compute statistics
-  const stats = computeStatistics(iterations, params.confidenceLevels, detFinish, detDuration, projStart, defCal);
+  const stats = computeStatistics(iterations, params.confidenceLevels, detFinish, detDuration, projStart, defCal, detActivityData);
 
   const id = 'run_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
 
@@ -295,7 +353,7 @@ export function runSimulation(
     params: { ...params, seed },
     completedIterations: N,
     deterministicDuration: detDuration,
-    deterministicFinish: detFinish.toISOString(),
+    deterministicFinish: detFinishInclusive.toISOString(),
     ...stats,
     distributionsSnapshot: { ...distributions },
     riskEventsSnapshot: riskEvents.map(r => ({ ...r })),
@@ -309,8 +367,9 @@ function computeStatistics(
   confidenceLevels: number[],
   _detFinish: Date,
   _detDuration: number,
-  projStart: Date,
-  defCal: CalendarType,
+  _projStart: Date,
+  _defCal: CalendarType,
+  detActivityData: Record<string, { finish: string; start: string; duration: number }> = {},
 ): Omit<SimulationResult, 'id' | 'name' | 'runAt' | 'params' | 'completedIterations' | 'deterministicDuration' | 'deterministicFinish' | 'distributionsSnapshot' | 'riskEventsSnapshot'> {
   const N = iterations.length;
   const durations = iterations.map(it => it.projectDuration).sort((a, b) => a - b);
@@ -349,6 +408,53 @@ function computeStatistics(
   // Histogram (20 bins)
   const histogram = buildHistogram(durations, 20);
 
+  // ─── Per-activity percentiles ──────────────────────────────────
+  const activityPercentiles: SimulationResult['activityPercentiles'] = {};
+  const allActIds = new Set<string>();
+  for (const iter of iterations) {
+    for (const id of Object.keys(iter.activityFinishDates)) allActIds.add(id);
+  }
+  for (const actId of allActIds) {
+    const actDates = iterations
+      .map(it => it.activityFinishDates[actId])
+      .filter(Boolean)
+      .sort();
+    const actStartDates = iterations
+      .map(it => it.activityStartDates[actId])
+      .filter(Boolean)
+      .sort();
+    const actDurs = iterations
+      .map(it => it.sampledDurations[actId])
+      .filter(d => d != null)
+      .sort((a, b) => a - b) as number[];
+    const n = actDates.length;
+    if (n === 0) continue;
+    const dateP: Record<number, string> = {};
+    const startDateP: Record<number, string> = {};
+    const durationP: Record<number, number> = {};
+    for (const p of confidenceLevels) {
+      const idx = Math.min(Math.floor((p / 100) * n), n - 1);
+      dateP[p] = actDates[idx];
+      if (actStartDates.length > 0) {
+        const sIdx = Math.min(Math.floor((p / 100) * actStartDates.length), actStartDates.length - 1);
+        startDateP[p] = actStartDates[sIdx];
+      }
+      if (actDurs.length > 0) {
+        const dIdx = Math.min(Math.floor((p / 100) * actDurs.length), actDurs.length - 1);
+        durationP[p] = actDurs[dIdx];
+      }
+    }
+    const det = detActivityData[actId];
+    activityPercentiles[actId] = {
+      deterministicFinish: det?.finish || '',
+      deterministicStart: det?.start || '',
+      deterministicDuration: det?.duration || 0,
+      datePercentiles: dateP,
+      startDatePercentiles: startDateP,
+      durationPercentiles: durationP,
+    };
+  }
+
   return {
     meanDuration: Math.round(mean * 10) / 10,
     stdDevDuration: Math.round(stdDev * 10) / 10,
@@ -357,6 +463,7 @@ function computeStatistics(
     criticalityIndex,
     sensitivityIndex,
     histogram,
+    activityPercentiles,
   };
 }
 

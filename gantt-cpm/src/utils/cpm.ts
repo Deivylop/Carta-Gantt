@@ -65,7 +65,13 @@ function calcEF(es: Date, dur: number, cal: CalendarType): Date {
 
 /** Compute Late Start from Late Finish (exclusive) and work-day duration — inverse of calcEF */
 function calcLateStart(lf: Date, dur: number, cal: CalendarType): Date {
-    if (dur <= 0) return new Date(lf);
+    if (dur <= 0) {
+        // Milestone / zero-dur: LF is exclusive, so the latest occurrence is
+        // the last work day on or before LF-1  (keeps LS inclusive, matching ES)
+        let ls = addDays(lf, -1);
+        while (!isWorkDayForCal(ls, cal)) ls = addDays(ls, -1);
+        return ls;
+    }
     // LF is exclusive (day after the latest allowable last work day)
     // Find the latest last-work-day: go backward from lf-1 to a work day
     let lastWD = addDays(lf, -1);
@@ -279,7 +285,7 @@ export function calcCPM(
         }
 
         // Snap ES to next work day (unless forced by actual start or constraint)
-        if (!forced && a.type !== 'milestone' && a.type !== 'summary') {
+        if (!forced && a.type !== 'summary') {
             es = snapToWorkDay(es, a.cal || defCal);
         }
 
@@ -423,8 +429,8 @@ export function calcCPM(
                 a._spanDur = calWorkDays(a.ES!, a.EF!, a.cal || defCal);
             } else {
                 // Sin avance: mover si newES es posterior al ES actual
-                // Snap to next work day
-                if (a.type !== 'milestone') newES = snapToWorkDay(newES, a.cal || defCal);
+                // Snap to next work day (milestones included for consistency)
+                newES = snapToWorkDay(newES, a.cal || defCal);
                 if (newES > a.ES!) {
                     a.ES = newES;
                     const effDur = a.type === 'milestone' ? 0 : (a.remDur != null ? a.remDur : (a.dur || 0));
@@ -649,7 +655,13 @@ export function calcCPM(
 
     activities.forEach(a => { a.LF = new Date(projEnd); });
     const toD = (v: any): Date => v instanceof Date ? v : new Date(v);
-    const sorted = [...activities].sort((a, b) => toD(b.EF || projEnd).getTime() - toD(a.EF || projEnd).getTime());
+    // Normalize milestone EF to exclusive (+1 day) for sort so milestones
+    // are processed before their predecessors whose EF matches the milestone date.
+    const normEF = (a: Activity): Date => {
+        if (!a.EF) return projEnd;
+        return a.type === 'milestone' ? addDays(a.EF, 1) : a.EF;
+    };
+    const sorted = [...activities].sort((a, b) => toD(normEF(b)).getTime() - toD(normEF(a)).getTime());
 
     // Función auxiliar: duración efectiva en días laborales (ES→EF) para el backward pass
     const effWorkDur = (a: Activity): number => {
@@ -691,13 +703,35 @@ export function calcCPM(
         a.LS = calcLateStart(a.LF, dur, a.cal || defCal);
         a.TF = (a.ES && a.LS) ? Math.max(0, getExactWorkDays(a.ES, a.LS, a.cal || defCal)) : 0;
         a.crit = a.TF === 0;
-        if (a.type === 'summary' || a._isProjRow) {
-            // Summary remDur = always recalculated from dur and pct
-            a.remDur = Math.round((a.dur || 0) * (100 - (a.pct || 0)) / 100);
-        } else if (a.remDur === null || a.remDur === undefined) {
-            a.remDur = Math.round((a.dur || 0) * (100 - (a.pct || 0)) / 100);
+        if (a.type !== 'summary' && !a._isProjRow) {
+            // Task-level: derive remDur from dur and pct only if not explicitly set
+            if (a.remDur === null || a.remDur === undefined) {
+                a.remDur = Math.round((a.dur || 0) * (100 - (a.pct || 0)) / 100);
+            }
         }
     });
+
+    // Summary / Project row remDur: bottom-up rollup (max of children's remDur)
+    // Process in reverse so nested summaries are resolved before parents
+    for (let i = activities.length - 1; i >= 0; i--) {
+        const a = activities[i];
+        if (a.type !== 'summary' && !a._isProjRow) continue;
+        let maxChildRemDur = 0;
+        if (a._isProjRow) {
+            for (let j = 1; j < activities.length; j++) {
+                const ch = activities[j];
+                if ((ch.remDur || 0) > maxChildRemDur) maxChildRemDur = ch.remDur || 0;
+            }
+        } else {
+            for (let j = i + 1; j < activities.length; j++) {
+                if (activities[j].lv <= a.lv) break;
+                if (activities[j].lv !== a.lv + 1) continue;
+                const ch = activities[j];
+                if ((ch.remDur || 0) > maxChildRemDur) maxChildRemDur = ch.remDur || 0;
+            }
+        }
+        a.remDur = maxChildRemDur;
+    }
 
     return { activities, totalDays, projectDays };
 }

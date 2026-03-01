@@ -1,18 +1,20 @@
 // ═══════════════════════════════════════════════════════════════════
 // RiskResultsChart – Histogram + CDF + Percentile table
-// Displays the results of a Monte Carlo simulation run.
+// + Per-activity percentile table (P50/P80/P90 finish dates)
 // ═══════════════════════════════════════════════════════════════════
-import React, { useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { SimulationResult } from '../../types/risk';
-import { fmtDate } from '../../utils/cpm';
+import { useGantt } from '../../store/GanttContext';
 
 interface Props {
   result: SimulationResult;
 }
 
 export default function RiskResultsChart({ result }: Props) {
+  const { state } = useGantt();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [pLevels, setPLevels] = useState<number[]>([50, 80, 90]);
 
   const percentiles = useMemo(() => {
     const levels = Object.keys(result.durationPercentiles).map(Number).sort((a, b) => a - b);
@@ -230,6 +232,12 @@ export default function RiskResultsChart({ result }: Props) {
           </tbody>
         </table>
       </div>
+
+      {/* ─── Per-Activity Percentile Table ─── */}
+      {result.activityPercentiles && Object.keys(result.activityPercentiles).length > 0 && (
+        <ActivityPercentileTable result={result} activities={state.activities}
+          pLevels={pLevels} onPLevelsChange={setPLevels} fmtDateStr={fmtDateStr} />
+      )}
     </div>
   );
 }
@@ -249,3 +257,135 @@ function SummaryCard({ label, value, sub, color }: { label: string; value: strin
 
 const thS: React.CSSProperties = { padding: '5px 10px', textAlign: 'center', fontWeight: 600, fontSize: 10, borderBottom: '2px solid var(--border-primary)', color: 'var(--text-secondary)' };
 const tdS: React.CSSProperties = { padding: '4px 10px', textAlign: 'center', borderBottom: '1px solid var(--border-primary)' };
+
+// ─── Per-Activity Percentile Table ──────────────────────────────
+
+import type { Activity } from '../../types/gantt';
+
+const AVAILABLE_LEVELS = [10, 25, 50, 75, 80, 90, 95];
+
+function ActivityPercentileTable({ result, activities, pLevels, onPLevelsChange, fmtDateStr }: {
+  result: SimulationResult;
+  activities: Activity[];
+  pLevels: number[];
+  onPLevelsChange: (levels: number[]) => void;
+  fmtDateStr: (iso: string) => string;
+}) {
+  const [sortCol, setSortCol] = useState<string>('id');
+  const [sortAsc, setSortAsc] = useState(true);
+
+  const toggleLevel = (l: number) => {
+    if (pLevels.includes(l)) {
+      if (pLevels.length <= 1) return; // keep at least one
+      onPLevelsChange(pLevels.filter(x => x !== l));
+    } else {
+      onPLevelsChange([...pLevels, l].sort((a, b) => a - b));
+    }
+  };
+
+  const actPerc = result.activityPercentiles;
+  const rows = useMemo(() => {
+    const arr = Object.entries(actPerc).map(([actId, data]) => {
+      const act = activities.find(a => a.id === actId);
+      return { actId, name: act?.name || actId, ...data };
+    });
+    arr.sort((a, b) => {
+      if (sortCol === 'id') return sortAsc ? a.actId.localeCompare(b.actId) : b.actId.localeCompare(a.actId);
+      if (sortCol === 'name') return sortAsc ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
+      if (sortCol === 'det') return sortAsc ? a.deterministicDuration - b.deterministicDuration : b.deterministicDuration - a.deterministicDuration;
+      // Sort by percentile column
+      const p = parseInt(sortCol.replace('p', ''));
+      const va = a.durationPercentiles[p] ?? 0;
+      const vb = b.durationPercentiles[p] ?? 0;
+      return sortAsc ? va - vb : vb - va;
+    });
+    return arr;
+  }, [actPerc, activities, sortCol, sortAsc]);
+
+  const handleSort = (col: string) => {
+    if (sortCol === col) setSortAsc(!sortAsc);
+    else { setSortCol(col); setSortAsc(true); }
+  };
+
+  const sortArrow = (col: string) => sortCol === col ? (sortAsc ? ' ▲' : ' ▼') : '';
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-heading)' }}>
+          Percentiles por Actividad
+        </div>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>Mostrar:</span>
+          {AVAILABLE_LEVELS.map(l => (
+            <button key={l} onClick={() => toggleLevel(l)}
+              style={{
+                fontSize: 9, padding: '1px 5px', borderRadius: 3, cursor: 'pointer',
+                border: pLevels.includes(l) ? '1px solid #6366f1' : '1px solid var(--border-primary)',
+                background: pLevels.includes(l) ? '#6366f120' : 'var(--bg-input)',
+                color: pLevels.includes(l) ? '#6366f1' : 'var(--text-muted)',
+                fontWeight: pLevels.includes(l) ? 600 : 400,
+              }}>
+              P{l}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div style={{ maxHeight: 300, overflow: 'auto', border: '1px solid var(--border-primary)', borderRadius: 4 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
+          <thead>
+            <tr style={{ background: 'var(--bg-panel)', position: 'sticky', top: 0, zIndex: 1 }}>
+              <th style={{ ...thS2, cursor: 'pointer' }} onClick={() => handleSort('id')}>ID{sortArrow('id')}</th>
+              <th style={{ ...thS2, textAlign: 'left', cursor: 'pointer', minWidth: 120 }} onClick={() => handleSort('name')}>Actividad{sortArrow('name')}</th>
+              <th style={{ ...thS2, cursor: 'pointer' }} onClick={() => handleSort('det')}>Dur. Resta.{sortArrow('det')}</th>
+              <th style={thS2}>Fecha Det.</th>
+              {pLevels.map(p => (
+                <React.Fragment key={p}>
+                  <th style={{ ...thS2, cursor: 'pointer', color: pColor(p) }} onClick={() => handleSort(`p${p}`)}>
+                    P{p} Dur.{sortArrow(`p${p}`)}
+                  </th>
+                  <th style={{ ...thS2, color: pColor(p) }}>P{p} Fecha</th>
+                  <th style={{ ...thS2, color: pColor(p) }}>Δ</th>
+                </React.Fragment>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={r.actId} style={{ background: i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)' }}>
+                <td style={tdS2}>{r.actId}</td>
+                <td style={{ ...tdS2, textAlign: 'left', fontWeight: 500 }}>{r.name}</td>
+                <td style={tdS2}>{r.deterministicDuration}d</td>
+                <td style={tdS2}>{r.deterministicFinish ? fmtDateStr(r.deterministicFinish) : '—'}</td>
+                {pLevels.map(p => {
+                  const dur = r.durationPercentiles[p];
+                  const date = r.datePercentiles[p];
+                  const delta = dur != null ? dur - r.deterministicDuration : 0;
+                  return (
+                    <React.Fragment key={p}>
+                      <td style={{ ...tdS2, fontWeight: 600, color: pColor(p) }}>{dur ?? '—'}d</td>
+                      <td style={tdS2}>{date ? fmtDateStr(date) : '—'}</td>
+                      <td style={{ ...tdS2, color: delta > 0 ? '#ef4444' : delta < 0 ? '#22c55e' : 'var(--text-muted)', fontSize: 9 }}>
+                        {delta > 0 ? '+' : ''}{delta}d
+                      </td>
+                    </React.Fragment>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function pColor(p: number): string {
+  if (p <= 25) return '#3b82f6';
+  if (p <= 50) return '#22c55e';
+  if (p <= 80) return '#f59e0b';
+  return '#ef4444';
+}
+
+const thS2: React.CSSProperties = { padding: '4px 6px', textAlign: 'center', fontWeight: 600, fontSize: 9, borderBottom: '2px solid var(--border-primary)', color: 'var(--text-secondary)', whiteSpace: 'nowrap' };
+const tdS2: React.CSSProperties = { padding: '3px 6px', textAlign: 'center', fontSize: 10, borderBottom: '1px solid var(--border-primary)', whiteSpace: 'nowrap' };

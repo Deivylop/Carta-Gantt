@@ -14,9 +14,10 @@ import RiskResultsChart from './RiskResultsChart';
 import RiskTornadoChart from './RiskTornadoChart';
 import RiskQualitativePanel from './RiskQualitativePanel';
 import RiskQuantitativePanel from './RiskQuantitativePanel';
-import { Dice5, BarChart3, Activity, AlertTriangle, Play, Trash2, Clock, ChevronDown, ChevronRight, Settings, Shield, ShieldAlert } from 'lucide-react';
+import RiskGanttChart from './RiskGanttChart';
+import { Dice5, BarChart3, Activity, Play, Trash2, Clock, ChevronDown, ChevronRight, Settings, Shield, ShieldAlert, GanttChart } from 'lucide-react';
 
-type SubTab = 'qualitative' | 'quantitative' | 'distributions' | 'results' | 'tornado';
+type SubTab = 'qualitative' | 'quantitative' | 'distributions' | 'results' | 'tornado' | 'gantt';
 
 const SUB_TABS: { id: SubTab; label: string; icon: React.ReactNode }[] = [
   { id: 'qualitative',   label: 'Cualitativo',    icon: <ShieldAlert size={13} /> },
@@ -24,6 +25,7 @@ const SUB_TABS: { id: SubTab; label: string; icon: React.ReactNode }[] = [
   { id: 'distributions', label: 'Distribuciones', icon: <Activity size={13} /> },
   { id: 'results',       label: 'Resultados',     icon: <BarChart3 size={13} /> },
   { id: 'tornado',       label: 'Tornado',        icon: <Dice5 size={13} /> },
+  { id: 'gantt',          label: 'Gantt',           icon: <GanttChart size={13} /> },
 ];
 
 export default function RiskAnalysisPage() {
@@ -72,6 +74,14 @@ export default function RiskAnalysisPage() {
   const distCount = useMemo(() => {
     return Object.values(risk.distributions).filter(d => d.type !== 'none').length;
   }, [risk.distributions]);
+
+  // Count quantified risk events (risk drivers)
+  const quantifiedRiskCount = useMemo(() => {
+    return risk.riskEvents.filter(r => r.quantified && r.taskImpacts.length > 0).length;
+  }, [risk.riskEvents]);
+
+  // Can run if there are distributions OR quantified risks
+  const canRun = distCount > 0 || quantifiedRiskCount > 0;
 
   // ─── Run Simulation ────────────────────────────────────────────
   const handleRun = useCallback(async () => {
@@ -151,7 +161,7 @@ export default function RiskAnalysisPage() {
         {/* Stats */}
         <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--border-primary)', fontSize: 10, color: 'var(--text-secondary)' }}>
           <div>{distCount} actividades con distribución</div>
-          <div>{risk.riskEvents.length} riesgos registrados</div>
+          <div>{risk.riskEvents.length} riesgos registrados ({quantifiedRiskCount} cuantificados)</div>
           <div>{risk.simulationRuns.length} simulaciones guardadas</div>
         </div>
 
@@ -213,12 +223,12 @@ export default function RiskAnalysisPage() {
         <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border-primary)' }}>
           <button
             onClick={handleRun}
-            disabled={risk.running || distCount === 0}
+            disabled={risk.running || !canRun}
             style={{
               width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               padding: '8px 0', fontSize: 12, fontWeight: 700,
-              background: risk.running ? '#6366f180' : distCount === 0 ? '#6366f140' : '#6366f1',
-              color: '#fff', border: 'none', borderRadius: 6, cursor: risk.running || distCount === 0 ? 'not-allowed' : 'pointer',
+              background: risk.running ? '#6366f180' : !canRun ? '#6366f140' : '#6366f1',
+              color: '#fff', border: 'none', borderRadius: 6, cursor: risk.running || !canRun ? 'not-allowed' : 'pointer',
             }}
           >
             <Play size={14} />
@@ -241,9 +251,9 @@ export default function RiskAnalysisPage() {
               </div>
             </div>
           )}
-          {distCount === 0 && !risk.running && (
+          {!canRun && !risk.running && (
             <div style={{ fontSize: 10, color: '#f59e0b', marginTop: 4, textAlign: 'center' }}>
-              Asigna distribuciones a las actividades primero
+              Asigna distribuciones o cuantifica riesgos primero
             </div>
           )}
         </div>
@@ -361,6 +371,11 @@ export default function RiskAnalysisPage() {
             activeResult
               ? <RiskTornadoChart result={activeResult} />
               : <EmptyState msg="Ejecuta una simulación para ver el análisis de sensibilidad." icon={<Dice5 size={40} />} />
+          )}
+          {subTab === 'gantt' && (
+            activeResult
+              ? <RiskGanttChart result={activeResult} />
+              : <EmptyState msg="Ejecuta una simulación para ver la comparación Gantt." icon={<GanttChart size={40} />} />
           )}
         </div>
       </div>

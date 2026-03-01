@@ -4,7 +4,7 @@
 // ═══════════════════════════════════════════════════════════════════
 import React, { createContext, useContext, useReducer, type ReactNode } from 'react';
 import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, VisibleRow, ProgressHistoryEntry, BaselineEntry, CustomCalendar, CustomFilter, MFPConfig, LeanRestriction, PPCWeekRecord, CNCEntry, WhatIfScenario } from '../types/gantt';
-import type { DurationDistribution, RiskEvent, SimulationParams, SimulationResult, RiskAnalysisState } from '../types/risk';
+import type { DurationDistribution, RiskEvent, SimulationParams, SimulationResult, RiskAnalysisState, RiskScoringConfig } from '../types/risk';
 import { DEFAULT_RISK_STATE, DEFAULT_SIM_PARAMS } from '../types/risk';
 import { createScenario, deepCloneActivities, rebaseScenario, recalcScenarioCPM, recordChange } from '../utils/whatIfEngine';
 import { calcCPM, calcMultipleFloatPaths, traceChain, newActivity, isoDate, parseDate, addDays, calWorkDays, fmtDate } from '../utils/cpm';
@@ -277,6 +277,7 @@ export type Action =
     | { type: 'RISK_SIM_COMPLETE'; result: SimulationResult }
     | { type: 'SET_RISK_ACTIVE_RUN'; runId: string | null }
     | { type: 'DELETE_RISK_RUN'; runId: string }
+    | { type: 'SET_RISK_SCORING'; scoring: RiskScoringConfig }
     | { type: 'LOAD_RISK_STATE'; riskState: Partial<RiskAnalysisState> };
 
 // Module-level restriction cache (set synchronously in reducer before buildVisRows)
@@ -1909,6 +1910,8 @@ function reducer(state: GanttState, action: Action): GanttState {
             const newActive = state.riskState.activeRunId === action.runId ? (filtered[0]?.id || null) : state.riskState.activeRunId;
             return { ...state, riskState: { ...state.riskState, simulationRuns: filtered, activeRunId: newActive } };
         }
+        case 'SET_RISK_SCORING':
+            return { ...state, riskState: { ...state.riskState, riskScoring: action.scoring } };
         case 'LOAD_RISK_STATE':
             return { ...state, riskState: { ...state.riskState, ...action.riskState } };
 

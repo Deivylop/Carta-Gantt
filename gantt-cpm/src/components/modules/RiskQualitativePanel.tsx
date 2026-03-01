@@ -1,8 +1,9 @@
-// ═══════════════════════════════════════════════════════════════════
+﻿// ═══════════════════════════════════════════════════════════════════
 // RiskQualitativePanel – Qualitative Risk Assessment (P6-style)
-// Risk register + 5×5 impact/probability matrix + detail panel.
+// INLINE-EDITABLE risk register + 5×5 matrix + resizable detail panel.
+// Every change dispatches immediately (auto-save).
 // ═══════════════════════════════════════════════════════════════════
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useGantt } from '../../store/GanttContext';
 import type {
   RiskEvent, ImpactLevel, QualitativeScore, RiskCategory,
@@ -11,12 +12,14 @@ import type {
 import {
   IMPACT_LABELS, IMPACT_WEIGHT, PROB_RANGES,
   computeQualScore, scoreColor, scoreLabel, createBlankRiskEvent,
+  DEFAULT_RISK_SCORING,
 } from '../../types/risk';
-import { Plus, Trash2, Save, X, Shield, ShieldAlert } from 'lucide-react';
+import { Plus, Trash2, Shield, ShieldAlert, Settings } from 'lucide-react';
+import RiskScoringModal from '../modals/RiskScoringModal';
 
 const LEVELS: ImpactLevel[] = ['VL', 'L', 'M', 'H', 'VH'];
 const CATEGORIES: RiskCategory[] = [
-  'Técnico', 'Externo', 'Organisacional', 'Gestión',
+  'Técnico', 'Externo', 'Organizacional', 'Gestión',
   'Clima', 'Suministro', 'Regulatorio', 'Diseño',
   'Subcontrato', 'Otro',
 ];
@@ -39,83 +42,89 @@ export default function RiskQualitativePanel() {
   const { state, dispatch } = useGantt();
   const risks = state.riskState.riskEvents;
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [editDraft, setEditDraft] = useState<RiskEvent | null>(null);
   const [detailTab, setDetailTab] = useState<DetailTab>('details');
   const [mitigationView, setMitigationView] = useState<'pre' | 'post'>('pre');
+  const [bottomH, setBottomH] = useState(280);
+  const dragRef = useRef<{ startY: number; startH: number } | null>(null);
 
   const selected = useMemo(() => risks.find(r => r.id === selectedId) ?? null, [risks, selectedId]);
+  const scoringCfg = state.riskState.riskScoring ?? DEFAULT_RISK_SCORING;
+  const [scoringOpen, setScoringOpen] = useState(false);
 
-  // ─── CRUD Handlers ──────────────────────────────────────────
+  // ─── Auto-save helper: dispatch UPDATE immediately ────────────
+  const updateRisk = useCallback((riskId: string, partial: Partial<RiskEvent>) => {
+    const r = risks.find(x => x.id === riskId);
+    if (!r) return;
+    dispatch({ type: 'UPDATE_RISK_EVENT', event: { ...r, ...partial } });
+  }, [risks, dispatch]);
+
+  const updateQS = useCallback((riskId: string, which: 'preMitigation' | 'postMitigation', field: keyof QualitativeScore, val: ImpactLevel) => {
+    const r = risks.find(x => x.id === riskId);
+    if (!r) return;
+    dispatch({ type: 'UPDATE_RISK_EVENT', event: { ...r, [which]: { ...r[which], [field]: val } } });
+  }, [risks, dispatch]);
+
+  // ─── CRUD ─────────────────────────────────────────────────────
   const handleAdd = useCallback(() => {
-    const evt = createBlankRiskEvent();
+    const evt = createBlankRiskEvent({ name: 'Nuevo Riesgo', status: 'open' });
     dispatch({ type: 'ADD_RISK_EVENT', event: evt });
     setSelectedId(evt.id);
-    setEditDraft(evt);
     setDetailTab('details');
   }, [dispatch]);
 
   const handleDelete = useCallback((id: string) => {
     if (!confirm('¿Eliminar este riesgo?')) return;
     dispatch({ type: 'DELETE_RISK_EVENT', eventId: id });
-    if (selectedId === id) { setSelectedId(null); setEditDraft(null); }
+    if (selectedId === id) setSelectedId(null);
   }, [selectedId, dispatch]);
 
-  const handleSelect = useCallback((r: RiskEvent) => {
-    setSelectedId(r.id);
-    setEditDraft({ ...r, taskImpacts: r.taskImpacts?.map(t => ({ ...t })) || [] });
-  }, []);
+  // ─── Resizable bottom panel ───────────────────────────────────
+  const onSplitterDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragRef.current = { startY: e.clientY, startH: bottomH };
+    const onMove = (ev: MouseEvent) => {
+      if (!dragRef.current) return;
+      const delta = dragRef.current.startY - ev.clientY;
+      setBottomH(Math.max(120, Math.min(600, dragRef.current.startH + delta)));
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [bottomH]);
 
-  const handleSave = useCallback(() => {
-    if (!editDraft) return;
-    if (!editDraft.name.trim()) { alert('Nombre requerido'); return; }
-    dispatch({ type: 'UPDATE_RISK_EVENT', event: editDraft });
-    setSelectedId(editDraft.id);
-  }, [editDraft, dispatch]);
-
-  const handleCancel = useCallback(() => {
-    if (selected) setEditDraft({ ...selected, taskImpacts: selected.taskImpacts?.map(t => ({ ...t })) || [] });
-    else { setEditDraft(null); setSelectedId(null); }
-  }, [selected]);
-
-  // Helpers for draft updates
-  const upd = useCallback((partial: Partial<RiskEvent>) => {
-    if (!editDraft) return;
-    setEditDraft({ ...editDraft, ...partial });
-  }, [editDraft]);
-
-  const updPre = useCallback((field: keyof QualitativeScore, val: ImpactLevel) => {
-    if (!editDraft) return;
-    setEditDraft({ ...editDraft, preMitigation: { ...editDraft.preMitigation, [field]: val } });
-  }, [editDraft]);
-
-  const updPost = useCallback((field: keyof QualitativeScore, val: ImpactLevel) => {
-    if (!editDraft) return;
-    setEditDraft({ ...editDraft, postMitigation: { ...editDraft.postMitigation, [field]: val } });
-  }, [editDraft]);
-
-  // ─── Risk Matrix ──────────────────────────────────────────────
+  // ─── Risk Matrix data ─────────────────────────────────────────
   const matrixData = useMemo(() => {
-    // Build 5×5 grid: rows = probability (VH top → VL bottom), cols = impact (VL left → VH right)
     const grid: Record<string, RiskEvent[]> = {};
     for (const p of LEVELS) for (const i of LEVELS) grid[`${p}-${i}`] = [];
     const src = mitigationView === 'pre' ? 'preMitigation' : 'postMitigation';
     for (const r of risks) {
       const qs = r[src] || r.preMitigation;
       if (!qs) continue;
+      // Use config weights to find the max-impact level
+      const wMap: Record<string, number> = {};
+      for (const s of scoringCfg.probabilityScale) wMap[s.key] = s.weight;
       const maxImpact = (['schedule', 'cost', 'performance'] as const)
-        .reduce((m, k) => IMPACT_WEIGHT[qs[k]] > IMPACT_WEIGHT[m] ? qs[k] : m, 'VL' as ImpactLevel);
+        .reduce((m, k) => (wMap[qs[k]] ?? IMPACT_WEIGHT[qs[k]]) > (wMap[m] ?? IMPACT_WEIGHT[m]) ? qs[k] : m, 'VL' as ImpactLevel);
       grid[`${qs.probability}-${maxImpact}`]?.push(r);
     }
     return grid;
-  }, [risks, mitigationView]);
+  }, [risks, mitigationView, scoringCfg]);
 
-  // Score for grid cell background
-  const cellScore = (probLvl: ImpactLevel, impLvl: ImpactLevel) =>
-    IMPACT_WEIGHT[probLvl] * IMPACT_WEIGHT[impLvl];
+  const cellScore = (probLvl: ImpactLevel, impLvl: ImpactLevel) => {
+    const wMap: Record<string, number> = {};
+    for (const s of scoringCfg.probabilityScale) wMap[s.key] = s.weight;
+    return Math.round((wMap[probLvl] ?? IMPACT_WEIGHT[probLvl]) * (wMap[impLvl] ?? IMPACT_WEIGHT[impLvl]));
+  };
+
+  const qsSource = mitigationView === 'pre' ? 'preMitigation' : 'postMitigation';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      {/* ─── Top: Register Grid ─── */}
+      {/* ─── Top: Register Grid + Matrix ─── */}
       <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         {/* Toolbar */}
         <div style={{
@@ -129,6 +138,9 @@ export default function RiskQualitativePanel() {
             {risks.length} riesgo{risks.length !== 1 ? 's' : ''}
           </span>
           <div style={{ flex: 1 }} />
+          <button onClick={() => setScoringOpen(true)} style={btnSmall} title="Configurar Escalas de Puntuación">
+            <Settings size={11} /> Escalas
+          </button>
           <div style={{ display: 'flex', gap: 4 }}>
             {(['pre', 'post'] as const).map(v => (
               <button key={v} onClick={() => setMitigationView(v)}
@@ -146,7 +158,7 @@ export default function RiskQualitativePanel() {
 
         {/* Split: Register table + Matrix */}
         <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
-          {/* Register Table */}
+          {/* Register Table - INLINE EDITABLE */}
           <div style={{ flex: 1, overflow: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
               <thead>
@@ -161,7 +173,7 @@ export default function RiskQualitativePanel() {
                 <tr style={{ background: 'var(--bg-panel)', position: 'sticky', top: 22, zIndex: 2 }}>
                   <th style={thS}>ID</th>
                   <th style={thS}>T/O</th>
-                  <th style={{ ...thS, textAlign: 'left', minWidth: 140 }}>Título</th>
+                  <th style={{ ...thS, textAlign: 'left', minWidth: 160 }}>Título</th>
                   <th style={thS}>Prob.</th>
                   <th style={thS}>Prog.</th>
                   <th style={thS}>Costo</th>
@@ -173,41 +185,80 @@ export default function RiskQualitativePanel() {
               </thead>
               <tbody>
                 {risks.map((r, i) => {
-                  const qs = mitigationView === 'pre' ? r.preMitigation : r.postMitigation;
-                  const sc = qs ? computeQualScore(qs) : 0;
+                  const qs = r[qsSource] || r.preMitigation;
+                  const sc = qs ? computeQualScore(qs, scoringCfg) : 0;
                   const isSelected = r.id === selectedId;
                   return (
                     <tr key={r.id}
-                      onClick={() => handleSelect(r)}
+                      onClick={() => setSelectedId(r.id)}
                       style={{
                         cursor: 'pointer',
                         background: isSelected ? 'rgba(99,102,241,0.12)' : (i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)'),
                         borderLeft: isSelected ? '3px solid #6366f1' : '3px solid transparent',
                       }}>
-                      <td style={tdS}>{r.id.slice(-4).toUpperCase()}</td>
+                      {/* Código - INLINE EDITABLE */}
+                      <td style={{ ...tdS, padding: 0 }}>
+                        <InlineText value={r.code || r.id.slice(-4).toUpperCase()} placeholder="Código"
+                          onCommit={(v) => updateRisk(r.id, { code: v })} />
+                      </td>
+                      {/* T/O - click to toggle */}
                       <td style={tdS}>
-                        <span style={{
-                          display: 'inline-block', background: r.threatOrOpportunity === 'threat' ? '#ef4444' : '#22c55e',
-                          color: '#fff', borderRadius: 3, padding: '1px 4px', fontSize: 9, fontWeight: 600,
-                        }}>
+                        <span onClick={(e) => {
+                          e.stopPropagation();
+                          updateRisk(r.id, { threatOrOpportunity: r.threatOrOpportunity === 'threat' ? 'opportunity' : 'threat' });
+                        }}
+                          style={{
+                            display: 'inline-block', background: r.threatOrOpportunity === 'threat' ? '#ef4444' : '#22c55e',
+                            color: '#fff', borderRadius: 3, padding: '1px 5px', fontSize: 9, fontWeight: 600, cursor: 'pointer',
+                          }}>
                           {r.threatOrOpportunity === 'threat' ? 'T' : 'O'}
                         </span>
                       </td>
-                      <td style={{ ...tdS, textAlign: 'left', fontWeight: 500 }}>{r.name || '(sin nombre)'}</td>
-                      <td style={tdS}><LevelBadge level={qs?.probability} /></td>
-                      <td style={tdS}><LevelBadge level={qs?.schedule} /></td>
-                      <td style={tdS}><LevelBadge level={qs?.cost} /></td>
+                      {/* Title - INLINE TEXT INPUT */}
+                      <td style={{ ...tdS, textAlign: 'left', padding: 0 }}>
+                        <InlineText value={r.name} placeholder="Nombre del riesgo..."
+                          onCommit={(v) => updateRisk(r.id, { name: v })} />
+                      </td>
+                      {/* Prob - INLINE SELECT */}
+                      <td style={tdS}>
+                        <LevelSelect value={qs?.probability || 'M'}
+                          onChange={(v) => updateQS(r.id, qsSource as 'preMitigation' | 'postMitigation', 'probability', v)} />
+                      </td>
+                      {/* Schedule - INLINE SELECT */}
+                      <td style={tdS}>
+                        <LevelSelect value={qs?.schedule || 'M'}
+                          onChange={(v) => updateQS(r.id, qsSource as 'preMitigation' | 'postMitigation', 'schedule', v)} />
+                      </td>
+                      {/* Cost - INLINE SELECT */}
+                      <td style={tdS}>
+                        <LevelSelect value={qs?.cost || 'M'}
+                          onChange={(v) => updateQS(r.id, qsSource as 'preMitigation' | 'postMitigation', 'cost', v)} />
+                      </td>
+                      {/* Score - computed */}
                       <td style={tdS}>
                         <span style={{
                           display: 'inline-block', minWidth: 28, textAlign: 'center',
-                          background: scoreColor(sc), color: '#fff',
+                          background: scoreColor(sc, scoringCfg), color: '#fff',
                           borderRadius: 3, padding: '1px 5px', fontSize: 10, fontWeight: 700,
                         }}>
                           {sc}
                         </span>
                       </td>
-                      <td style={tdS}>{RESPONSE_LABELS[r.mitigationResponse] || r.mitigationResponse}</td>
-                      <td style={tdS}>${(r.mitigationCost || 0).toLocaleString()}</td>
+                      {/* Response - INLINE SELECT */}
+                      <td style={tdS}>
+                        <select value={r.mitigationResponse}
+                          onClick={e => e.stopPropagation()}
+                          onChange={e => updateRisk(r.id, { mitigationResponse: e.target.value as MitigationResponse })}
+                          style={cellSelect}>
+                          {RESPONSES.map(resp => <option key={resp} value={resp}>{RESPONSE_LABELS[resp]}</option>)}
+                        </select>
+                      </td>
+                      {/* Mitigation Cost - INLINE NUMBER */}
+                      <td style={{ ...tdS, padding: 0 }}>
+                        <InlineNumber value={r.mitigationCost || 0} prefix="$"
+                          onCommit={(v) => updateRisk(r.id, { mitigationCost: v })} />
+                      </td>
+                      {/* Delete */}
                       <td style={tdS}>
                         <button onClick={(e) => { e.stopPropagation(); handleDelete(r.id); }}
                           style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: '#ef4444' }}>
@@ -219,9 +270,16 @@ export default function RiskQualitativePanel() {
                 })}
                 {risks.length === 0 && (
                   <tr><td colSpan={10} style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
-                    No hay riesgos. Haz clic en "Nuevo Riesgo" para comenzar.
+                    No hay riesgos. Escribe en la fila de abajo para crear uno.
                   </td></tr>
                 )}
+                {/* ── New-row placeholder: type here to add a risk ── */}
+                <NewRiskRow onAdd={(code, name) => {
+                  const evt = createBlankRiskEvent({ code: code || undefined, name: name || 'Nuevo Riesgo', status: 'open' });
+                  if (code) evt.code = code;
+                  dispatch({ type: 'ADD_RISK_EVENT', event: evt });
+                  setSelectedId(evt.id);
+                }} />
               </tbody>
             </table>
           </div>
@@ -235,12 +293,10 @@ export default function RiskQualitativePanel() {
               Matriz de Riesgos ({mitigationView === 'pre' ? 'Pre' : 'Post'}-Mitigación)
             </div>
             <div style={{ display: 'flex', flex: 1 }}>
-              {/* Y-axis label */}
               <div style={{
                 writingMode: 'vertical-rl', transform: 'rotate(180deg)',
                 fontSize: 9, fontWeight: 600, color: 'var(--text-muted)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                paddingRight: 4,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', paddingRight: 4,
               }}>
                 PROBABILIDAD →
               </div>
@@ -250,37 +306,31 @@ export default function RiskQualitativePanel() {
                     <tr>
                       <th style={{ width: 30 }}></th>
                       {LEVELS.map(l => (
-                        <th key={l} style={{
-                          fontSize: 8, fontWeight: 600, textAlign: 'center',
-                          padding: 2, color: 'var(--text-secondary)',
-                        }}>{l}</th>
+                        <th key={l} style={{ fontSize: 8, fontWeight: 600, textAlign: 'center', padding: 2, color: 'var(--text-secondary)' }}>{l}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {([...LEVELS].reverse()).map(pLvl => (
                       <tr key={pLvl}>
-                        <td style={{
-                          fontSize: 8, fontWeight: 600, textAlign: 'right',
-                          paddingRight: 3, color: 'var(--text-secondary)',
-                        }}>
-                          {pLvl}<br /><span style={{ fontSize: 7, fontWeight: 400 }}>{PROB_RANGES[pLvl]}</span>
+                        <td style={{ fontSize: 8, fontWeight: 600, textAlign: 'right', paddingRight: 3, color: 'var(--text-secondary)' }}>
+                          {pLvl}<br /><span style={{ fontSize: 7, fontWeight: 400 }}>{scoringCfg.probabilityScale.find(s => s.key === pLvl)?.threshold ?? PROB_RANGES[pLvl]}</span>
                         </td>
                         {LEVELS.map(iLvl => {
                           const cellRisks = matrixData[`${pLvl}-${iLvl}`] || [];
                           const cs = cellScore(pLvl, iLvl);
                           return (
                             <td key={iLvl} style={{
-                              background: scoreColor(cs) + '25',
+                              background: scoreColor(cs, scoringCfg) + '25',
                               border: '1px solid var(--border-primary)',
                               height: 44, padding: 2, verticalAlign: 'top',
                               cursor: cellRisks.length > 0 ? 'pointer' : 'default',
                             }}
-                              title={`Score: ${cs} (${scoreLabel(cs)})`}
+                              title={`Score: ${cs} (${scoreLabel(cs, scoringCfg)})`}
                             >
                               {cellRisks.map(r => (
                                 <div key={r.id}
-                                  onClick={() => handleSelect(r)}
+                                  onClick={() => setSelectedId(r.id)}
                                   style={{
                                     fontSize: 7, lineHeight: '9px', padding: '1px 2px',
                                     background: r.threatOrOpportunity === 'threat' ? '#ef444430' : '#22c55e30',
@@ -308,10 +358,22 @@ export default function RiskQualitativePanel() {
         </div>
       </div>
 
-      {/* ─── Bottom: Detail Panel ─── */}
-      {editDraft && (
+      {/* ─── Resizable Splitter ─── */}
+      {selected && (
+        <div onMouseDown={onSplitterDown}
+          style={{
+            height: 5, flexShrink: 0, cursor: 'row-resize',
+            background: 'var(--border-primary)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+          <div style={{ width: 32, height: 2, borderRadius: 1, background: 'var(--text-muted)' }} />
+        </div>
+      )}
+
+      {/* ─── Bottom: Detail Panel (auto-save) ─── */}
+      {selected && (
         <div style={{
-          height: 300, flexShrink: 0, borderTop: '2px solid var(--border-primary)',
+          height: bottomH, flexShrink: 0,
           overflow: 'auto', background: 'var(--bg-panel)',
           display: 'flex', flexDirection: 'column',
         }}>
@@ -332,80 +394,70 @@ export default function RiskQualitativePanel() {
                 {t === 'details' ? 'Detalle del Riesgo' : t === 'mitigation' ? 'Mitigación' : 'Posición'}
               </button>
             ))}
-            <div style={{ flex: 1 }} />
-            <button onClick={handleSave} style={{ ...btnSmall, background: '#22c55e', color: '#fff', marginRight: 4 }}>
-              <Save size={10} /> Guardar
-            </button>
-            <button onClick={handleCancel} style={{ ...btnSmall, marginRight: 8 }}>
-              <X size={10} /> Cancelar
-            </button>
           </div>
 
-          {/* Detail content */}
+          {/* Detail content — auto-save on every change */}
           <div style={{ flex: 1, overflow: 'auto', padding: '8px 12px' }}>
             {detailTab === 'details' && (
               <div style={{ display: 'flex', gap: 16 }}>
-                {/* Left col */}
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <label style={{ ...lblS, flex: 0.3 }}>
-                      ID:
-                      <input value={editDraft.id.slice(-6).toUpperCase()} readOnly style={{ ...inpS, background: 'var(--bg-panel)' }} />
+                      Código:
+                      <DetailText value={selected.code || ''} riskId={selected.id} field="code" update={updateRisk} />
                     </label>
                     <label style={{ ...lblS, flex: 1 }}>
                       Título:
-                      <input value={editDraft.name} onChange={e => upd({ name: e.target.value })}
-                        style={inpS} placeholder="Ej: Retraso en ejecución" />
+                      <DetailText value={selected.name} riskId={selected.id} field="name" update={updateRisk} />
                     </label>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <label style={{ ...lblS, flex: 1 }}>
                       Causa:
-                      <textarea value={editDraft.cause} onChange={e => upd({ cause: e.target.value })}
-                        style={{ ...inpS, height: 50, resize: 'vertical' }} />
+                      <DetailTextArea value={selected.cause} riskId={selected.id} field="cause" update={updateRisk} />
                     </label>
                     <label style={{ ...lblS, flex: 1 }}>
                       Descripción:
-                      <textarea value={editDraft.description} onChange={e => upd({ description: e.target.value })}
-                        style={{ ...inpS, height: 50, resize: 'vertical' }} />
+                      <DetailTextArea value={selected.description} riskId={selected.id} field="description" update={updateRisk} />
                     </label>
                     <label style={{ ...lblS, flex: 1 }}>
                       Efecto:
-                      <textarea value={editDraft.effect} onChange={e => upd({ effect: e.target.value })}
-                        style={{ ...inpS, height: 50, resize: 'vertical' }} />
+                      <DetailTextArea value={selected.effect} riskId={selected.id} field="effect" update={updateRisk} />
                     </label>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <label style={lblS}>
                       Categoría:
-                      <select value={editDraft.category} onChange={e => upd({ category: e.target.value as RiskCategory })} style={inpS}>
+                      <select value={selected.category}
+                        onChange={e => updateRisk(selected.id, { category: e.target.value as RiskCategory })} style={inpS}>
                         {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
                     </label>
                     <label style={lblS}>
                       RBS:
-                      <input value={editDraft.rbs || ''} onChange={e => upd({ rbs: e.target.value })} style={inpS} />
+                      <DetailText value={selected.rbs || ''} riskId={selected.id} field="rbs" update={updateRisk} />
                     </label>
                   </div>
                 </div>
-                {/* Right col */}
                 <div style={{ width: 200, display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <label style={lblS}>
                     Amenaza / Oportunidad:
-                    <select value={editDraft.threatOrOpportunity}
-                      onChange={e => upd({ threatOrOpportunity: e.target.value as ThreatOrOpportunity })} style={inpS}>
+                    <select value={selected.threatOrOpportunity}
+                      onChange={e => updateRisk(selected.id, { threatOrOpportunity: e.target.value as ThreatOrOpportunity })} style={inpS}>
                       {T_O_OPTIONS.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                     </select>
                   </label>
                   <label style={lblS}>
                     Estado:
-                    <select value={editDraft.status} onChange={e => upd({ status: e.target.value as RiskStatus })} style={inpS}>
+                    <select value={selected.status}
+                      onChange={e => updateRisk(selected.id, { status: e.target.value as RiskStatus })} style={inpS}>
                       {STATUS_OPTIONS.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                     </select>
                   </label>
                   <label style={lblS}>
                     Responsable:
-                    <select value={editDraft.owner} onChange={e => upd({ owner: e.target.value })} style={inpS}>
+                    <select value={selected.owner}
+                      onChange={e => updateRisk(selected.id, { owner: e.target.value })} style={inpS}>
                       <option value="">Sin asignar</option>
                       <option value="PM">PM</option>
                       <option value="Jefe Obra">Jefe Obra</option>
@@ -415,16 +467,18 @@ export default function RiskQualitativePanel() {
                   <div style={{ display: 'flex', gap: 8 }}>
                     <label style={lblS}>
                       Fecha Inicio:
-                      <input type="date" value={editDraft.startDate || ''} onChange={e => upd({ startDate: e.target.value })} style={inpS} />
+                      <input type="date" value={selected.startDate || ''}
+                        onChange={e => updateRisk(selected.id, { startDate: e.target.value })} style={inpS} />
                     </label>
                     <label style={lblS}>
                       Fecha Fin:
-                      <input type="date" value={editDraft.endDate || ''} onChange={e => upd({ endDate: e.target.value })} style={inpS} />
+                      <input type="date" value={selected.endDate || ''}
+                        onChange={e => updateRisk(selected.id, { endDate: e.target.value })} style={inpS} />
                     </label>
                   </div>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: 'var(--text-secondary)' }}>
-                    <input type="checkbox" checked={editDraft.quantified}
-                      onChange={e => upd({ quantified: e.target.checked })} />
+                    <input type="checkbox" checked={selected.quantified}
+                      onChange={e => updateRisk(selected.id, { quantified: e.target.checked })} />
                     Riesgo Cuantificado
                   </label>
                 </div>
@@ -436,20 +490,19 @@ export default function RiskQualitativePanel() {
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <label style={lblS}>
                     Respuesta de Mitigación:
-                    <select value={editDraft.mitigationResponse}
-                      onChange={e => upd({ mitigationResponse: e.target.value as MitigationResponse })} style={inpS}>
+                    <select value={selected.mitigationResponse}
+                      onChange={e => updateRisk(selected.id, { mitigationResponse: e.target.value as MitigationResponse })} style={inpS}>
                       {RESPONSES.map(r => <option key={r} value={r}>{RESPONSE_LABELS[r]}</option>)}
                     </select>
                   </label>
                   <label style={lblS}>
                     Descripción de la Mitigación:
-                    <textarea value={editDraft.mitigationTitle} onChange={e => upd({ mitigationTitle: e.target.value })}
-                      style={{ ...inpS, height: 60, resize: 'vertical' }} />
+                    <DetailTextArea value={selected.mitigationTitle} riskId={selected.id} field="mitigationTitle" update={updateRisk} />
                   </label>
                   <label style={lblS}>
                     Costo de Mitigación ($):
-                    <input type="number" min={0} value={editDraft.mitigationCost}
-                      onChange={e => upd({ mitigationCost: parseFloat(e.target.value) || 0 })} style={inpS} />
+                    <input type="number" min={0} value={selected.mitigationCost}
+                      onChange={e => updateRisk(selected.id, { mitigationCost: parseFloat(e.target.value) || 0 })} style={inpS} />
                   </label>
                 </div>
               </div>
@@ -457,42 +510,128 @@ export default function RiskQualitativePanel() {
 
             {detailTab === 'matrix' && (
               <div style={{ display: 'flex', gap: 24 }}>
-                {/* Pre-mitigated position */}
-                <ScoreCard title="Pre-Mitigación" qs={editDraft.preMitigation} onChange={updPre} />
-                {/* Post-mitigated position */}
-                <ScoreCard title="Post-Mitigación" qs={editDraft.postMitigation} onChange={updPost} />
+                <ScoreCard title="Pre-Mitigación" qs={selected.preMitigation}
+                  onChange={(f, v) => updateQS(selected.id, 'preMitigation', f, v)} scoringCfg={scoringCfg} />
+                <ScoreCard title="Post-Mitigación" qs={selected.postMitigation}
+                  onChange={(f, v) => updateQS(selected.id, 'postMitigation', f, v)} scoringCfg={scoringCfg} />
               </div>
             )}
           </div>
         </div>
       )}
+
+      {/* Risk Scoring Configuration Modal */}
+      <RiskScoringModal open={scoringOpen} onClose={() => setScoringOpen(false)} />
     </div>
   );
 }
 
-// ─── Sub-components ─────────────────────────────────────────────
+// ─── Inline Editing Sub-components ──────────────────────────────
 
-function LevelBadge({ level }: { level?: ImpactLevel }) {
-  if (!level) return <span style={{ color: 'var(--text-muted)', fontSize: 9 }}>—</span>;
-  const w = IMPACT_WEIGHT[level];
-  const bg = w >= 16 ? '#ef4444' : w >= 8 ? '#f97316' : w >= 4 ? '#f59e0b' : w >= 2 ? '#22c55e' : '#3b82f6';
+/** Inline text input for grid cells (commits on blur / Enter) */
+function InlineText({ value, placeholder, onCommit }: {
+  value: string; placeholder?: string; onCommit: (v: string) => void;
+}) {
+  const [local, setLocal] = useState(value);
+  const [focused, setFocused] = useState(false);
+  useEffect(() => { setLocal(value); }, [value]);
   return (
-    <span style={{
-      display: 'inline-block', minWidth: 22, textAlign: 'center',
-      background: bg + '25', color: bg, border: `1px solid ${bg}50`,
-      borderRadius: 3, padding: '0 3px', fontSize: 9, fontWeight: 700,
-    }}>
-      {level}
+    <input value={local} placeholder={placeholder}
+      onChange={e => setLocal(e.target.value)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => { setFocused(false); if (local !== value) onCommit(local); }}
+      onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+      onClick={e => e.stopPropagation()}
+      style={{
+        width: '100%', background: focused ? 'var(--bg-input)' : 'transparent',
+        color: 'var(--text-primary)', fontSize: 10, fontWeight: 500,
+        padding: '3px 6px', outline: 'none',
+        border: focused ? '1px solid #6366f1' : '1px solid transparent',
+        borderRadius: 2,
+      }} />
+  );
+}
+
+/** Inline number input for grid cells */
+function InlineNumber({ value, prefix, onCommit }: {
+  value: number; prefix?: string; onCommit: (v: number) => void;
+}) {
+  const [local, setLocal] = useState(String(value));
+  useEffect(() => { setLocal(String(value)); }, [value]);
+  const display = prefix ? `${prefix}${local}` : local;
+  const [editing, setEditing] = useState(false);
+  return editing ? (
+    <input type="number" min={0} value={local}
+      onChange={e => setLocal(e.target.value)}
+      onBlur={() => { onCommit(parseFloat(local) || 0); setEditing(false); }}
+      onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+      onClick={e => e.stopPropagation()}
+      autoFocus
+      style={{ width: 70, fontSize: 10, padding: '2px 4px', border: '1px solid #6366f1', borderRadius: 2, background: 'var(--bg-input)', color: 'var(--text-primary)', textAlign: 'right' }} />
+  ) : (
+    <span onDoubleClick={(e) => { e.stopPropagation(); setEditing(true); }}
+      style={{ fontSize: 10, cursor: 'text', padding: '3px 6px', display: 'block', textAlign: 'center' }}>
+      {display}
     </span>
   );
 }
 
-function ScoreCard({ title, qs, onChange }: {
+/** Level badge that is a select dropdown */
+function LevelSelect({ value, onChange }: { value: ImpactLevel; onChange: (v: ImpactLevel) => void }) {
+  const w = IMPACT_WEIGHT[value];
+  const bg = w >= 16 ? '#ef4444' : w >= 8 ? '#f97316' : w >= 4 ? '#f59e0b' : w >= 2 ? '#22c55e' : '#3b82f6';
+  return (
+    <select value={value}
+      onClick={e => e.stopPropagation()}
+      onChange={e => onChange(e.target.value as ImpactLevel)}
+      style={{
+        fontSize: 9, fontWeight: 700, textAlign: 'center',
+        background: bg + '25', color: bg, border: `1px solid ${bg}50`,
+        borderRadius: 3, padding: '1px 2px', cursor: 'pointer',
+        appearance: 'none', WebkitAppearance: 'none', width: 32,
+      }}>
+      {LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
+    </select>
+  );
+}
+
+/** Detail panel text input (auto-save on blur) */
+function DetailText({ value, riskId, field, update }: {
+  value: string; riskId: string; field: string;
+  update: (id: string, p: Partial<RiskEvent>) => void;
+}) {
+  const [local, setLocal] = useState(value);
+  useEffect(() => { setLocal(value); }, [value]);
+  return (
+    <input value={local}
+      onChange={e => setLocal(e.target.value)}
+      onBlur={() => { if (local !== value) update(riskId, { [field]: local }); }}
+      style={inpS} />
+  );
+}
+
+/** Detail panel textarea (auto-save on blur) */
+function DetailTextArea({ value, riskId, field, update }: {
+  value: string; riskId: string; field: string;
+  update: (id: string, p: Partial<RiskEvent>) => void;
+}) {
+  const [local, setLocal] = useState(value);
+  useEffect(() => { setLocal(value); }, [value]);
+  return (
+    <textarea value={local}
+      onChange={e => setLocal(e.target.value)}
+      onBlur={() => { if (local !== value) update(riskId, { [field]: local }); }}
+      style={{ ...inpS, height: 50, resize: 'vertical' }} />
+  );
+}
+
+function ScoreCard({ title, qs, onChange, scoringCfg }: {
   title: string;
   qs: QualitativeScore;
   onChange: (field: keyof QualitativeScore, val: ImpactLevel) => void;
+  scoringCfg?: import('../../types/risk').RiskScoringConfig;
 }) {
-  const sc = computeQualScore(qs);
+  const sc = computeQualScore(qs, scoringCfg);
   return (
     <div style={{
       flex: 1, border: '1px solid var(--border-primary)', borderRadius: 6,
@@ -514,21 +653,57 @@ function ScoreCard({ title, qs, onChange }: {
           </select>
           <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>
             {IMPACT_LABELS[qs[field]]}
-            {field === 'probability' && ` (${PROB_RANGES[qs[field]]})`}
+            {field === 'probability' && ` (${scoringCfg?.probabilityScale.find(s => s.key === qs[field])?.threshold ?? PROB_RANGES[qs[field]]})`}
           </span>
         </div>
       ))}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 6, marginTop: 8,
-        padding: '6px 8px', background: scoreColor(sc) + '20', borderRadius: 4,
+        padding: '6px 8px', background: scoreColor(sc, scoringCfg) + '20', borderRadius: 4,
       }}>
         <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-secondary)' }}>Score:</span>
-        <span style={{
-          fontSize: 14, fontWeight: 800, color: scoreColor(sc),
-        }}>{sc}</span>
-        <span style={{ fontSize: 10, color: scoreColor(sc), fontWeight: 600 }}>{scoreLabel(sc)}</span>
+        <span style={{ fontSize: 14, fontWeight: 800, color: scoreColor(sc, scoringCfg) }}>{sc}</span>
+        <span style={{ fontSize: 10, color: scoreColor(sc, scoringCfg), fontWeight: 600 }}>{scoreLabel(sc, scoringCfg)}</span>
       </div>
     </div>
+  );
+}
+
+/** Empty row at the bottom of the grid – typing in code or name creates a new risk */
+function NewRiskRow({ onAdd }: { onAdd: (code: string, name: string) => void }) {
+  const [code, setCode] = useState('');
+  const [name, setName] = useState('');
+
+  const commit = () => {
+    if (!code.trim() && !name.trim()) return;
+    onAdd(code.trim(), name.trim());
+    setCode('');
+    setName('');
+  };
+
+  return (
+    <tr style={{ background: 'rgba(99,102,241,0.04)' }}>
+      <td style={{ ...tdS, padding: 0 }}>
+        <input value={code} placeholder="Código…" onChange={e => setCode(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') commit(); }}
+          style={{
+            width: '100%', border: '1px dashed var(--border-primary)', background: 'transparent',
+            color: 'var(--text-muted)', fontSize: 10, padding: '3px 6px', outline: 'none', borderRadius: 2,
+          }} />
+      </td>
+      <td style={tdS}></td>
+      <td style={{ ...tdS, textAlign: 'left', padding: 0 }}>
+        <input value={name} placeholder="Escribe para agregar riesgo…" onChange={e => setName(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') commit(); }}
+          style={{
+            width: '100%', border: '1px dashed var(--border-primary)', background: 'transparent',
+            color: 'var(--text-muted)', fontSize: 10, padding: '3px 6px', outline: 'none', borderRadius: 2,
+          }} />
+      </td>
+      <td colSpan={7} style={{ ...tdS, color: 'var(--text-muted)', fontSize: 9 }}>
+        <span style={{ opacity: 0.5 }}>↵ Enter para crear</span>
+      </td>
+    </tr>
   );
 }
 
@@ -540,6 +715,11 @@ const thS: React.CSSProperties = {
 const tdS: React.CSSProperties = {
   padding: '3px 6px', textAlign: 'center', fontSize: 10,
   borderBottom: '1px solid var(--border-primary)', whiteSpace: 'nowrap',
+};
+const cellSelect: React.CSSProperties = {
+  fontSize: 9, padding: '1px 3px', borderRadius: 2,
+  border: '1px solid var(--border-primary)', background: 'var(--bg-input)',
+  color: 'var(--text-primary)', cursor: 'pointer',
 };
 const lblS: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 2, fontSize: 10, color: 'var(--text-secondary)' };
 const inpS: React.CSSProperties = { fontSize: 10, padding: '3px 5px', borderRadius: 3, border: '1px solid var(--border-primary)', background: 'var(--bg-input)', color: 'var(--text-primary)' };

@@ -26,28 +26,38 @@ export default function RiskDistributionPanel() {
     [state.activities],
   );
 
+  // Effective remaining duration for an activity
+  const getEffRemDur = useCallback((a: { dur: number; remDur?: number | null; pct?: number | null }) => {
+    if (a.remDur != null) return a.remDur;
+    const pct = a.pct || 0;
+    if (pct >= 100) return 0;
+    if (pct > 0) return Math.max(1, Math.round((a.dur || 0) * (1 - pct / 100)));
+    return a.dur || 0;
+  }, []);
+
   const handleDistType = useCallback((actId: string, type: DistributionType) => {
     const current = distributions[actId];
-    const actDur = state.activities.find(a => a.id === actId)?.dur || 10;
+    const act = state.activities.find(a => a.id === actId);
+    const baseDur = act ? getEffRemDur(act) : 10;
     let dist: DurationDistribution;
     if (type === 'none') {
       dist = { type: 'none' };
     } else if (type === 'triangular' || type === 'betaPERT') {
       dist = {
         type,
-        min: current?.min ?? Math.max(1, Math.round(actDur * 0.8)),
-        mostLikely: current?.mostLikely ?? actDur,
-        max: current?.max ?? Math.round(actDur * 1.3),
+        min: current?.min ?? Math.max(1, Math.round(baseDur * 0.8)),
+        mostLikely: current?.mostLikely ?? baseDur,
+        max: current?.max ?? Math.round(baseDur * 1.3),
       };
     } else {
       dist = {
         type,
-        min: current?.min ?? Math.max(1, Math.round(actDur * 0.8)),
-        max: current?.max ?? Math.round(actDur * 1.3),
+        min: current?.min ?? Math.max(1, Math.round(baseDur * 0.8)),
+        max: current?.max ?? Math.round(baseDur * 1.3),
       };
     }
     dispatch({ type: 'SET_RISK_DISTRIBUTION', activityId: actId, dist });
-  }, [distributions, state.activities, dispatch]);
+  }, [distributions, state.activities, getEffRemDur, dispatch]);
 
   const handleNumChange = useCallback((actId: string, field: 'min' | 'mostLikely' | 'max', val: string) => {
     const current = distributions[actId];
@@ -61,16 +71,17 @@ export default function RiskDistributionPanel() {
     const bulk: Record<string, DurationDistribution> = {};
     for (const a of tasks) {
       if ((a.pct || 0) >= 100) continue;
-      const dur = a.dur || 1;
+      const rem = getEffRemDur(a);
+      if (rem <= 0) continue;
       bulk[a.id] = {
         type: 'triangular',
-        min: Math.max(1, Math.round(dur * 0.8)),
-        mostLikely: dur,
-        max: Math.round(dur * 1.3),
+        min: Math.max(1, Math.round(rem * 0.8)),
+        mostLikely: rem,
+        max: Math.round(rem * 1.3),
       };
     }
     dispatch({ type: 'SET_RISK_DISTRIBUTIONS_BULK', distributions: bulk });
-  }, [tasks, dispatch]);
+  }, [tasks, getEffRemDur, dispatch]);
 
   // Color for uncertainty range
   const uncertaintyColor = (dist: DurationDistribution | undefined): string => {
@@ -136,7 +147,7 @@ export default function RiskDistributionPanel() {
           Aplicar Distribución por Defecto
         </button>
         <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-          Triangular: −20% / dur / +30%
+          Triangular: −20% / dur. restante / +30%
         </span>
       </div>
 
@@ -147,7 +158,7 @@ export default function RiskDistributionPanel() {
             <tr style={{ background: 'var(--bg-panel)', position: 'sticky', top: 0, zIndex: 1 }}>
               <th style={thStyle}>#</th>
               <th style={{ ...thStyle, textAlign: 'left', minWidth: 160 }}>Actividad</th>
-              <th style={thStyle}>Dur. Det.</th>
+              <th style={thStyle}>Dur. Resta.</th>
               <th style={{ ...thStyle, minWidth: 100 }}>Distribución</th>
               <th style={thStyle}>Min</th>
               <th style={thStyle}>Más Probable</th>
@@ -169,7 +180,7 @@ export default function RiskDistributionPanel() {
                 }}>
                   <td style={tdStyle}>{i + 1}</td>
                   <td style={{ ...tdStyle, textAlign: 'left', fontWeight: 500 }}>{a.name}</td>
-                  <td style={tdStyle}>{a.dur}d</td>
+                  <td style={tdStyle}>{getEffRemDur(a)}d</td>
                   <td style={tdStyle}>
                     <select
                       value={distType}

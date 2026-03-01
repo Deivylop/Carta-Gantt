@@ -27,6 +27,7 @@ export async function saveRiskRunToSupabase(
     criticality_index: result.criticalityIndex,
     sensitivity_index: result.sensitivityIndex,
     histogram: result.histogram,
+    activity_percentiles: result.activityPercentiles || {},
     distributions_snapshot: result.distributionsSnapshot,
     risk_events_snapshot: result.riskEventsSnapshot,
   });
@@ -60,6 +61,7 @@ export async function loadRiskRunsFromSupabase(
     criticalityIndex: row.criticality_index || {},
     sensitivityIndex: row.sensitivity_index || {},
     histogram: row.histogram || [],
+    activityPercentiles: row.activity_percentiles || {},
     distributionsSnapshot: row.distributions_snapshot || {},
     riskEventsSnapshot: row.risk_events_snapshot || [],
   }));

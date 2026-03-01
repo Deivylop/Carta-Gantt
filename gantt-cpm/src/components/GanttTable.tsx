@@ -18,6 +18,7 @@ const EditableNumberCell = ({ rawValue, displayValue, onUpdate, onFocus, isRowSe
     const [isEditing, setIsEditing] = useState(false);
     const [val, setVal] = useState(rawValue);
     const wasSelectedRef = useRef(false);
+    const selectOnMount = useCallback((el: HTMLInputElement | null) => { if (el) el.select(); }, []);
 
     useEffect(() => { setVal(rawValue); }, [rawValue]);
     useEffect(() => { wasSelectedRef.current = isRowSelected; }, [isRowSelected]);
@@ -40,9 +41,9 @@ const EditableNumberCell = ({ rawValue, displayValue, onUpdate, onFocus, isRowSe
                     step={step}
                     min={min}
                     max={max}
-                    style={{ background: 'transparent', outline: 'none', border: '1px solid #3b82f6', color: 'inherit', padding: 0, margin: 0, width: '100%', height: '100%', fontSize: 'inherit', fontFamily: 'inherit', boxSizing: 'border-box', textAlign: 'inherit' }}
+                    style={{ background: 'transparent', outline: 'none', border: '1px solid #3b82f6', color: 'var(--text-primary)', padding: 0, margin: 0, width: '100%', height: '100%', fontSize: 'inherit', fontFamily: 'inherit', boxSizing: 'border-box', textAlign: 'inherit' }}
                     autoFocus
-                    ref={el => { if (el) { el.select(); } }}
+                    ref={selectOnMount}
                     value={val}
                     onChange={e => setVal(e.target.value)}
                     onBlur={() => { setIsEditing(false); onUpdate(val); }}
@@ -80,6 +81,7 @@ const EditableTextCell = ({ rawValue, displayHtml, onUpdate, onFocus, isRowSelec
     const [val, setVal] = useState(rawValue);
     const wasSelectedRef = useRef(false);
     const cellTouchedRef = useRef(false);
+    const selectOnMount = useCallback((el: HTMLInputElement | null) => { if (el) el.select(); }, []);
 
     useEffect(() => { setVal(rawValue); }, [rawValue]);
     useEffect(() => {
@@ -101,9 +103,9 @@ const EditableTextCell = ({ rawValue, displayHtml, onUpdate, onFocus, isRowSelec
             <div style={{ width: '100%', height: '100%', display: 'flex' }} onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
                 <input
                     type="text"
-                    style={{ background: 'transparent', outline: 'none', border: '1px solid #3b82f6', color: 'inherit', padding: '0 2px', margin: 0, width: '100%', height: '100%', fontSize: 'inherit', fontFamily: 'inherit', boxSizing: 'border-box', textAlign: 'inherit' }}
+                    style={{ background: 'transparent', outline: 'none', border: '1px solid #3b82f6', color: 'var(--text-primary)', padding: '0 2px', margin: 0, width: '100%', height: '100%', fontSize: 'inherit', fontFamily: 'inherit', boxSizing: 'border-box', textAlign: 'inherit' }}
                     autoFocus
-                    ref={el => { if (el) { el.select(); } }}
+                    ref={selectOnMount}
                     value={val}
                     onChange={e => setVal(e.target.value)}
                     onBlur={() => { setIsEditing(false); onUpdate(val); }}
@@ -174,7 +176,7 @@ const EditableDateCell = ({ dateValue, displayValue, onUpdate, onFocus, isRowSel
             <div style={{ width: '100%', height: '100%', display: 'flex' }} onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
                 <input
                     type="date"
-                    style={{ background: 'transparent', outline: 'none', border: 'none', color: 'inherit', padding: 0, margin: 0, width: '100%', height: '100%', fontSize: 'inherit', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                    style={{ background: 'transparent', outline: 'none', border: 'none', color: 'var(--text-primary)', padding: 0, margin: 0, width: '100%', height: '100%', fontSize: 'inherit', fontFamily: 'inherit', boxSizing: 'border-box' }}
                     autoFocus
                     value={val}
                     onChange={e => setVal(e.target.value)}
