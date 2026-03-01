@@ -365,7 +365,8 @@ function AppInner() {
           return max;
         }, null);
         const tw = projRow?.work || 0;
-        const ew = tw * (projRow?.pct || 0) / 100;
+        // Compute actualWork per-task to match project view exactly
+        const ew = tasks.reduce((sum, a) => sum + ((a.work || 0) * (a.pct || 0) / 100), 0);
         const meta = pState.projects.map(p => p.id === pState.activeProjectId ? {
           ...p, name: state.projName,
           activityCount: tasks.length,
@@ -416,7 +417,8 @@ function AppInner() {
         return max;
       }, null);
       const totalWork = projRow?.work || 0;
-      const earnedWork = totalWork * (projRow?.pct || 0) / 100;
+      // Compute actualWork per-task to match project view exactly
+      const earnedWork = tasks.reduce((sum, a) => sum + ((a.work || 0) * (a.pct || 0) / 100), 0);
       pDispatch({
         type: 'UPDATE_PROJECT', id: pState.activeProjectId, updates: {
           name: state.projName,

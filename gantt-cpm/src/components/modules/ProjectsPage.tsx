@@ -253,7 +253,7 @@ export default function ProjectsPage({ onOpenProject }: Props) {
             if (map[epsId]) return map[epsId];
             let sD: number | null = null, eD: number | null = null;
             let dur = 0, remDur = 0, work = 0, actual = 0, remaining = 0, acts = 0;
-            let totalPct = 0, totalProg = 0, projCount = 0;
+            let sumWeightedPct = 0, sumWeightedProg = 0, sumWeight = 0;
 
             for (const p of pState.projects.filter(pr => pr.epsId === epsId)) {
                 if (p.startDate) { const t = new Date(p.startDate).getTime(); if (sD == null || t < sD) sD = t; }
@@ -261,21 +261,30 @@ export default function ProjectsPage({ onOpenProject }: Props) {
                 else if (p.startDate) { const t = new Date(p.startDate).getTime() + 90 * 86400000; if (eD == null || t > eD) eD = t; }
                 dur = Math.max(dur, p.duration || 0);
                 remDur = Math.max(remDur, p.remainingDur || 0);
-                work += p.work || 0; actual += p.actualWork || 0; remaining += p.remainingWork || 0;
+                const pw = p.work || 0;
+                work += pw; actual += p.actualWork || 0; remaining += p.remainingWork || 0;
                 acts += p.activityCount;
-                totalPct += p.globalPct; totalProg += p.pctProg; projCount++;
+                // Weight by total work for accurate EPS aggregation
+                const w = pw > 0 ? pw : 1; // fallback weight=1 if no work
+                sumWeightedPct += w * (p.globalPct || 0);
+                sumWeightedProg += w * (p.pctProg || 0);
+                sumWeight += w;
             }
             for (const child of pState.epsNodes.filter(e => e.parentId === epsId)) {
                 const ca = agg(child.id);
                 if (ca.startDate) { const t = new Date(ca.startDate).getTime(); if (sD == null || t < sD) sD = t; }
                 if (ca.endDate) { const t = new Date(ca.endDate).getTime(); if (eD == null || t > eD) eD = t; }
                 dur = Math.max(dur, ca.duration); remDur = Math.max(remDur, ca.remainingDur);
-                work += ca.work; actual += ca.actualWork; remaining += ca.remainingWork;
+                const cw = ca.work || 0;
+                work += cw; actual += ca.actualWork; remaining += ca.remainingWork;
                 acts += ca.activityCount;
-                totalPct += ca.pctAvance; totalProg += ca.pctProg; projCount++;
+                const w = cw > 0 ? cw : 1;
+                sumWeightedPct += w * (ca.pctAvance || 0);
+                sumWeightedProg += w * (ca.pctProg || 0);
+                sumWeight += w;
             }
-            const avgPct = projCount > 0 ? Math.round(totalPct / projCount * 10) / 10 : 0;
-            const avgProg = projCount > 0 ? Math.round(totalProg / projCount * 10) / 10 : 0;
+            const avgPct = sumWeight > 0 ? Math.round(sumWeightedPct / sumWeight * 10) / 10 : 0;
+            const avgProg = sumWeight > 0 ? Math.round(sumWeightedProg / sumWeight * 10) / 10 : 0;
 
             // Compute duration from date range
             if (sD && eD) dur = Math.max(dur, Math.ceil((eD - sD) / 86400000));

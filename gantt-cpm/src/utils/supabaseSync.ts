@@ -68,14 +68,35 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
         }
 
         // 4. Insert Activities
+        // Extract project-row metadata BEFORE filtering it out
+        const projRow = state.activities.find(a => a._isProjRow);
         const acts = [...state.activities.filter(a => !a._isProjRow)];
-        // Inject progress history as a hidden activity to avoid schema changes
-        if (state.progressHistory && state.progressHistory.length > 0) {
+        // Inject progress history + project-row metadata as a hidden activity
+        {
+            const latestEF = state.activities.filter(a => (a.type === 'task' || a.type === 'milestone') && !a._isProjRow)
+                .reduce<string | null>((max, a) => {
+                    const ef = a.EF ? a.EF.toISOString() : null;
+                    if (ef && (!max || ef > max)) return ef;
+                    return max;
+                }, null);
+            const historyPayload: any = {
+                history: state.progressHistory || [],
+                projMeta: {
+                    plannedPct: projRow?._plannedPct || 0,
+                    dur: projRow?.dur || 0,
+                    remDur: projRow?.remDur ?? null,
+                    work: projRow?.work || 0,
+                    pct: projRow?.pct || 0,
+                    startDate: state.projStart ? state.projStart.toISOString() : null,
+                    endDate: latestEF,
+                    statusDate: state.statusDate ? state.statusDate.toISOString() : null,
+                },
+            };
             acts.push({
                 ...newActivity('__HISTORY__', defCal),
                 name: '__PROGRESS_HISTORY__',
                 type: 'milestone',
-                notes: JSON.stringify(state.progressHistory),
+                notes: JSON.stringify(historyPayload),
                 lv: -1,
             } as any);
         }
@@ -329,9 +350,12 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
         if (actRes.length) deriveResString(na, resourcePool);
         return na;
     }).filter(na => {
-        // Extract hidden progress history if found
+        // Extract hidden progress history if found (backward compat: old format is plain array, new format is { history, projMeta })
         if (na.id === '__HISTORY__') {
-            try { progressHistory = JSON.parse(na.notes); } catch (e) { }
+            try {
+                const parsed = JSON.parse(na.notes);
+                progressHistory = Array.isArray(parsed) ? parsed : (parsed.history || []);
+            } catch (e) { }
             return false;
         }
         // Extract hidden custom filters if found
@@ -487,7 +511,8 @@ export async function loadPortfolioFromSupabase(): Promise<{
     };
 }
 
-/** Fetch lightweight summaries for multiple projects from gantt_activities */
+/** Fetch lightweight summaries for multiple projects from gantt_activities.
+ *  Uses stored project-row metadata from __HISTORY__ for accuracy. */
 export async function fetchProjectSummaries(
     supabaseProjectIds: string[]
 ): Promise<Record<string, {
@@ -503,25 +528,17 @@ export async function fetchProjectSummaries(
     startDate?: string | null;
     endDate?: string | null;
     statusDate?: string | null;
+    plannedPct?: number;
 }>> {
     if (!supabaseProjectIds.length) return {};
 
-    // Fetch activities WITH date columns for accurate start/end dates
+    // Fetch activities (only lightweight columns + notes for __HISTORY__)
     const { data: allActs, error } = await supabase
         .from('gantt_activities')
-        .select('project_id, local_id, type, dur, remdur, pct, work, notes, res, sort_order, lv, "ES", "EF"')
+        .select('project_id, local_id, type, dur, remdur, pct, work, notes, res, sort_order, lv')
         .in('project_id', supabaseProjectIds)
         .order('sort_order', { ascending: true });
     if (error) throw error;
-
-    // Also fetch project-level metadata (projstart, statusdate) from gantt_projects
-    const { data: projRows, error: projErr } = await supabase
-        .from('gantt_projects')
-        .select('id, projstart, statusdate')
-        .in('id', supabaseProjectIds);
-    if (projErr) throw projErr;
-    const projMap = new Map<string, any>();
-    (projRows || []).forEach(p => projMap.set(p.id, p));
 
     // Group activities by project_id
     const byProject = new Map<string, any[]>();
@@ -535,47 +552,41 @@ export async function fetchProjectSummaries(
     for (const [projectId, acts] of byProject) {
         // Filter real tasks (not hidden meta-activities)
         const tasks = acts.filter((a: any) => a.type === 'task' && !a.local_id.startsWith('__'));
-        // All real activities (tasks + summaries, excluding hidden meta-rows)
-        const realActs = acts.filter((a: any) => !a.local_id.startsWith('__'));
         // First summary row (WBS 0 equivalent)
         const summaryRow = acts.find((a: any) => a.sort_order === 0 && a.type === 'summary');
-        // Hidden progress history
+        // Hidden history + project metadata
         const historyRow = acts.find((a: any) => a.local_id === '__HISTORY__');
 
         const activityCount = tasks.length;
-        const duration = summaryRow ? parseFloat(summaryRow.dur) || 0 : 0;
-        const remainingDur = summaryRow ? (summaryRow.remdur != null ? parseFloat(summaryRow.remdur) : duration) : 0;
-        const totalWork = tasks.reduce((sum: number, a: any) => sum + (parseFloat(a.work) || 0), 0);
 
-        // Calculate actualWork accurately: sum of per-task (work * pct/100)
-        const actualWork = tasks.reduce((sum: number, a: any) => {
+        // Parse stored project-row metadata from __HISTORY__ (new format)
+        let projMeta: any = null;
+        let historyEntries: any[] = [];
+        if (historyRow?.notes) {
+            try {
+                const parsed = JSON.parse(historyRow.notes);
+                if (Array.isArray(parsed)) {
+                    historyEntries = parsed; // old format: plain array
+                } else {
+                    historyEntries = parsed.history || [];
+                    projMeta = parsed.projMeta || null;
+                }
+            } catch { /* ignore */ }
+        }
+
+        // Use projMeta (from CPM engine save) when available, otherwise fallback to activity data
+        const duration = projMeta?.dur ?? (summaryRow ? parseFloat(summaryRow.dur) || 0 : 0);
+        const remainingDur = projMeta?.remDur ?? (summaryRow ? (summaryRow.remdur != null ? parseFloat(summaryRow.remdur) : duration) : 0);
+        const totalWork = projMeta?.work ?? tasks.reduce((sum: number, a: any) => sum + (parseFloat(a.work) || 0), 0);
+
+        // Calculate actualWork: per-task (work * pct/100)
+        const actualWorkCalc = tasks.reduce((sum: number, a: any) => {
             const w = parseFloat(a.work) || 0;
             const p = parseFloat(a.pct) || 0;
             return sum + (w * p / 100);
         }, 0);
-        // Round to avoid floating point noise
-        const actualWorkRounded = Math.round(actualWork * 100) / 100;
-        const remainingWork = totalWork - actualWorkRounded;
-
-        // Compute startDate (earliest ES) and endDate (latest EF) from real activities
-        let minES: string | null = null;
-        let maxEF: string | null = null;
-        realActs.forEach((a: any) => {
-            if (a.ES) {
-                if (!minES || a.ES < minES) minES = a.ES;
-            }
-            if (a.EF) {
-                if (!maxEF || a.EF > maxEF) maxEF = a.EF;
-            }
-        });
-
-        // Format dates as YYYY-MM-DD for display
-        const formatDate = (isoStr: string | null): string | null => {
-            if (!isoStr) return null;
-            try {
-                return new Date(isoStr).toISOString().split('T')[0];
-            } catch { return null; }
-        };
+        const actualWork = Math.round(actualWorkCalc * 100) / 100;
+        const remainingWork = totalWork - actualWork;
 
         // Aggregate unique resources
         const resSet = new Set<string>();
@@ -585,33 +596,33 @@ export async function fetchProjectSummaries(
 
         // Extract global % from last progress history entry
         let globalPct = 0;
-        if (historyRow?.notes) {
-            try {
-                const history = JSON.parse(historyRow.notes);
-                const last = history[history.length - 1];
-                if (last) globalPct = last.actualPct || 0;
-            } catch { /* ignore */ }
+        if (historyEntries.length > 0) {
+            const last = historyEntries[historyEntries.length - 1];
+            if (last) globalPct = last.actualPct || 0;
         }
 
-        // Get project metadata
-        const projRow = projMap.get(projectId);
-        const startDate = formatDate(minES) || (projRow?.projstart ? formatDate(projRow.projstart) : null);
-        const endDate = formatDate(maxEF);
-        const statusDate = projRow?.statusdate ? formatDate(projRow.statusdate) : null;
+        // Planned % (from CPM engine) — stored in projMeta
+        const plannedPct = projMeta?.plannedPct ?? 0;
+
+        // Dates from projMeta (accurate from CPM engine save)
+        const startDate = projMeta?.startDate || null;
+        const endDate = projMeta?.endDate || null;
+        const statusDate = projMeta?.statusDate || null;
 
         result[projectId] = {
             activityCount,
             duration,
             remainingDur,
             work: totalWork,
-            actualWork: actualWorkRounded,
+            actualWork,
             remainingWork,
             globalPct,
-            pctProg: summaryRow ? parseFloat(summaryRow.pct) || 0 : 0,
+            pctProg: plannedPct,
             resources: Array.from(resSet).join('; '),
             startDate,
             endDate,
             statusDate,
+            plannedPct,
         };
     }
 
