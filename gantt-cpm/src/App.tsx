@@ -36,6 +36,32 @@ import { newActivity } from './utils/cpm';
 import { autoId } from './utils/helpers';
 import { saveToSupabase, loadFromSupabase } from './utils/supabaseSync';
 
+/** Restore ISO-string dates back to Date objects in a saved project snapshot */
+function restoreDatesFromSaved(saved: any): any {
+  if (saved.projStart && typeof saved.projStart === 'string') saved.projStart = new Date(saved.projStart);
+  if (saved.statusDate && typeof saved.statusDate === 'string') saved.statusDate = new Date(saved.statusDate);
+  if (saved.activities) {
+    saved.activities = saved.activities.map((a: any) => ({
+      ...a,
+      ES: a.ES ? new Date(a.ES) : null,
+      EF: a.EF ? new Date(a.EF) : null,
+      LS: a.LS ? new Date(a.LS) : null,
+      LF: a.LF ? new Date(a.LF) : null,
+      blES: a.blES ? new Date(a.blES) : null,
+      blEF: a.blEF ? new Date(a.blEF) : null,
+      _remES: a._remES ? new Date(a._remES) : null,
+      _remEF: a._remEF ? new Date(a._remEF) : null,
+      collapsed: undefined,
+      baselines: (a.baselines || []).map((bl: any) => bl ? {
+        ...bl,
+        ES: bl.ES ? new Date(bl.ES) : null,
+        EF: bl.EF ? new Date(bl.EF) : null,
+      } : null),
+    }));
+  }
+  return saved;
+}
+
 /** Serialize GanttState to a plain JSON-safe object for localStorage */
 function serializeGanttState(state: any): any {
   return {
@@ -140,6 +166,26 @@ function AppInner() {
           console.warn('Could not auto-load from Supabase, starting fresh', err);
         }
       }
+      // 2. Try loading active project from local portfolio storage
+      try {
+        const portfolioRaw = localStorage.getItem('gantt-cpm-portfolio');
+        if (portfolioRaw) {
+          const portfolio = JSON.parse(portfolioRaw);
+          const activeId = portfolio.activeProjectId;
+          if (activeId) {
+            const projRaw = localStorage.getItem('gantt-cpm-project-' + activeId);
+            if (projRaw) {
+              const saved = restoreDatesFromSaved(JSON.parse(projRaw));
+              dispatch({ type: 'LOAD_STATE', state: saved });
+              console.log('Restored project from local storage:', activeId);
+              return;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Could not load project from local portfolio', e);
+      }
+
       loadDemoData();
     };
     initApp();
@@ -396,28 +442,7 @@ function AppInner() {
     // Load the target project
     const saved = loadProjectState(projectId);
     if (saved) {
-      // Restore dates from ISO strings
-      if (saved.projStart && typeof saved.projStart === 'string') saved.projStart = new Date(saved.projStart);
-      if (saved.statusDate && typeof saved.statusDate === 'string') saved.statusDate = new Date(saved.statusDate);
-      if (saved.activities) {
-        saved.activities = saved.activities.map((a: any) => ({
-          ...a,
-          ES: a.ES ? new Date(a.ES) : null,
-          EF: a.EF ? new Date(a.EF) : null,
-          LS: a.LS ? new Date(a.LS) : null,
-          LF: a.LF ? new Date(a.LF) : null,
-          blES: a.blES ? new Date(a.blES) : null,
-          blEF: a.blEF ? new Date(a.blEF) : null,
-          _remES: a._remES ? new Date(a._remES) : null,
-          _remEF: a._remEF ? new Date(a._remEF) : null,
-          collapsed: undefined,
-          baselines: (a.baselines || []).map((bl: any) => bl ? {
-            ...bl,
-            ES: bl.ES ? new Date(bl.ES) : null,
-            EF: bl.EF ? new Date(bl.EF) : null,
-          } : null),
-        }));
-      }
+      restoreDatesFromSaved(saved);
       dispatch({ type: 'LOAD_STATE', state: saved });
       // Restore Supabase project ID link if available
       const proj = pState.projects.find(p => p.id === projectId);
