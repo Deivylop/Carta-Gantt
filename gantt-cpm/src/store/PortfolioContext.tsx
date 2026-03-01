@@ -406,45 +406,79 @@ export function usePortfolio() {
 }
 
 // ─── Provider ───────────────────────────────────────────────────
+
+/** Serialize portfolio state for localStorage */
+function serializePortfolio(state: PortfolioState): string {
+    return JSON.stringify({
+        epsNodes: state.epsNodes,
+        projects: state.projects,
+        expandedIds: Array.from(state.expandedIds),
+        activeProjectId: state.activeProjectId,
+    });
+}
+
+// Stamp to prevent re-loading our own writes from the storage event
+let _lastWriteStamp = 0;
+
 export function PortfolioProvider({ children }: { children: React.ReactNode }) {
-    // Synchronous init from localStorage — no race condition possible
+    // Synchronous init from localStorage — first render has correct data
     const [state, dispatch] = useReducer(portfolioReducer, undefined as any, loadInitialState);
 
-    // Auto-save to localStorage on state changes (debounced)
-    const savePortfolio = useCallback(() => {
+    // ── IMMEDIATE save on every state change (no debounce) ──────
+    // This runs after every render where epsNodes/projects/expanded/active changed.
+    // No setTimeout means no cleanup can cancel it in StrictMode.
+    useEffect(() => {
         try {
-            const data = {
-                epsNodes: state.epsNodes,
-                projects: state.projects,
-                expandedIds: Array.from(state.expandedIds),
-                activeProjectId: state.activeProjectId,
-            };
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+            _lastWriteStamp = Date.now();
+            localStorage.setItem(STORAGE_KEY, serializePortfolio(state));
         } catch (e) {
             console.error('Failed to save portfolio', e);
         }
-    }, [state]);
+    }, [state.epsNodes, state.projects, state.expandedIds, state.activeProjectId]);
 
+    // ── Cross-tab sync via storage event ────────────────────────
+    // Fires ONLY when a DIFFERENT tab writes to our localStorage key.
     useEffect(() => {
-        const t = setTimeout(() => savePortfolio(), 300);
-        return () => clearTimeout(t);
-    }, [savePortfolio]);
+        const handleStorage = (e: StorageEvent) => {
+            if (e.key !== STORAGE_KEY || !e.newValue) return;
+            // Ignore our own writes (within last 500ms)
+            if (Date.now() - _lastWriteStamp < 500) return;
+            try {
+                const data = JSON.parse(e.newValue);
+                dispatch({
+                    type: 'LOAD',
+                    state: {
+                        epsNodes: data.epsNodes || [],
+                        projects: data.projects || [],
+                        expandedIds: data.expandedIds || [],
+                        activeProjectId: data.activeProjectId || null,
+                    },
+                });
+            } catch { /* ignore malformed data */ }
+        };
+        window.addEventListener('storage', handleStorage);
+        return () => window.removeEventListener('storage', handleStorage);
+    }, []);
 
-    // Guarantee save on page close/refresh (synchronous, not debounced)
+    // ── beforeunload backup (last resort) ───────────────────────
     useEffect(() => {
         const handleBeforeUnload = () => {
             try {
-                const data = {
-                    epsNodes: state.epsNodes,
-                    projects: state.projects,
-                    expandedIds: Array.from(state.expandedIds),
-                    activeProjectId: state.activeProjectId,
-                };
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+                localStorage.setItem(STORAGE_KEY, serializePortfolio(state));
             } catch { /* ignore */ }
         };
         window.addEventListener('beforeunload', handleBeforeUnload);
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [state]);
+
+    // ── Public savePortfolio (for explicit / external calls) ────
+    const savePortfolio = useCallback(() => {
+        try {
+            _lastWriteStamp = Date.now();
+            localStorage.setItem(STORAGE_KEY, serializePortfolio(state));
+        } catch (e) {
+            console.error('Failed to save portfolio', e);
+        }
     }, [state]);
 
     // Save an individual project's gantt state
