@@ -10,6 +10,8 @@ interface Props {
     open: boolean;
     project: ProjectMeta | null; // null = creating new project
     epsId: string | null;        // target EPS for new projects
+    nextCode?: string;           // auto-generated next code for new projects
+    existingCodes?: string[];    // existing codes to validate uniqueness
     onSave: (data: {
         name: string;
         code: string;
@@ -24,7 +26,7 @@ interface Props {
     customCalendars?: { id: string; name: string }[];
 }
 
-export default function ProjectConfigModal({ open, project, onSave, onClose, customCalendars = [] }: Props) {
+export default function ProjectConfigModal({ open, project, nextCode = 'PRY-001', existingCodes = [], onSave, onClose, customCalendars = [] }: Props) {
     const [form, setForm] = useState({
         name: '',
         code: '',
@@ -35,9 +37,11 @@ export default function ProjectConfigModal({ open, project, onSave, onClose, cus
         calendar: '6',
         description: '',
     });
+    const [codeError, setCodeError] = useState('');
 
     useEffect(() => {
         if (open) {
+            setCodeError('');
             if (project) {
                 setForm({
                     name: project.name,
@@ -53,7 +57,7 @@ export default function ProjectConfigModal({ open, project, onSave, onClose, cus
                 const today = new Date().toISOString().slice(0, 10);
                 setForm({
                     name: '',
-                    code: '',
+                    code: nextCode,
                     priority: '1',
                     status: 'Planificación',
                     startDate: today,
@@ -63,16 +67,34 @@ export default function ProjectConfigModal({ open, project, onSave, onClose, cus
                 });
             }
         }
-    }, [open, project]);
+    }, [open, project, nextCode]);
 
     if (!open) return null;
 
-    const F = (key: string, val: string) => setForm(f => ({ ...f, [key]: val }));
+    const F = (key: string, val: string) => {
+        setForm(f => ({ ...f, [key]: val }));
+        if (key === 'code') {
+            // Validate uniqueness (skip check against the project being edited)
+            const editingCode = project?.code;
+            if (val && val !== editingCode && existingCodes.includes(val)) {
+                setCodeError('Este código ya está en uso');
+            } else {
+                setCodeError('');
+            }
+        }
+    };
 
     const handleSave = () => {
+        const finalCode = form.code || nextCode;
+        // Block save if code is duplicate
+        const editingCode = project?.code;
+        if (finalCode !== editingCode && existingCodes.includes(finalCode)) {
+            setCodeError('Este código ya está en uso');
+            return;
+        }
         onSave({
             name: form.name || 'Nuevo Proyecto',
-            code: form.code || 'PRY-001',
+            code: finalCode,
             priority: parseInt(form.priority) || 1,
             status: form.status,
             startDate: form.startDate,
@@ -103,7 +125,8 @@ export default function ProjectConfigModal({ open, project, onSave, onClose, cus
                 <div className="form-row">
                     <div className="form-group">
                         <label className="form-label">Código (ID)</label>
-                        <input className="form-input" value={form.code} onChange={e => F('code', e.target.value)} placeholder="PRY-001" />
+                        <input className="form-input" value={form.code} onChange={e => F('code', e.target.value)} placeholder="PRY-001" style={codeError ? { borderColor: '#ef4444' } : undefined} />
+                        {codeError && <div style={{ fontSize: 10, color: '#ef4444', marginTop: 2 }}>{codeError}</div>}
                     </div>
                     <div className="form-group">
                         <label className="form-label">Prioridad</label>

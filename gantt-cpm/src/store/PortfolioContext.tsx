@@ -432,15 +432,20 @@ function portfolioReducer(state: PortfolioState, action: PortfolioAction): Portf
             }
 
             const now = nowISO();
-            const baseCount = projects.length;
+            // Find max existing PRY-NNN suffix to avoid code collisions
+            let maxCodeNum = 0;
+            for (const p of projects) {
+                const m = p.code.match(/^PRY-(\d+)$/);
+                if (m) maxCodeNum = Math.max(maxCodeNum, parseInt(m[1], 10));
+            }
             newProjects.forEach((sp, i) => {
-                const prjCode = 'PRY-' + String(baseCount + i + 1).padStart(3, '0');
+                const prjCode = 'PRY-' + String(maxCodeNum + i + 1).padStart(3, '0');
                 projects.push({
                     id: 'proj_' + uid(),
                     epsId: defaultEpsId,
                     name: sp.projName,
                     code: prjCode,
-                    priority: baseCount + i + 1,
+                    priority: projects.length + i + 1,
                     description: '',
                     status: 'Planificación',
                     startDate: sp.projStart,

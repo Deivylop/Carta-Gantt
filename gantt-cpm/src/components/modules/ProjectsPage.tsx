@@ -129,6 +129,17 @@ export default function ProjectsPage({ onOpenProject }: Props) {
     const [configProject, setConfigProject] = useState<ProjectMeta | null>(null);
     const [configEpsId, setConfigEpsId] = useState<string | null>(null);
 
+    // Compute next available project code (PRY-NNN correlative)
+    const existingCodes = useMemo(() => pState.projects.map(p => p.code), [pState.projects]);
+    const nextProjectCode = useMemo(() => {
+        let max = 0;
+        for (const code of existingCodes) {
+            const m = code.match(/^PRY-(\d+)$/);
+            if (m) max = Math.max(max, parseInt(m[1], 10));
+        }
+        return 'PRY-' + String(max + 1).padStart(3, '0');
+    }, [existingCodes]);
+
     // Move modal
     const [moveModalOpen, setMoveModalOpen] = useState(false);
     const [moveTargetEps, setMoveTargetEps] = useState<string | null>(null);
@@ -318,11 +329,11 @@ export default function ProjectsPage({ onOpenProject }: Props) {
         if (configProject) {
             pDispatch({ type: 'UPDATE_PROJECT', id: configProject.id, updates: { name: data.name, code: data.code, priority: data.priority, status: data.status, startDate: data.startDate || null, statusDate: data.statusDate || null, description: data.description } });
         } else {
-            const code = data.code || ('PRY-' + String(pState.projects.length + 1).padStart(3, '0'));
-            pDispatch({ type: 'ADD_PROJECT', epsId: configEpsId, name: data.name || 'Nuevo Proyecto', code, initialData: { startDate: data.startDate || null, statusDate: data.statusDate || null, description: data.description || '', priority: 1, status: data.status || 'Planificación' } });
+            const code = data.code || nextProjectCode;
+            pDispatch({ type: 'ADD_PROJECT', epsId: configEpsId, name: data.name || 'Nuevo Proyecto', code, initialData: { startDate: data.startDate || null, statusDate: data.statusDate || null, description: data.description || '', status: data.status || 'Planificación' } });
         }
         setConfigModalOpen(false);
-    }, [configProject, configEpsId, pState.projects.length, pDispatch]);
+    }, [configProject, configEpsId, nextProjectCode, pDispatch]);
 
     const handleDelete = useCallback(() => {
         if (!pState.selectedId) return;
@@ -1011,7 +1022,7 @@ export default function ProjectsPage({ onOpenProject }: Props) {
                 </div>
             )}
 
-            <ProjectConfigModal open={configModalOpen} project={configProject} epsId={configEpsId} onSave={handleConfigSave} onClose={() => setConfigModalOpen(false)} customCalendars={ganttState.customCalendars || []} />
+            <ProjectConfigModal open={configModalOpen} project={configProject} epsId={configEpsId} nextCode={nextProjectCode} existingCodes={existingCodes} onSave={handleConfigSave} onClose={() => setConfigModalOpen(false)} customCalendars={ganttState.customCalendars || []} />
             <EPSModal open={epsModalOpen} onClose={() => setEpsModalOpen(false)} />
             {colPickerOpen && (
                 <ColumnPickerModal
