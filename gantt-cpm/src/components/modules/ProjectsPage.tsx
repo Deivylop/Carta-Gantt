@@ -286,9 +286,6 @@ export default function ProjectsPage({ onOpenProject }: Props) {
             const avgPct = sumWeight > 0 ? Math.round(sumWeightedPct / sumWeight * 10) / 10 : 0;
             const avgProg = sumWeight > 0 ? Math.round(sumWeightedProg / sumWeight * 10) / 10 : 0;
 
-            // Compute duration from date range
-            if (sD && eD) dur = Math.max(dur, Math.ceil((eD - sD) / 86400000));
-
             map[epsId] = {
                 startDate: sD ? new Date(sD).toISOString() : null,
                 endDate: eD ? new Date(eD).toISOString() : null,

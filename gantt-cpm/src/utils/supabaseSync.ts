@@ -79,6 +79,8 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
                     if (ef && (!max || ef > max)) return ef;
                     return max;
                 }, null);
+            // EF is exclusive (day after last work day), subtract 1 day for display endDate
+            const endDateISO = latestEF ? new Date(new Date(latestEF).getTime() - 86400000).toISOString() : null;
             const historyPayload: any = {
                 history: state.progressHistory || [],
                 projMeta: {
@@ -88,7 +90,7 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
                     work: projRow?.work || 0,
                     pct: projRow?.pct || 0,
                     startDate: state.projStart ? state.projStart.toISOString() : null,
-                    endDate: latestEF,
+                    endDate: endDateISO,
                     statusDate: state.statusDate ? state.statusDate.toISOString() : null,
                 },
             };

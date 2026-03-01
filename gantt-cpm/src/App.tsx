@@ -364,6 +364,8 @@ function AppInner() {
           if (a.EF && (!max || a.EF > max)) return a.EF;
           return max;
         }, null);
+        // EF is exclusive (day after last work day), subtract 1 day for display endDate
+        const endDateObj = latestEF ? new Date(latestEF.getTime() - 86400000) : null;
         const tw = projRow?.work || 0;
         // Compute actualWork per-task to match project view exactly
         const ew = tasks.reduce((sum, a) => sum + ((a.work || 0) * (a.pct || 0) / 100), 0);
@@ -377,7 +379,7 @@ function AppInner() {
             : (projRow ? Math.round((projRow.pct || 0) * 10) / 10 : 0),
           plannedPct: projRow ? Math.round((projRow._plannedPct || 0) * 10) / 10 : 0,
           startDate: state.projStart ? state.projStart.toISOString() : (p.startDate || null),
-          endDate: latestEF ? latestEF.toISOString() : (state.projStart ? state.projStart.toISOString() : (p.endDate || null)),
+          endDate: endDateObj ? endDateObj.toISOString() : (state.projStart ? state.projStart.toISOString() : (p.endDate || null)),
           statusDate: state.statusDate ? state.statusDate.toISOString() : (p.statusDate || null),
           duration: projRow?.dur || p.duration || 0,
           remainingDur: projRow?.remDur || p.remainingDur || 0,
@@ -416,6 +418,8 @@ function AppInner() {
         if (a.EF && (!max || a.EF > max)) return a.EF;
         return max;
       }, null);
+      // EF is exclusive (day after last work day), subtract 1 day for display endDate
+      const endDateObj = latestEF ? new Date(latestEF.getTime() - 86400000) : null;
       const totalWork = projRow?.work || 0;
       // Compute actualWork per-task to match project view exactly
       const earnedWork = tasks.reduce((sum, a) => sum + ((a.work || 0) * (a.pct || 0) / 100), 0);
@@ -430,7 +434,7 @@ function AppInner() {
             : (projRow ? Math.round((projRow.pct || 0) * 10) / 10 : 0),
           plannedPct: projRow ? Math.round((projRow._plannedPct || 0) * 10) / 10 : 0,
           startDate: state.projStart ? state.projStart.toISOString() : null,
-          endDate: latestEF ? latestEF.toISOString() : (state.projStart ? state.projStart.toISOString() : null),
+          endDate: endDateObj ? endDateObj.toISOString() : (state.projStart ? state.projStart.toISOString() : null),
           statusDate: state.statusDate ? state.statusDate.toISOString() : null,
           supabaseId: localStorage.getItem('sb_current_project_id') || null,
           duration: projRow?.dur || 0,
