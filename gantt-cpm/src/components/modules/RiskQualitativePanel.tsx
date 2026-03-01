@@ -196,29 +196,25 @@ export default function RiskQualitativePanel() {
                   {activeKeysReversed.map(iLvl => {
                     const cellRisks = mData[`${pLvl}-${iLvl}`] || [];
                     const cs = cellScore(pLvl, iLvl);
+                    const count = cellRisks.length;
                     return (
                       <td key={iLvl} style={{
-                        background: scoreColor(cs, scoringCfg) + '25',
+                        background: scoreColor(cs, scoringCfg),
                         border: '1px solid var(--border-primary)',
-                        height: 52, padding: 2, verticalAlign: 'top',
-                        cursor: cellRisks.length > 0 ? 'pointer' : 'default',
+                        height: 52, padding: 2, verticalAlign: 'middle', textAlign: 'center',
+                        cursor: count > 0 ? 'pointer' : 'default',
                       }}
-                        title={`Score: ${cs} (${scoreLabel(cs, scoringCfg)})`}
+                        title={`Score: ${cs} (${scoreLabel(cs, scoringCfg)}) — ${count} riesgo${count !== 1 ? 's' : ''}`}
+                        onClick={() => { if (count === 1) setSelectedId(cellRisks[0].id); }}
                       >
-                        {cellRisks.map(r => (
-                          <div key={r.id}
-                            onClick={() => setSelectedId(r.id)}
-                            style={{
-                              fontSize: 7, lineHeight: '10px', padding: '1px 2px',
-                              background: r.threatOrOpportunity === 'threat' ? '#ef444430' : '#22c55e30',
-                              borderRadius: 2, marginBottom: 1,
-                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                              border: r.id === selectedId ? '1px solid #6366f1' : '1px solid transparent',
-                              cursor: 'pointer',
-                            }}>
-                            {r.name || r.id.slice(-4)}
-                          </div>
-                        ))}
+                        {count > 0 && (
+                          <span style={{
+                            fontSize: 14, fontWeight: 800, color: '#fff',
+                            textShadow: '0 1px 3px rgba(0,0,0,0.4)',
+                          }}>
+                            {count}
+                          </span>
+                        )}
                       </td>
                     );
                   })}
