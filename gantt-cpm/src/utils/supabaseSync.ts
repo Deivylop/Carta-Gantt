@@ -414,6 +414,17 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
     };
 }
 
+/** Delete a project from Supabase (cascades to activities, deps, resources, etc.) */
+export async function deleteProjectFromSupabase(supabaseId: string): Promise<void> {
+    // Delete in cascade-safe order (child tables first)
+    await supabase.from('gantt_activity_resources').delete().eq('project_id', supabaseId);
+    await supabase.from('gantt_dependencies').delete().eq('project_id', supabaseId);
+    await supabase.from('gantt_activities').delete().eq('project_id', supabaseId);
+    await supabase.from('gantt_resources').delete().eq('project_id', supabaseId);
+    const { error } = await supabase.from('gantt_projects').delete().eq('id', supabaseId);
+    if (error) throw error;
+}
+
 /** List all projects from Supabase (lightweight — only project metadata) */
 export async function listSupabaseProjects(): Promise<{ id: string; projName: string; projStart: string | null; statusDate: string | null; defCal: number }[]> {
     const { data, error } = await supabase
@@ -489,18 +500,30 @@ export async function fetchProjectSummaries(
     globalPct: number;
     pctProg: number;
     resources: string;
+    startDate?: string | null;
+    endDate?: string | null;
+    statusDate?: string | null;
 }>> {
     if (!supabaseProjectIds.length) return {};
 
-    // One query to get all activities for all projects
+    // Fetch activities WITH date columns for accurate start/end dates
     const { data: allActs, error } = await supabase
         .from('gantt_activities')
-        .select('project_id, local_id, type, dur, remdur, pct, work, notes, res, sort_order, lv')
+        .select('project_id, local_id, type, dur, remdur, pct, work, notes, res, sort_order, lv, "ES", "EF"')
         .in('project_id', supabaseProjectIds)
         .order('sort_order', { ascending: true });
     if (error) throw error;
 
-    // Group by project_id
+    // Also fetch project-level metadata (projstart, statusdate) from gantt_projects
+    const { data: projRows, error: projErr } = await supabase
+        .from('gantt_projects')
+        .select('id, projstart, statusdate')
+        .in('id', supabaseProjectIds);
+    if (projErr) throw projErr;
+    const projMap = new Map<string, any>();
+    (projRows || []).forEach(p => projMap.set(p.id, p));
+
+    // Group activities by project_id
     const byProject = new Map<string, any[]>();
     (allActs || []).forEach(a => {
         if (!byProject.has(a.project_id)) byProject.set(a.project_id, []);
@@ -512,7 +535,9 @@ export async function fetchProjectSummaries(
     for (const [projectId, acts] of byProject) {
         // Filter real tasks (not hidden meta-activities)
         const tasks = acts.filter((a: any) => a.type === 'task' && !a.local_id.startsWith('__'));
-        // First summary row (WBS 0)
+        // All real activities (tasks + summaries, excluding hidden meta-rows)
+        const realActs = acts.filter((a: any) => !a.local_id.startsWith('__'));
+        // First summary row (WBS 0 equivalent)
         const summaryRow = acts.find((a: any) => a.sort_order === 0 && a.type === 'summary');
         // Hidden progress history
         const historyRow = acts.find((a: any) => a.local_id === '__HISTORY__');
@@ -521,6 +546,36 @@ export async function fetchProjectSummaries(
         const duration = summaryRow ? parseFloat(summaryRow.dur) || 0 : 0;
         const remainingDur = summaryRow ? (summaryRow.remdur != null ? parseFloat(summaryRow.remdur) : duration) : 0;
         const totalWork = tasks.reduce((sum: number, a: any) => sum + (parseFloat(a.work) || 0), 0);
+
+        // Calculate actualWork accurately: sum of per-task (work * pct/100)
+        const actualWork = tasks.reduce((sum: number, a: any) => {
+            const w = parseFloat(a.work) || 0;
+            const p = parseFloat(a.pct) || 0;
+            return sum + (w * p / 100);
+        }, 0);
+        // Round to avoid floating point noise
+        const actualWorkRounded = Math.round(actualWork * 100) / 100;
+        const remainingWork = totalWork - actualWorkRounded;
+
+        // Compute startDate (earliest ES) and endDate (latest EF) from real activities
+        let minES: string | null = null;
+        let maxEF: string | null = null;
+        realActs.forEach((a: any) => {
+            if (a.ES) {
+                if (!minES || a.ES < minES) minES = a.ES;
+            }
+            if (a.EF) {
+                if (!maxEF || a.EF > maxEF) maxEF = a.EF;
+            }
+        });
+
+        // Format dates as YYYY-MM-DD for display
+        const formatDate = (isoStr: string | null): string | null => {
+            if (!isoStr) return null;
+            try {
+                return new Date(isoStr).toISOString().split('T')[0];
+            } catch { return null; }
+        };
 
         // Aggregate unique resources
         const resSet = new Set<string>();
@@ -537,19 +592,26 @@ export async function fetchProjectSummaries(
                 if (last) globalPct = last.actualPct || 0;
             } catch { /* ignore */ }
         }
-        const actualWork = totalWork * globalPct / 100;
-        const remainingWork = totalWork - actualWork;
+
+        // Get project metadata
+        const projRow = projMap.get(projectId);
+        const startDate = formatDate(minES) || (projRow?.projstart ? formatDate(projRow.projstart) : null);
+        const endDate = formatDate(maxEF);
+        const statusDate = projRow?.statusdate ? formatDate(projRow.statusdate) : null;
 
         result[projectId] = {
             activityCount,
             duration,
             remainingDur,
             work: totalWork,
-            actualWork,
+            actualWork: actualWorkRounded,
             remainingWork,
             globalPct,
             pctProg: summaryRow ? parseFloat(summaryRow.pct) || 0 : 0,
             resources: Array.from(resSet).join('; '),
+            startDate,
+            endDate,
+            statusDate,
         };
     }
 

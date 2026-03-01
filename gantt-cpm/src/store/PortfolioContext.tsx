@@ -5,7 +5,7 @@
 // ═══════════════════════════════════════════════════════════════════
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef } from 'react';
 import type { EPSNode, ProjectMeta, PortfolioState, TreeNode } from '../types/portfolio';
-import { listSupabaseProjects, savePortfolioToSupabase, loadPortfolioFromSupabase, createSupabaseProject, fetchProjectSummaries } from '../utils/supabaseSync';
+import { listSupabaseProjects, savePortfolioToSupabase, loadPortfolioFromSupabase, createSupabaseProject, fetchProjectSummaries, deleteProjectFromSupabase } from '../utils/supabaseSync';
 
 const STORAGE_KEY = 'gantt-cpm-portfolio';
 const PROJECT_PREFIX = 'gantt-cpm-project-';
@@ -244,6 +244,13 @@ function portfolioReducer(state: PortfolioState, action: PortfolioAction): Portf
         case 'DELETE_PROJECT': {
             // Also remove saved project state from localStorage
             try { localStorage.removeItem(PROJECT_PREFIX + action.id); } catch { }
+            // Delete from Supabase if project has a supabaseId (fire-and-forget)
+            const projToDelete = state.projects.find(p => p.id === action.id);
+            if (projToDelete?.supabaseId) {
+                deleteProjectFromSupabase(projToDelete.supabaseId).catch(e =>
+                    console.warn('Failed to delete project from Supabase:', e)
+                );
+            }
             return {
                 ...state,
                 projects: state.projects.filter(p => p.id !== action.id),
