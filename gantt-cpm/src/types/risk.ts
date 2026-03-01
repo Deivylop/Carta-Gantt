@@ -434,7 +434,8 @@ export function computeQualScore(qs: QualitativeScore, cfg?: RiskScoringConfig):
 
 /** Score → color using tolerance levels */
 export function scoreColor(score: number, cfg?: RiskScoringConfig): string {
-  const tols = cfg?.toleranceLevels ?? DEFAULT_TOLERANCE_LEVELS;
+  const raw = cfg?.toleranceLevels;
+  const tols = (raw && raw.length) ? raw : DEFAULT_TOLERANCE_LEVELS;
   // Tolerance levels are sorted high→low by minScore
   const sorted = [...tols].sort((a, b) => b.minScore - a.minScore);
   for (const t of sorted) {
@@ -445,7 +446,8 @@ export function scoreColor(score: number, cfg?: RiskScoringConfig): string {
 
 /** Score → label using tolerance levels */
 export function scoreLabel(score: number, cfg?: RiskScoringConfig): string {
-  const tols = cfg?.toleranceLevels ?? DEFAULT_TOLERANCE_LEVELS;
+  const raw = cfg?.toleranceLevels;
+  const tols = (raw && raw.length) ? raw : DEFAULT_TOLERANCE_LEVELS;
   const sorted = [...tols].sort((a, b) => b.minScore - a.minScore);
   for (const t of sorted) {
     if (score >= t.minScore) return t.label;

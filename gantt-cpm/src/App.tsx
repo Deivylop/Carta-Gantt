@@ -107,6 +107,7 @@ function serializeGanttState(state: any): any {
     filtersMatchAll: state.filtersMatchAll,
     activeBaselineIdx: state.activeBaselineIdx,
     showProjRow: state.showProjRow,
+    riskState: state.riskState,
   };
 }
 
@@ -148,11 +149,13 @@ function AppInner() {
 
   const saveTimeoutRef = useRef<number | null>(null);
   const switchingProjectRef = useRef(false); // guard: suppress auto-save during project switch
+  const initialLoadingRef = useRef(true); // guard: suppress auto-save until initial Supabase load completes
 
   // 1. Initial Load – restore active project from localStorage FIRST (fast),
   //    then verify against Supabase (source of truth, overrides if it has data).
   useEffect(() => {
     const initApp = async () => {
+      initialLoadingRef.current = true;
       const pid = typeof window !== 'undefined' ? localStorage.getItem('sb_current_project_id') : null;
       const activeId = pState.activeProjectId;
 
@@ -185,27 +188,30 @@ function AppInner() {
             if ((data as any).riskState) dispatch({ type: 'LOAD_RISK_STATE', riskState: (data as any).riskState });
             if (!pid) localStorage.setItem('sb_current_project_id', sbPid);
             console.log('[initApp] Loaded from Supabase:', sbPid);
+            initialLoadingRef.current = false;
             return;
           }
           // Supabase project exists but has NO activities (possibly caught mid-save)
           if (localLoaded) {
             console.warn('[initApp] Supabase has no activities but localStorage does — keeping localStorage data; auto-save will heal Supabase');
+            initialLoadingRef.current = false;
             return;
           }
           console.warn('[initApp] Supabase has no activities and no localStorage data');
         } catch (err) {
           console.warn('[initApp] Supabase load failed:', err);
-          if (localLoaded) return; // localStorage already restored, that's fine
+          if (localLoaded) { initialLoadingRef.current = false; return; } // localStorage already restored, that's fine
         }
       }
 
       // ── Step C: If nothing loaded yet, we're done (localStorage already loaded above if available) ──
-      if (localLoaded) return;
+      if (localLoaded) { initialLoadingRef.current = false; return; }
 
       // ── Step D: Fallback – demo data only if no portfolio projects exist at all ──
       if (pState.projects.length === 0) {
         loadDemoData();
       }
+      initialLoadingRef.current = false;
     };
     initApp();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -215,11 +221,13 @@ function AppInner() {
   useEffect(() => {
     if (!state.activities.length) return;
     if (switchingProjectRef.current) return; // suppress during project switch
+    if (initialLoadingRef.current) return; // suppress until initial Supabase load completes
     const pid = localStorage.getItem('sb_current_project_id');
     if (!pid) return; // No auto-create — user must create/load a project first
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = window.setTimeout(async () => {
       if (switchingProjectRef.current) return; // re-check after timeout
+      if (initialLoadingRef.current) return; // re-check after timeout
       const currentPid = localStorage.getItem('sb_current_project_id');
       if (!currentPid) return;
       try {
