@@ -5,6 +5,7 @@
 // ═══════════════════════════════════════════════════════════════════
 import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
 import type { EPSNode, ProjectMeta, PortfolioState, TreeNode } from '../types/portfolio';
+import { listSupabaseProjects } from '../utils/supabaseSync';
 
 const STORAGE_KEY = 'gantt-cpm-portfolio';
 const PROJECT_PREFIX = 'gantt-cpm-project-';
@@ -84,7 +85,8 @@ type PortfolioAction =
     | { type: 'INDENT'; id: string }
     | { type: 'OUTDENT'; id: string }
     | { type: 'MOVE_EPS_UP'; id: string }
-    | { type: 'MOVE_EPS_DOWN'; id: string };
+    | { type: 'MOVE_EPS_DOWN'; id: string }
+    | { type: 'SYNC_FROM_SUPABASE'; supabaseProjects: { id: string; projName: string; projStart: string | null; statusDate: string | null; defCal: number }[] };
 
 // ─── Initial State ──────────────────────────────────────────────
 const initialState: PortfolioState = {
@@ -382,6 +384,75 @@ function portfolioReducer(state: PortfolioState, action: PortfolioAction): Portf
             return { ...state, epsNodes: state.epsNodes.map(e => e.id === node.id ? { ...e, order: next.order ?? 0 } : e.id === next.id ? { ...e, order: node.order ?? 0 } : e) };
         }
 
+        case 'SYNC_FROM_SUPABASE': {
+            // Merge Supabase projects into portfolio.
+            // If a supabaseId already exists in our projects, skip it.
+            // Otherwise, create the project and ensure a default EPS exists.
+            const existingSupaIds = new Set(state.projects.map(p => p.supabaseId).filter(Boolean));
+            const newProjects = action.supabaseProjects.filter(sp => !existingSupaIds.has(sp.id));
+            if (newProjects.length === 0) return state;
+
+            // Ensure at least one EPS exists — create a default if empty
+            let epsNodes = [...state.epsNodes];
+            let defaultEpsId: string;
+            if (epsNodes.length > 0) {
+                // Use the first root EPS
+                const rootEps = epsNodes.filter(e => !e.parentId).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+                defaultEpsId = rootEps.length > 0 ? rootEps[0].id : epsNodes[0].id;
+            } else {
+                // Create a default EPS
+                defaultEpsId = 'eps_' + uid();
+                epsNodes.push({
+                    id: defaultEpsId,
+                    name: 'Proyectos',
+                    epsCode: 'EPS-001',
+                    parentId: null,
+                    type: 'eps',
+                    order: 0,
+                });
+            }
+
+            const now = nowISO();
+            const baseCount = state.projects.length;
+            const projects = [...state.projects];
+            newProjects.forEach((sp, i) => {
+                const prjCode = 'PRY-' + String(baseCount + i + 1).padStart(3, '0');
+                projects.push({
+                    id: 'proj_' + uid(),
+                    epsId: defaultEpsId,
+                    name: sp.projName,
+                    code: prjCode,
+                    priority: baseCount + i + 1,
+                    description: '',
+                    status: 'Planificación',
+                    startDate: sp.projStart,
+                    endDate: sp.projStart, // same as start until opened
+                    statusDate: sp.statusDate,
+                    activityCount: 0,
+                    completedCount: 0,
+                    criticalCount: 0,
+                    globalPct: 0,
+                    plannedPct: 0,
+                    createdAt: now,
+                    updatedAt: now,
+                    supabaseId: sp.id,
+                    duration: 0,
+                    remainingDur: 0,
+                    work: 0,
+                    actualWork: 0,
+                    remainingWork: 0,
+                    pctProg: 0,
+                    weight: null,
+                    resources: '',
+                });
+            });
+
+            const expanded = new Set(state.expandedIds);
+            expanded.add(defaultEpsId);
+
+            return { ...state, epsNodes, projects, expandedIds: expanded };
+        }
+
         default:
             return state;
     }
@@ -435,6 +506,23 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
             console.error('Failed to save portfolio', e);
         }
     }, [state.epsNodes, state.projects, state.expandedIds, state.activeProjectId]);
+
+    // ── Sync from Supabase on mount ─────────────────────────────
+    // If Supabase has projects not yet in the local portfolio, import them.
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const sbProjects = await listSupabaseProjects();
+                if (cancelled || sbProjects.length === 0) return;
+                dispatch({ type: 'SYNC_FROM_SUPABASE', supabaseProjects: sbProjects });
+            } catch (e) {
+                // Supabase not configured or offline — silently ignore
+                console.warn('Could not sync portfolio from Supabase:', e);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, []); // run once on mount
 
     // ── Cross-tab sync via storage event ────────────────────────
     // Fires ONLY when a DIFFERENT tab writes to our localStorage key.

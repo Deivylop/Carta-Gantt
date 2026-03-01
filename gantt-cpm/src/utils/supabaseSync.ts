@@ -413,3 +413,19 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
         scenarios
     };
 }
+
+/** List all projects from Supabase (lightweight — only project metadata) */
+export async function listSupabaseProjects(): Promise<{ id: string; projName: string; projStart: string | null; statusDate: string | null; defCal: number }[]> {
+    const { data, error } = await supabase
+        .from('gantt_projects')
+        .select('id, projname, projstart, statusdate, defcal')
+        .order('created_at', { ascending: true });
+    if (error) throw error;
+    return (data || []).map((r: any) => ({
+        id: r.id,
+        projName: r.projname || 'Sin nombre',
+        projStart: r.projstart || null,
+        statusDate: r.statusdate || null,
+        defCal: r.defcal || 6,
+    }));
+}
