@@ -382,6 +382,7 @@ export function usePortfolio() {
 // ─── Provider ───────────────────────────────────────────────────
 export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     const [state, dispatch] = useReducer(portfolioReducer, initialState);
+    const loadedRef = React.useRef(false);
 
     // Load from localStorage on mount
     useEffect(() => {
@@ -402,10 +403,14 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         } catch (e) {
             console.warn('Failed to load portfolio from localStorage', e);
         }
+        // Mark as loaded so the save effect can start running
+        loadedRef.current = true;
     }, []);
 
     // Auto-save to localStorage on state changes
     const savePortfolio = useCallback(() => {
+        // Guard: never save before the initial load has run
+        if (!loadedRef.current) return;
         try {
             const data = {
                 epsNodes: state.epsNodes,
@@ -424,6 +429,24 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         const t = setTimeout(() => savePortfolio(), 300);
         return () => clearTimeout(t);
     }, [savePortfolio]);
+
+    // Guarantee save on page close/refresh (not debounced)
+    useEffect(() => {
+        const handleBeforeUnload = () => {
+            if (!loadedRef.current) return;
+            try {
+                const data = {
+                    epsNodes: state.epsNodes,
+                    projects: state.projects,
+                    expandedIds: Array.from(state.expandedIds),
+                    activeProjectId: state.activeProjectId,
+                };
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+            } catch { /* ignore */ }
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [state]);
 
     // Save an individual project's gantt state
     const saveProjectState = useCallback((projectId: string, ganttState: any) => {
