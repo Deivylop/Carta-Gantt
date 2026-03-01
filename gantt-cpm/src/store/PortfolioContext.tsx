@@ -3,9 +3,9 @@
 // Persists to localStorage under 'gantt-cpm-portfolio'
 // Individual project states under 'gantt-cpm-project-{id}'
 // ═══════════════════════════════════════════════════════════════════
-import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef } from 'react';
 import type { EPSNode, ProjectMeta, PortfolioState, TreeNode } from '../types/portfolio';
-import { listSupabaseProjects } from '../utils/supabaseSync';
+import { listSupabaseProjects, savePortfolioToSupabase, loadPortfolioFromSupabase, createSupabaseProject } from '../utils/supabaseSync';
 
 const STORAGE_KEY = 'gantt-cpm-portfolio';
 const PROJECT_PREFIX = 'gantt-cpm-project-';
@@ -507,22 +507,85 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         }
     }, [state.epsNodes, state.projects, state.expandedIds, state.activeProjectId]);
 
-    // ── Sync from Supabase on mount ─────────────────────────────
-    // If Supabase has projects not yet in the local portfolio, import them.
+    // ── Load portfolio from Supabase on mount (source of truth) ──
     useEffect(() => {
         let cancelled = false;
         (async () => {
             try {
+                // 1. Try loading full portfolio structure from Supabase
+                const sbPortfolio = await loadPortfolioFromSupabase();
+                if (cancelled) return;
+
+                if (sbPortfolio && (sbPortfolio.epsNodes.length > 0 || sbPortfolio.projects.length > 0)) {
+                    // Supabase has portfolio data → load it (source of truth)
+                    dispatch({
+                        type: 'LOAD',
+                        state: {
+                            epsNodes: sbPortfolio.epsNodes,
+                            projects: sbPortfolio.projects,
+                            expandedIds: sbPortfolio.expandedIds,
+                            activeProjectId: sbPortfolio.activeProjectId,
+                        },
+                    });
+                }
+                // 2. Always sync with gantt_projects to pick up any newly created ones
                 const sbProjects = await listSupabaseProjects();
                 if (cancelled || sbProjects.length === 0) return;
                 dispatch({ type: 'SYNC_FROM_SUPABASE', supabaseProjects: sbProjects });
             } catch (e) {
-                // Supabase not configured or offline — silently ignore
-                console.warn('Could not sync portfolio from Supabase:', e);
+                console.warn('Could not load portfolio from Supabase:', e);
+                // Fallback: try syncing just the project list
+                try {
+                    const sbProjects = await listSupabaseProjects();
+                    if (cancelled || sbProjects.length === 0) return;
+                    dispatch({ type: 'SYNC_FROM_SUPABASE', supabaseProjects: sbProjects });
+                } catch { /* ignore */ }
             }
         })();
         return () => { cancelled = true; };
     }, []); // run once on mount
+
+    // ── Debounced save portfolio to Supabase on state changes ──
+    const sbSaveTimeoutRef = useRef<number | null>(null);
+    useEffect(() => {
+        if (sbSaveTimeoutRef.current) clearTimeout(sbSaveTimeoutRef.current);
+        sbSaveTimeoutRef.current = window.setTimeout(async () => {
+            try {
+                await savePortfolioToSupabase({
+                    epsNodes: state.epsNodes,
+                    projects: state.projects,
+                    expandedIds: Array.from(state.expandedIds),
+                    activeProjectId: state.activeProjectId,
+                });
+            } catch (e) {
+                console.warn('Failed to save portfolio to Supabase:', e);
+            }
+        }, 2000);
+        return () => { if (sbSaveTimeoutRef.current) clearTimeout(sbSaveTimeoutRef.current); };
+    }, [state.epsNodes, state.projects, state.expandedIds, state.activeProjectId]);
+
+    // ── Auto-create Supabase project for any project without supabaseId ──
+    const creatingRef = useRef(new Set<string>());
+    useEffect(() => {
+        const unlinked = state.projects.filter(p => !p.supabaseId && !creatingRef.current.has(p.id));
+        if (unlinked.length === 0) return;
+        let cancelled = false;
+        (async () => {
+            for (const proj of unlinked) {
+                if (cancelled) return;
+                creatingRef.current.add(proj.id);
+                try {
+                    const sbId = await createSupabaseProject(proj.name, proj.startDate, undefined, proj.statusDate);
+                    if (cancelled) return;
+                    dispatch({ type: 'UPDATE_PROJECT', id: proj.id, updates: { supabaseId: sbId } });
+                } catch (e) {
+                    console.warn('Failed to auto-create Supabase project for', proj.name, e);
+                    creatingRef.current.delete(proj.id); // allow retry
+                }
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [state.projects]);
 
     // ── Cross-tab sync via storage event ────────────────────────
     // Fires ONLY when a DIFFERENT tab writes to our localStorage key.

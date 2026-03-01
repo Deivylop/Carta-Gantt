@@ -429,3 +429,70 @@ export async function listSupabaseProjects(): Promise<{ id: string; projName: st
         defCal: r.defcal || 6,
     }));
 }
+
+/** Save portfolio state (EPS tree + project metadata) to Supabase */
+export async function savePortfolioToSupabase(portfolio: {
+    epsNodes: any[];
+    projects: any[];
+    expandedIds: string[];
+    activeProjectId: string | null;
+}): Promise<void> {
+    const { error } = await supabase
+        .from('portfolio_state')
+        .upsert({
+            id: 'default',
+            eps_nodes: portfolio.epsNodes,
+            projects: portfolio.projects,
+            expanded_ids: portfolio.expandedIds,
+            active_project_id: portfolio.activeProjectId,
+            updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
+    if (error) throw error;
+}
+
+/** Load portfolio state from Supabase (returns null if table doesn't exist or no data) */
+export async function loadPortfolioFromSupabase(): Promise<{
+    epsNodes: any[];
+    projects: any[];
+    expandedIds: string[];
+    activeProjectId: string | null;
+} | null> {
+    const { data, error } = await supabase
+        .from('portfolio_state')
+        .select('*')
+        .eq('id', 'default')
+        .maybeSingle();
+    if (error) {
+        // Table may not exist yet — gracefully return null
+        if (error.code === '42P01' || error.message?.includes('does not exist')) return null;
+        throw error;
+    }
+    if (!data) return null;
+    return {
+        epsNodes: data.eps_nodes || [],
+        projects: data.projects || [],
+        expandedIds: data.expanded_ids || [],
+        activeProjectId: data.active_project_id || null,
+    };
+}
+
+/** Create a new project in gantt_projects and return its Supabase UUID */
+export async function createSupabaseProject(
+    name: string,
+    projStart?: string | null,
+    defCal?: number,
+    statusDate?: string | null
+): Promise<string> {
+    const { data, error } = await supabase
+        .from('gantt_projects')
+        .insert({
+            projname: name,
+            projstart: projStart || null,
+            defcal: defCal || 6,
+            statusdate: statusDate || null,
+        })
+        .select()
+        .single();
+    if (error) throw error;
+    return data.id;
+}

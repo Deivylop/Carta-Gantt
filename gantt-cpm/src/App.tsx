@@ -34,7 +34,7 @@ import ProjectsPage from './components/modules/ProjectsPage';
 import { PortfolioProvider, usePortfolio } from './store/PortfolioContext';
 import { newActivity } from './utils/cpm';
 import { autoId } from './utils/helpers';
-import { saveToSupabase, loadFromSupabase } from './utils/supabaseSync';
+import { saveToSupabase, loadFromSupabase, createSupabaseProject } from './utils/supabaseSync';
 
 /** Restore ISO-string dates back to Date objects in a saved project snapshot */
 function restoreDatesFromSaved(saved: any): any {
@@ -490,13 +490,25 @@ function AppInner() {
         localStorage.removeItem('sb_current_project_id');
       }
     } else {
-      // No saved state and no Supabase link — start fresh with project name
+      // No saved state and no Supabase link — start fresh and auto-create in Supabase
       const freshActs = [
         { ...newActivity('PROY', state.defCal), name: proj?.name || 'Nuevo Proyecto', type: 'summary' as const, lv: -1, _isProjRow: true },
       ];
       dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: proj?.name || 'Nuevo Proyecto', projStart: new Date(), defCal: 6 as any, statusDate: new Date() } });
       dispatch({ type: 'SET_ACTIVITIES', activities: freshActs });
-      localStorage.removeItem('sb_current_project_id');
+      // Auto-create in Supabase so auto-save works immediately
+      if (proj) {
+        try {
+          const sbId = await createSupabaseProject(proj.name);
+          localStorage.setItem('sb_current_project_id', sbId);
+          pDispatch({ type: 'UPDATE_PROJECT', id: projectId, updates: { supabaseId: sbId } });
+        } catch (err) {
+          console.warn('Failed to create Supabase project:', err);
+          localStorage.removeItem('sb_current_project_id');
+        }
+      } else {
+        localStorage.removeItem('sb_current_project_id');
+      }
     }
 
     pDispatch({ type: 'SET_ACTIVE_PROJECT', id: projectId });
