@@ -146,6 +146,7 @@ function AppInner() {
   }, [state.defCal, dispatch]);
 
   const saveTimeoutRef = useRef<number | null>(null);
+  const switchingProjectRef = useRef(false); // guard: suppress auto-save during project switch
 
   // 1. Initial Load – restore active project from localStorage or Supabase
   useEffect(() => {
@@ -209,22 +210,36 @@ function AppInner() {
   // 2. Auto-save on state changes (only if a project is already connected)
   useEffect(() => {
     if (!state.activities.length) return;
+    if (switchingProjectRef.current) return; // suppress during project switch
     const pid = localStorage.getItem('sb_current_project_id');
     if (!pid) return; // No auto-create — user must create/load a project first
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = window.setTimeout(async () => {
+      if (switchingProjectRef.current) return; // re-check after timeout
       const currentPid = localStorage.getItem('sb_current_project_id');
       if (!currentPid) return;
       try {
         const newId = await saveToSupabase(state, currentPid);
         if (newId && newId !== currentPid) localStorage.setItem('sb_current_project_id', newId);
-        console.log('Auto-saved to Supabase');
+        // Dual-write: also save to localStorage for beforeunload recovery
+        if (pState.activeProjectId) {
+          const snapshot = serializeGanttState(state);
+          saveProjectState(pState.activeProjectId, snapshot);
+        }
+        console.log('Auto-saved to Supabase + localStorage');
       } catch (err) {
         console.error('Auto-save error:', err);
+        // Still save to localStorage as fallback
+        if (pState.activeProjectId) {
+          try {
+            const snapshot = serializeGanttState(state);
+            saveProjectState(pState.activeProjectId, snapshot);
+          } catch {}
+        }
       }
     }, 800);
     return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
-  }, [state.activities, state.resourcePool, state.projName, state.projStart, state.defCal, state.statusDate, state.ppcHistory, state.leanRestrictions, state.progressHistory, state.scenarios]);
+  }, [state.activities, state.resourcePool, state.projName, state.projStart, state.defCal, state.statusDate, state.ppcHistory, state.leanRestrictions, state.progressHistory, state.scenarios, pState.activeProjectId, saveProjectState]);
 
   // 3. Listen to Supabase Events
   useEffect(() => {
@@ -454,10 +469,17 @@ function AppInner() {
 
   // ── Open a project from the portfolio ──
   const handleOpenProject = useCallback(async (projectId: string) => {
+    // ── Guard: suppress auto-save while switching projects ──
+    switchingProjectRef.current = true;
+    if (saveTimeoutRef.current) { clearTimeout(saveTimeoutRef.current); saveTimeoutRef.current = null; }
+
     // Save current project first if any
     if (pState.activeProjectId && pState.activeProjectId !== projectId && state.activities.length > 0) {
       const snapshot = serializeGanttState(state);
       saveProjectState(pState.activeProjectId, snapshot);
+      // Also save to Supabase (fire-and-forget) so data is persisted remotely
+      const oldPid = localStorage.getItem('sb_current_project_id');
+      if (oldPid) saveToSupabase(state, oldPid).catch(e => console.warn('Save before switch failed:', e));
     }
 
     const proj = pState.projects.find(p => p.id === projectId);
@@ -465,19 +487,19 @@ function AppInner() {
     // Load the target project
     const saved = loadProjectState(projectId);
     if (saved) {
-      restoreDatesFromSaved(saved);
-      dispatch({ type: 'LOAD_STATE', state: saved });
-      // Restore Supabase project ID link if available
+      // Set Supabase ID BEFORE dispatching to prevent auto-save race
       if (proj?.supabaseId) {
         localStorage.setItem('sb_current_project_id', proj.supabaseId);
       } else {
         localStorage.removeItem('sb_current_project_id');
       }
+      restoreDatesFromSaved(saved);
+      dispatch({ type: 'LOAD_STATE', state: saved });
     } else if (proj?.supabaseId) {
+      // Set Supabase ID BEFORE dispatching to prevent auto-save race
+      localStorage.setItem('sb_current_project_id', proj.supabaseId);
       // No local state but project exists in Supabase — load from there
       // ALWAYS reset to a clean state first, then overlay Supabase data.
-      // This prevents the previous project's activities/resources/history from persisting
-      // when the Supabase project is empty (e.g. just auto-created, no activities saved yet).
       const freshName = proj?.name || 'Nuevo Proyecto';
       const freshActs = [
         { ...newActivity('PROY', state.defCal), name: freshName, type: 'summary' as const, lv: -1, _isProjRow: true },
@@ -499,19 +521,23 @@ function AppInner() {
         if (data.ppcHistory && data.ppcHistory.length) dispatch({ type: 'SET_PPC_HISTORY', history: data.ppcHistory });
         if (data.leanRestrictions && data.leanRestrictions.length) dispatch({ type: 'SET_LEAN_RESTRICTIONS', restrictions: data.leanRestrictions });
         if ((data as any).scenarios && (data as any).scenarios.length) dispatch({ type: 'SET_SCENARIOS', scenarios: (data as any).scenarios });
-        localStorage.setItem('sb_current_project_id', proj.supabaseId);
         console.log('Loaded project from Supabase:', proj.supabaseId);
       } catch (err) {
         console.error('Failed to load from Supabase, using fresh state:', err);
-        localStorage.removeItem('sb_current_project_id');
       }
     } else {
       // No saved state and no Supabase link — start fresh and auto-create in Supabase
+      localStorage.removeItem('sb_current_project_id');
       const freshActs = [
         { ...newActivity('PROY', state.defCal), name: proj?.name || 'Nuevo Proyecto', type: 'summary' as const, lv: -1, _isProjRow: true },
       ];
       dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: proj?.name || 'Nuevo Proyecto', projStart: new Date(), defCal: 6 as any, statusDate: new Date() } });
       dispatch({ type: 'SET_ACTIVITIES', activities: freshActs });
+      dispatch({ type: 'SET_RESOURCES', resources: [] });
+      dispatch({ type: 'SET_PROGRESS_HISTORY', history: [] });
+      dispatch({ type: 'SET_PPC_HISTORY', history: [] });
+      dispatch({ type: 'SET_LEAN_RESTRICTIONS', restrictions: [] });
+      dispatch({ type: 'SET_SCENARIOS', scenarios: [] });
       // Auto-create in Supabase so auto-save works immediately
       if (proj) {
         try {
@@ -520,16 +546,16 @@ function AppInner() {
           pDispatch({ type: 'UPDATE_PROJECT', id: projectId, updates: { supabaseId: sbId } });
         } catch (err) {
           console.warn('Failed to create Supabase project:', err);
-          localStorage.removeItem('sb_current_project_id');
         }
-      } else {
-        localStorage.removeItem('sb_current_project_id');
       }
     }
 
     pDispatch({ type: 'SET_ACTIVE_PROJECT', id: projectId });
     setActiveModule('gantt');
     localStorage.setItem('gantt_active_module', 'gantt');
+
+    // ── Release auto-save guard after a short delay to let React batched dispatches settle ──
+    setTimeout(() => { switchingProjectRef.current = false; }, 1200);
   }, [pState.activeProjectId, pState.projects, state, saveProjectState, loadProjectState, dispatch, pDispatch]);
 
   return (
