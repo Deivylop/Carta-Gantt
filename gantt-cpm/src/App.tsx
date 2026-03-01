@@ -475,24 +475,34 @@ function AppInner() {
       }
     } else if (proj?.supabaseId) {
       // No local state but project exists in Supabase — load from there
+      // ALWAYS reset to a clean state first, then overlay Supabase data.
+      // This prevents the previous project's activities/resources/history from persisting
+      // when the Supabase project is empty (e.g. just auto-created, no activities saved yet).
+      const freshName = proj?.name || 'Nuevo Proyecto';
+      const freshActs = [
+        { ...newActivity('PROY', state.defCal), name: freshName, type: 'summary' as const, lv: -1, _isProjRow: true },
+      ];
+      dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: freshName, projStart: new Date(), defCal: 6 as any, statusDate: new Date() } });
+      dispatch({ type: 'SET_ACTIVITIES', activities: freshActs });
+      dispatch({ type: 'SET_RESOURCES', resources: [] });
+      dispatch({ type: 'SET_PROGRESS_HISTORY', history: [] });
+      dispatch({ type: 'SET_PPC_HISTORY', history: [] });
+      dispatch({ type: 'SET_LEAN_RESTRICTIONS', restrictions: [] });
+      dispatch({ type: 'SET_SCENARIOS', scenarios: [] });
       try {
         const data = await loadFromSupabase(proj.supabaseId);
+        // Overlay Supabase data on the clean state (only if project has real data)
         if (data.projName) dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: data.projName, projStart: data.projStart, defCal: data.defCal, statusDate: data.statusDate || undefined, customFilters: data.customFilters || [], filtersMatchAll: data.filtersMatchAll !== undefined ? data.filtersMatchAll : true } });
-        if (data.resourcePool) dispatch({ type: 'SET_RESOURCES', resources: data.resourcePool });
+        if (data.resourcePool && data.resourcePool.length) dispatch({ type: 'SET_RESOURCES', resources: data.resourcePool });
         if (data.activities && data.activities.length) dispatch({ type: 'SET_ACTIVITIES', activities: data.activities });
-        if (data.progressHistory) dispatch({ type: 'SET_PROGRESS_HISTORY', history: data.progressHistory });
+        if (data.progressHistory && data.progressHistory.length) dispatch({ type: 'SET_PROGRESS_HISTORY', history: data.progressHistory });
         if (data.ppcHistory && data.ppcHistory.length) dispatch({ type: 'SET_PPC_HISTORY', history: data.ppcHistory });
         if (data.leanRestrictions && data.leanRestrictions.length) dispatch({ type: 'SET_LEAN_RESTRICTIONS', restrictions: data.leanRestrictions });
         if ((data as any).scenarios && (data as any).scenarios.length) dispatch({ type: 'SET_SCENARIOS', scenarios: (data as any).scenarios });
         localStorage.setItem('sb_current_project_id', proj.supabaseId);
         console.log('Loaded project from Supabase:', proj.supabaseId);
       } catch (err) {
-        console.error('Failed to load from Supabase, starting fresh:', err);
-        const freshActs = [
-          { ...newActivity('PROY', state.defCal), name: proj?.name || 'Nuevo Proyecto', type: 'summary' as const, lv: -1, _isProjRow: true },
-        ];
-        dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: proj?.name || 'Nuevo Proyecto', projStart: new Date(), defCal: 6 as any, statusDate: new Date() } });
-        dispatch({ type: 'SET_ACTIVITIES', activities: freshActs });
+        console.error('Failed to load from Supabase, using fresh state:', err);
         localStorage.removeItem('sb_current_project_id');
       }
     } else {
