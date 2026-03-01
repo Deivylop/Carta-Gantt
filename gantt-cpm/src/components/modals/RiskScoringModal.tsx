@@ -369,32 +369,33 @@ export default function RiskScoringModal({ open, onClose }: Props) {
                 ))}
               </div>
 
-              {/* Matrix preview – N×N dynamic */}
+              {/* Matrix preview – N×N dynamic (P6 format: VL→VH left-to-right) */}
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ borderCollapse: 'collapse', fontSize: 10 }}>
+                <table style={{ borderCollapse: 'collapse', fontSize: 11, width: '100%' }}>
                   <thead>
                     <tr>
                       <th style={{ ...thSm, background: 'var(--bg-panel)' }}></th>
-                      <th style={{ ...thSm, fontSize: 8 }} colSpan={scaleSize}>Impactos</th>
+                      <th style={{ ...thSm, fontSize: 9 }} colSpan={scaleSize}>Impactos</th>
                     </tr>
                     <tr>
                       <th style={{ ...thSm, background: 'var(--bg-panel)' }}></th>
-                      {activeKeys.map(l => <th key={l} style={{ ...thSm, minWidth: 38 }}>{IMPACT_LABELS[l]}</th>)}
+                      {[...activeKeys].reverse().map(l => <th key={l} style={{ ...thSm, minWidth: 52, fontSize: 10 }}>{IMPACT_LABELS[l]}</th>)}
                     </tr>
                   </thead>
                   <tbody>
                     {activeKeys.map((pLvl, pi) => (
                       <tr key={pLvl}>
-                        <td style={{ ...tdSm, fontWeight: 600, fontSize: 9, whiteSpace: 'nowrap' }}>
+                        <td style={{ ...tdSm, fontWeight: 600, fontSize: 10, whiteSpace: 'nowrap' }}>
                           {IMPACT_LABELS[pLvl]} %
                         </td>
-                        {activeKeys.map((_, ii) => {
+                        {[...activeKeys].reverse().map((_, ri) => {
+                          const ii = activeKeys.length - 1 - ri;
                           const val = pidMatrix[pi][ii];
                           return (
-                            <td key={ii} style={{
+                            <td key={ri} style={{
                               ...tdSm, textAlign: 'center', fontWeight: 700,
                               background: tolColor(val), color: '#fff',
-                              minWidth: 38,
+                              minWidth: 52, padding: '6px 8px', fontSize: 12,
                             }}>
                               {val}
                             </td>
