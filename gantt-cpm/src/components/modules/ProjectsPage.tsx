@@ -150,6 +150,10 @@ export default function ProjectsPage({ onOpenProject }: Props) {
     const [detailH, setDetailH] = useState(220);
     const [draggingDetail, setDraggingDetail] = useState(false);
 
+    // Vertical splitter (table ↔ timeline)
+    const [tableW, setTableW] = useState<number | null>(null); // null = auto (TOTAL_W)
+    const [draggingSplit, setDraggingSplit] = useState(false);
+
     // Column picker modal
     const [colPickerOpen, setColPickerOpen] = useState(false);
     const [visibleColKeys, setVisibleColKeys] = useState<string[]>(loadSavedCols);
@@ -206,6 +210,20 @@ export default function ProjectsPage({ onOpenProject }: Props) {
         el.addEventListener('wheel', handler, { passive: false });
         return () => el.removeEventListener('wheel', handler);
     }, []);
+
+    // Vertical splitter drag-resize (table ↔ timeline)
+    useEffect(() => {
+        if (!draggingSplit) return;
+        const onMove = (e: MouseEvent) => {
+            if (!mainContainerRef.current) return;
+            const rect = mainContainerRef.current.getBoundingClientRect();
+            setTableW(Math.max(200, Math.min(e.clientX - rect.left, rect.width - 200)));
+        };
+        const onUp = () => { setDraggingSplit(false); document.body.style.cursor = ''; document.body.style.userSelect = ''; };
+        document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none';
+        document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
+        return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    }, [draggingSplit]);
 
     // Detail panel drag-resize
     useEffect(() => {
@@ -269,7 +287,7 @@ export default function ProjectsPage({ onOpenProject }: Props) {
             for (const p of pState.projects.filter(pr => pr.epsId === epsId)) {
                 if (p.startDate) { const t = new Date(p.startDate).getTime(); if (sD == null || t < sD) sD = t; }
                 if (p.endDate) { const t = new Date(p.endDate).getTime(); if (eD == null || t > eD) eD = t; }
-                else if (p.startDate) { const t = new Date(p.startDate).getTime() + 90 * 86400000; if (eD == null || t > eD) eD = t; }
+                else if (p.startDate) { const t = new Date(p.startDate).getTime(); if (eD == null || t > eD) eD = t; }
                 dur = Math.max(dur, p.duration || 0);
                 remDur = Math.max(remDur, p.remainingDur || 0);
                 const pw = p.work || 0;
@@ -755,7 +773,7 @@ export default function ProjectsPage({ onOpenProject }: Props) {
                 <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
 
                     {/* Left: Table */}
-                    <div style={{ flexShrink: 0, borderRight: '2px solid var(--border-primary)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                    <div style={{ width: tableW ?? TOTAL_W, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                         {/* Header (draggable columns) */}
                         <div style={{ display: 'flex', alignItems: 'center', borderBottom: '2px solid var(--border-primary)', background: 'var(--bg-panel)', flexShrink: 0, height: hdrH, minWidth: TOTAL_W }}>
                             {COLUMNS.map(col => (
@@ -792,6 +810,10 @@ export default function ProjectsPage({ onOpenProject }: Props) {
                             ) : filteredNodes.map((node, i) => renderRow(node, i))}
                         </div>
                     </div>
+
+                    {/* Vertical Resize Handle */}
+                    <div className={`v-resize ${draggingSplit ? 'rsz' : ''}`}
+                        onMouseDown={e => { e.preventDefault(); setDraggingSplit(true); }} />
 
                     {/* Right: Timeline */}
                     <div ref={timelineContainerRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
