@@ -14,7 +14,7 @@ import {
   computeQualScore, scoreColor, scoreLabel, createBlankRiskEvent,
   DEFAULT_RISK_SCORING, DEFAULT_IMPACT_SCALE,
 } from '../../types/risk';
-import { Plus, Trash2, Shield, ShieldAlert, Settings } from 'lucide-react';
+import { Plus, Trash2, Settings, Eye } from 'lucide-react';
 import RiskScoringModal from '../modals/RiskScoringModal';
 
 const CATEGORIES: RiskCategory[] = [
@@ -35,6 +35,15 @@ const STATUS_OPTIONS: { v: RiskStatus; l: string }[] = [
   { v: 'closed', l: 'Cerrado' }, { v: 'mitigated', l: 'Mitigado' },
 ];
 
+type ColGroup = 'risk' | 'pre' | 'post' | 'mitigation' | 'actions';
+const COL_GROUPS: { key: ColGroup; label: string; color: string }[] = [
+  { key: 'risk', label: 'Riesgo', color: '#166534' },
+  { key: 'pre', label: 'Pre-Mitigación', color: '#dc2626' },
+  { key: 'post', label: 'Post-Mitigación', color: '#059669' },
+  { key: 'mitigation', label: 'Mitigación', color: '#1e40af' },
+  { key: 'actions', label: 'Acciones', color: '#4a5568' },
+];
+
 type DetailTab = 'details' | 'mitigation' | 'matrix';
 
 export default function RiskQualitativePanel() {
@@ -42,9 +51,11 @@ export default function RiskQualitativePanel() {
   const risks = state.riskState.riskEvents;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailTab, setDetailTab] = useState<DetailTab>('details');
-  const [mitigationView, setMitigationView] = useState<'pre' | 'post'>('pre');
   const [bottomH, setBottomH] = useState(280);
   const dragRef = useRef<{ startY: number; startH: number } | null>(null);
+  const [visibleCols, setVisibleCols] = useState<Set<ColGroup>>(new Set(['risk', 'pre', 'post', 'mitigation', 'actions']));
+  const [colPickerOpen, setColPickerOpen] = useState(false);
+  const colPickerRef = useRef<HTMLDivElement>(null);
 
   const selected = useMemo(() => risks.find(r => r.id === selectedId) ?? null, [risks, selectedId]);
   const scoringCfg = state.riskState.riskScoring ?? DEFAULT_RISK_SCORING;
@@ -103,15 +114,13 @@ export default function RiskQualitativePanel() {
     document.addEventListener('mouseup', onUp);
   }, [bottomH]);
 
-  // ─── Risk Matrix data ─────────────────────────────────────────
-  const matrixData = useMemo(() => {
+  // ─── Risk Matrix data (separate pre & post) ──────────────────
+  const buildMatrix = useCallback((src: 'preMitigation' | 'postMitigation') => {
     const grid: Record<string, RiskEvent[]> = {};
     for (const p of activeKeys) for (const i of activeKeys) grid[`${p}-${i}`] = [];
-    const src = mitigationView === 'pre' ? 'preMitigation' : 'postMitigation';
     for (const r of risks) {
       const qs = r[src] || r.preMitigation;
       if (!qs) continue;
-      // Use IMPACT weights (not probability) to find the max-impact level
       const iMap: Record<string, number> = {};
       for (const s of (scoringCfg.impactScale ?? DEFAULT_IMPACT_SCALE)) iMap[s.key] = s.weight;
       const maxImpact = (['schedule', 'cost', 'performance'] as const)
@@ -119,7 +128,10 @@ export default function RiskQualitativePanel() {
       grid[`${qs.probability}-${maxImpact}`]?.push(r);
     }
     return grid;
-  }, [risks, mitigationView, scoringCfg, activeKeys]);
+  }, [risks, scoringCfg, activeKeys]);
+
+  const matrixDataPre = useMemo(() => buildMatrix('preMitigation'), [buildMatrix]);
+  const matrixDataPost = useMemo(() => buildMatrix('postMitigation'), [buildMatrix]);
 
   const cellScore = (probLvl: ImpactLevel, impLvl: ImpactLevel) => {
     const pMap: Record<string, number> = {};
@@ -129,7 +141,98 @@ export default function RiskQualitativePanel() {
     return Math.ceil((pMap[probLvl] ?? IMPACT_WEIGHT[probLvl]) * (iMap[impLvl] ?? IMPACT_WEIGHT[impLvl]));
   };
 
-  const qsSource = mitigationView === 'pre' ? 'preMitigation' : 'postMitigation';
+  // Close column picker when clicking outside
+  useEffect(() => {
+    if (!colPickerOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (colPickerRef.current && !colPickerRef.current.contains(e.target as Node)) setColPickerOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [colPickerOpen]);
+
+  const toggleCol = (g: ColGroup) => {
+    setVisibleCols(prev => {
+      const next = new Set(prev);
+      if (next.has(g)) next.delete(g); else next.add(g);
+      return next;
+    });
+  };
+
+  // compute total visible columns for colSpan
+  const totalCols = (visibleCols.has('risk') ? 3 : 0) + (visibleCols.has('pre') ? 4 : 0)
+    + (visibleCols.has('post') ? 4 : 0) + (visibleCols.has('mitigation') ? 2 : 0) + (visibleCols.has('actions') ? 1 : 0);
+
+  // ─── Reusable risk matrix renderer (P6 format) ────────────────
+  const renderRiskMatrix = (title: string, mData: Record<string, RiskEvent[]>) => (
+    <div>
+      <div style={{ fontSize: 11, fontWeight: 700, textAlign: 'center', marginBottom: 6, color: 'var(--text-heading)' }}>
+        {title}
+      </div>
+      <div style={{ display: 'flex' }}>
+        <div style={{
+          writingMode: 'vertical-rl', transform: 'rotate(180deg)',
+          fontSize: 9, fontWeight: 600, color: 'var(--text-muted)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', paddingRight: 4,
+        }}>
+          PROBABILIDAD →
+        </div>
+        <div style={{ flex: 1 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+            <thead>
+              <tr>
+                <th style={{ width: 34 }}></th>
+                {activeKeysReversed.map(l => (
+                  <th key={l} style={{ fontSize: 9, fontWeight: 600, textAlign: 'center', padding: 2, color: 'var(--text-secondary)' }}>{l}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {activeKeys.map(pLvl => (
+                <tr key={pLvl}>
+                  <td style={{ fontSize: 9, fontWeight: 600, textAlign: 'right', paddingRight: 3, color: 'var(--text-secondary)' }}>
+                    {pLvl}<br /><span style={{ fontSize: 7, fontWeight: 400 }}>{scoringCfg.probabilityScale.find(s => s.key === pLvl)?.threshold ?? PROB_RANGES[pLvl]}</span>
+                  </td>
+                  {activeKeysReversed.map(iLvl => {
+                    const cellRisks = mData[`${pLvl}-${iLvl}`] || [];
+                    const cs = cellScore(pLvl, iLvl);
+                    return (
+                      <td key={iLvl} style={{
+                        background: scoreColor(cs, scoringCfg) + '25',
+                        border: '1px solid var(--border-primary)',
+                        height: 52, padding: 2, verticalAlign: 'top',
+                        cursor: cellRisks.length > 0 ? 'pointer' : 'default',
+                      }}
+                        title={`Score: ${cs} (${scoreLabel(cs, scoringCfg)})`}
+                      >
+                        {cellRisks.map(r => (
+                          <div key={r.id}
+                            onClick={() => setSelectedId(r.id)}
+                            style={{
+                              fontSize: 7, lineHeight: '10px', padding: '1px 2px',
+                              background: r.threatOrOpportunity === 'threat' ? '#ef444430' : '#22c55e30',
+                              borderRadius: 2, marginBottom: 1,
+                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                              border: r.id === selectedId ? '1px solid #6366f1' : '1px solid transparent',
+                              cursor: 'pointer',
+                            }}>
+                            {r.name || r.id.slice(-4)}
+                          </div>
+                        ))}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ fontSize: 9, fontWeight: 600, textAlign: 'center', color: 'var(--text-muted)', marginTop: 3 }}>
+            IMPACTO →
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -150,18 +253,34 @@ export default function RiskQualitativePanel() {
           <button onClick={() => setScoringOpen(true)} style={btnSmall} title="Configurar Escalas de Puntuación">
             <Settings size={11} /> Escalas
           </button>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {(['pre', 'post'] as const).map(v => (
-              <button key={v} onClick={() => setMitigationView(v)}
-                style={{
-                  ...btnSmall, fontWeight: mitigationView === v ? 700 : 400,
-                  background: mitigationView === v ? '#6366f1' : 'var(--bg-input)',
-                  color: mitigationView === v ? '#fff' : 'var(--text-secondary)',
-                }}>
-                {v === 'pre' ? <ShieldAlert size={10} /> : <Shield size={10} />}
-                {v === 'pre' ? 'Pre-mitigación' : 'Post-mitigación'}
-              </button>
-            ))}
+          {/* Column visibility picker */}
+          <div ref={colPickerRef} style={{ position: 'relative' }}>
+            <button onClick={() => setColPickerOpen(v => !v)} style={btnSmall} title="Mostrar/Ocultar Columnas">
+              <Eye size={11} /> Columnas
+            </button>
+            {colPickerOpen && (
+              <div style={{
+                position: 'absolute', right: 0, top: '110%', zIndex: 50,
+                background: 'var(--bg-panel)', border: '1px solid var(--border-primary)',
+                borderRadius: 6, padding: 8, minWidth: 170, boxShadow: '0 4px 14px rgba(0,0,0,0.25)',
+              }}>
+                <div style={{ fontSize: 10, fontWeight: 700, marginBottom: 6, color: 'var(--text-heading)' }}>Columnas visibles</div>
+                {COL_GROUPS.map(g => (
+                  <label key={g.key} style={{
+                    display: 'flex', alignItems: 'center', gap: 6, padding: '3px 0',
+                    fontSize: 10, color: 'var(--text-secondary)', cursor: 'pointer',
+                  }}>
+                    <input type="checkbox" checked={visibleCols.has(g.key)}
+                      onChange={() => toggleCol(g.key)} />
+                    <span style={{
+                      display: 'inline-block', width: 8, height: 8, borderRadius: 2,
+                      background: g.color, flexShrink: 0,
+                    }} />
+                    {g.label}
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -172,30 +291,26 @@ export default function RiskQualitativePanel() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
               <thead>
                 <tr style={{ background: 'var(--bg-panel)', position: 'sticky', top: 0, zIndex: 2 }}>
-                  <th style={{ ...thS, background: '#166534', color: '#fff' }} colSpan={3}>Riesgo</th>
-                  <th style={{ ...thS, background: mitigationView === 'pre' ? '#dc2626' : '#059669', color: '#fff' }} colSpan={4}>
-                    {mitigationView === 'pre' ? 'Pre-Mitigación' : 'Post-Mitigación'}
-                  </th>
-                  <th style={{ ...thS, background: '#1e40af', color: '#fff' }} colSpan={2}>Mitigación</th>
-                  <th style={{ ...thS, background: '#4a5568', color: '#fff' }}>Acc.</th>
+                  {visibleCols.has('risk') && <th style={{ ...thS, background: '#166534', color: '#fff' }} colSpan={3}>Riesgo</th>}
+                  {visibleCols.has('pre') && <th style={{ ...thS, background: '#dc2626', color: '#fff' }} colSpan={4}>Pre-Mitigación</th>}
+                  {visibleCols.has('post') && <th style={{ ...thS, background: '#059669', color: '#fff' }} colSpan={4}>Post-Mitigación</th>}
+                  {visibleCols.has('mitigation') && <th style={{ ...thS, background: '#1e40af', color: '#fff' }} colSpan={2}>Mitigación</th>}
+                  {visibleCols.has('actions') && <th style={{ ...thS, background: '#4a5568', color: '#fff' }}>Acc.</th>}
                 </tr>
                 <tr style={{ background: 'var(--bg-panel)', position: 'sticky', top: 22, zIndex: 2 }}>
-                  <th style={thS}>ID</th>
-                  <th style={thS}>T/O</th>
-                  <th style={{ ...thS, textAlign: 'left', minWidth: 160 }}>Título</th>
-                  <th style={thS}>Prob.</th>
-                  <th style={thS}>Prog.</th>
-                  <th style={thS}>Costo</th>
-                  <th style={thS}>Score</th>
-                  <th style={thS}>Respuesta</th>
-                  <th style={thS}>Costo Mit.</th>
-                  <th style={thS}></th>
+                  {visibleCols.has('risk') && <><th style={thS}>ID</th><th style={thS}>T/O</th><th style={{ ...thS, textAlign: 'left', minWidth: 160 }}>Título</th></>}
+                  {visibleCols.has('pre') && <><th style={thS}>Prob.</th><th style={thS}>Prog.</th><th style={thS}>Costo</th><th style={thS}>Score</th></>}
+                  {visibleCols.has('post') && <><th style={thS}>Prob.</th><th style={thS}>Prog.</th><th style={thS}>Costo</th><th style={thS}>Score</th></>}
+                  {visibleCols.has('mitigation') && <><th style={thS}>Respuesta</th><th style={thS}>Costo Mit.</th></>}
+                  {visibleCols.has('actions') && <th style={thS}></th>}
                 </tr>
               </thead>
               <tbody>
                 {risks.map((r, i) => {
-                  const qs = r[qsSource] || r.preMitigation;
-                  const sc = qs ? computeQualScore(qs, scoringCfg) : 0;
+                  const qsPre = r.preMitigation;
+                  const qsPost = r.postMitigation;
+                  const scPre = qsPre ? computeQualScore(qsPre, scoringCfg) : 0;
+                  const scPost = qsPost ? computeQualScore(qsPost, scoringCfg) : 0;
                   const isSelected = r.id === selectedId;
                   return (
                     <tr key={r.id}
@@ -205,12 +320,12 @@ export default function RiskQualitativePanel() {
                         background: isSelected ? 'rgba(99,102,241,0.12)' : (i % 2 === 0 ? 'var(--bg-row-even)' : 'var(--bg-row-odd)'),
                         borderLeft: isSelected ? '3px solid #6366f1' : '3px solid transparent',
                       }}>
-                      {/* Código - INLINE EDITABLE */}
+                      {/* ─── Risk columns ─── */}
+                      {visibleCols.has('risk') && <>
                       <td style={{ ...tdS, padding: 0 }}>
                         <InlineText value={r.code || r.id.slice(-4).toUpperCase()} placeholder="Código"
                           onCommit={(v) => updateRisk(r.id, { code: v })} />
                       </td>
-                      {/* T/O - click to toggle */}
                       <td style={tdS}>
                         <span onClick={(e) => {
                           e.stopPropagation();
@@ -223,37 +338,61 @@ export default function RiskQualitativePanel() {
                           {r.threatOrOpportunity === 'threat' ? 'T' : 'O'}
                         </span>
                       </td>
-                      {/* Title - INLINE TEXT INPUT */}
                       <td style={{ ...tdS, textAlign: 'left', padding: 0 }}>
                         <InlineText value={r.name} placeholder="Nombre del riesgo..."
                           onCommit={(v) => updateRisk(r.id, { name: v })} />
                       </td>
-                      {/* Prob - INLINE SELECT */}
+                      </>}
+                      {/* ─── Pre-Mitigation columns ─── */}
+                      {visibleCols.has('pre') && <>
                       <td style={tdS}>
-                        <LevelSelect value={qs?.probability || 'M'} levels={activeKeys}
-                          onChange={(v) => updateQS(r.id, qsSource as 'preMitigation' | 'postMitigation', 'probability', v)} />
+                        <LevelSelect value={qsPre?.probability || 'M'} levels={activeKeys}
+                          onChange={(v) => updateQS(r.id, 'preMitigation', 'probability', v)} />
                       </td>
-                      {/* Schedule - INLINE SELECT */}
                       <td style={tdS}>
-                        <LevelSelect value={qs?.schedule || 'M'} levels={activeKeys}
-                          onChange={(v) => updateQS(r.id, qsSource as 'preMitigation' | 'postMitigation', 'schedule', v)} />
+                        <LevelSelect value={qsPre?.schedule || 'M'} levels={activeKeys}
+                          onChange={(v) => updateQS(r.id, 'preMitigation', 'schedule', v)} />
                       </td>
-                      {/* Cost - INLINE SELECT */}
                       <td style={tdS}>
-                        <LevelSelect value={qs?.cost || 'M'} levels={activeKeys}
-                          onChange={(v) => updateQS(r.id, qsSource as 'preMitigation' | 'postMitigation', 'cost', v)} />
+                        <LevelSelect value={qsPre?.cost || 'M'} levels={activeKeys}
+                          onChange={(v) => updateQS(r.id, 'preMitigation', 'cost', v)} />
                       </td>
-                      {/* Score - computed */}
                       <td style={tdS}>
                         <span style={{
                           display: 'inline-block', minWidth: 28, textAlign: 'center',
-                          background: scoreColor(sc, scoringCfg), color: '#fff',
+                          background: scoreColor(scPre, scoringCfg), color: '#fff',
                           borderRadius: 3, padding: '1px 5px', fontSize: 10, fontWeight: 700,
                         }}>
-                          {sc}
+                          {scPre}
                         </span>
                       </td>
-                      {/* Response - INLINE SELECT */}
+                      </>}
+                      {/* ─── Post-Mitigation columns ─── */}
+                      {visibleCols.has('post') && <>
+                      <td style={tdS}>
+                        <LevelSelect value={qsPost?.probability || 'M'} levels={activeKeys}
+                          onChange={(v) => updateQS(r.id, 'postMitigation', 'probability', v)} />
+                      </td>
+                      <td style={tdS}>
+                        <LevelSelect value={qsPost?.schedule || 'M'} levels={activeKeys}
+                          onChange={(v) => updateQS(r.id, 'postMitigation', 'schedule', v)} />
+                      </td>
+                      <td style={tdS}>
+                        <LevelSelect value={qsPost?.cost || 'M'} levels={activeKeys}
+                          onChange={(v) => updateQS(r.id, 'postMitigation', 'cost', v)} />
+                      </td>
+                      <td style={tdS}>
+                        <span style={{
+                          display: 'inline-block', minWidth: 28, textAlign: 'center',
+                          background: scoreColor(scPost, scoringCfg), color: '#fff',
+                          borderRadius: 3, padding: '1px 5px', fontSize: 10, fontWeight: 700,
+                        }}>
+                          {scPost}
+                        </span>
+                      </td>
+                      </>}
+                      {/* ─── Mitigation columns ─── */}
+                      {visibleCols.has('mitigation') && <>
                       <td style={tdS}>
                         <select value={r.mitigationResponse}
                           onClick={e => e.stopPropagation()}
@@ -262,23 +401,24 @@ export default function RiskQualitativePanel() {
                           {RESPONSES.map(resp => <option key={resp} value={resp}>{RESPONSE_LABELS[resp]}</option>)}
                         </select>
                       </td>
-                      {/* Mitigation Cost - INLINE NUMBER */}
                       <td style={{ ...tdS, padding: 0 }}>
                         <InlineNumber value={r.mitigationCost || 0} prefix="$"
                           onCommit={(v) => updateRisk(r.id, { mitigationCost: v })} />
                       </td>
-                      {/* Delete */}
+                      </>}
+                      {/* ─── Actions column ─── */}
+                      {visibleCols.has('actions') &&
                       <td style={tdS}>
                         <button onClick={(e) => { e.stopPropagation(); handleDelete(r.id); }}
                           style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: '#ef4444' }}>
                           <Trash2 size={11} />
                         </button>
-                      </td>
+                      </td>}
                     </tr>
                   );
                 })}
                 {risks.length === 0 && (
-                  <tr><td colSpan={10} style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+                  <tr><td colSpan={totalCols || 14} style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
                     No hay riesgos. Escribe en la fila de abajo para crear uno.
                   </td></tr>
                 )}
@@ -293,76 +433,15 @@ export default function RiskQualitativePanel() {
             </table>
           </div>
 
-          {/* 5×5 Risk Matrix */}
+          {/* Pre & Post Risk Matrices (P6-style: VL→VH left-to-right, VH→VL top-to-bottom) */}
           <div style={{
-            width: 320, flexShrink: 0, borderLeft: '1px solid var(--border-primary)',
-            overflow: 'auto', padding: 8, display: 'flex', flexDirection: 'column',
+            width: 440, flexShrink: 0, borderLeft: '1px solid var(--border-primary)',
+            overflow: 'auto', padding: 8, display: 'flex', flexDirection: 'column', gap: 16,
           }}>
-            <div style={{ fontSize: 11, fontWeight: 700, textAlign: 'center', marginBottom: 6, color: 'var(--text-heading)' }}>
-              Matriz de Riesgos ({mitigationView === 'pre' ? 'Pre' : 'Post'}-Mitigación)
-            </div>
-            <div style={{ display: 'flex', flex: 1 }}>
-              <div style={{
-                writingMode: 'vertical-rl', transform: 'rotate(180deg)',
-                fontSize: 9, fontWeight: 600, color: 'var(--text-muted)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', paddingRight: 4,
-              }}>
-                PROBABILIDAD →
-              </div>
-              <div style={{ flex: 1 }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
-                  <thead>
-                    <tr>
-                      <th style={{ width: 30 }}></th>
-                      {activeKeys.map(l => (
-                        <th key={l} style={{ fontSize: 8, fontWeight: 600, textAlign: 'center', padding: 2, color: 'var(--text-secondary)' }}>{l}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {activeKeysReversed.map(pLvl => (
-                      <tr key={pLvl}>
-                        <td style={{ fontSize: 8, fontWeight: 600, textAlign: 'right', paddingRight: 3, color: 'var(--text-secondary)' }}>
-                          {pLvl}<br /><span style={{ fontSize: 7, fontWeight: 400 }}>{scoringCfg.probabilityScale.find(s => s.key === pLvl)?.threshold ?? PROB_RANGES[pLvl]}</span>
-                        </td>
-                        {activeKeys.map(iLvl => {
-                          const cellRisks = matrixData[`${pLvl}-${iLvl}`] || [];
-                          const cs = cellScore(pLvl, iLvl);
-                          return (
-                            <td key={iLvl} style={{
-                              background: scoreColor(cs, scoringCfg) + '25',
-                              border: '1px solid var(--border-primary)',
-                              height: 44, padding: 2, verticalAlign: 'top',
-                              cursor: cellRisks.length > 0 ? 'pointer' : 'default',
-                            }}
-                              title={`Score: ${cs} (${scoreLabel(cs, scoringCfg)})`}
-                            >
-                              {cellRisks.map(r => (
-                                <div key={r.id}
-                                  onClick={() => setSelectedId(r.id)}
-                                  style={{
-                                    fontSize: 7, lineHeight: '9px', padding: '1px 2px',
-                                    background: r.threatOrOpportunity === 'threat' ? '#ef444430' : '#22c55e30',
-                                    borderRadius: 2, marginBottom: 1,
-                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                    border: r.id === selectedId ? '1px solid #6366f1' : '1px solid transparent',
-                                    cursor: 'pointer',
-                                  }}>
-                                  {r.name || r.id.slice(-4)}
-                                </div>
-                              ))}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <div style={{ fontSize: 9, fontWeight: 600, textAlign: 'center', color: 'var(--text-muted)', marginTop: 3 }}>
-                  IMPACTO →
-                </div>
-              </div>
-            </div>
+            {/* ── Pre-Mitigation Matrix ── */}
+            {renderRiskMatrix('Pre-Mitigación', matrixDataPre)}
+            {/* ── Post-Mitigation Matrix ── */}
+            {renderRiskMatrix('Post-Mitigación', matrixDataPost)}
           </div>
         </div>
       </div>
@@ -710,7 +789,7 @@ function NewRiskRow({ onAdd }: { onAdd: (code: string, name: string) => void }) 
             color: 'var(--text-muted)', fontSize: 10, padding: '3px 6px', outline: 'none', borderRadius: 2,
           }} />
       </td>
-      <td colSpan={7} style={{ ...tdS, color: 'var(--text-muted)', fontSize: 9 }}>
+      <td colSpan={11} style={{ ...tdS, color: 'var(--text-muted)', fontSize: 9 }}>
         <span style={{ opacity: 0.5 }}>↵ Enter para crear</span>
       </td>
     </tr>
