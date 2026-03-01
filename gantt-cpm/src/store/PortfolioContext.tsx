@@ -5,7 +5,7 @@
 // ═══════════════════════════════════════════════════════════════════
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef } from 'react';
 import type { EPSNode, ProjectMeta, PortfolioState, TreeNode } from '../types/portfolio';
-import { listSupabaseProjects, savePortfolioToSupabase, loadPortfolioFromSupabase, createSupabaseProject } from '../utils/supabaseSync';
+import { listSupabaseProjects, savePortfolioToSupabase, loadPortfolioFromSupabase, createSupabaseProject, fetchProjectSummaries } from '../utils/supabaseSync';
 
 const STORAGE_KEY = 'gantt-cpm-portfolio';
 const PROJECT_PREFIX = 'gantt-cpm-project-';
@@ -86,7 +86,8 @@ type PortfolioAction =
     | { type: 'OUTDENT'; id: string }
     | { type: 'MOVE_EPS_UP'; id: string }
     | { type: 'MOVE_EPS_DOWN'; id: string }
-    | { type: 'SYNC_FROM_SUPABASE'; supabaseProjects: { id: string; projName: string; projStart: string | null; statusDate: string | null; defCal: number }[] };
+    | { type: 'SYNC_FROM_SUPABASE'; supabaseProjects: { id: string; projName: string; projStart: string | null; statusDate: string | null; defCal: number }[] }
+    | { type: 'REFRESH_SUMMARIES'; summaries: Record<string, Partial<ProjectMeta>> };
 
 // ─── Initial State ──────────────────────────────────────────────
 const initialState: PortfolioState = {
@@ -468,6 +469,18 @@ function portfolioReducer(state: PortfolioState, action: PortfolioAction): Portf
             return { ...state, epsNodes, projects, expandedIds: expanded, activeProjectId };
         }
 
+        case 'REFRESH_SUMMARIES': {
+            // Update projects with summary data fetched from Supabase activities
+            // summaries is keyed by supabaseId
+            let changed = false;
+            const updatedProjects = state.projects.map(p => {
+                if (!p.supabaseId || !action.summaries[p.supabaseId]) return p;
+                changed = true;
+                return { ...p, ...action.summaries[p.supabaseId], updatedAt: nowISO() };
+            });
+            return changed ? { ...state, projects: updatedProjects } : state;
+        }
+
         default:
             return state;
     }
@@ -547,13 +560,27 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
                 const sbProjects = await listSupabaseProjects();
                 if (cancelled || sbProjects.length === 0) return;
                 dispatch({ type: 'SYNC_FROM_SUPABASE', supabaseProjects: sbProjects });
+
+                // 3. Fetch activity-level summaries (duration, work, % avance, etc.)
+                const projectIds = sbProjects.map(p => p.id);
+                const summaries = await fetchProjectSummaries(projectIds);
+                if (cancelled) return;
+                if (Object.keys(summaries).length > 0) {
+                    dispatch({ type: 'REFRESH_SUMMARIES', summaries });
+                }
             } catch (e) {
                 console.warn('Could not load portfolio from Supabase:', e);
-                // Fallback: try syncing just the project list
+                // Fallback: try syncing just the project list + summaries
                 try {
                     const sbProjects = await listSupabaseProjects();
                     if (cancelled || sbProjects.length === 0) return;
                     dispatch({ type: 'SYNC_FROM_SUPABASE', supabaseProjects: sbProjects });
+                    const projectIds = sbProjects.map(p => p.id);
+                    const summaries = await fetchProjectSummaries(projectIds);
+                    if (cancelled) return;
+                    if (Object.keys(summaries).length > 0) {
+                        dispatch({ type: 'REFRESH_SUMMARIES', summaries });
+                    }
                 } catch { /* ignore */ }
             }
         })();

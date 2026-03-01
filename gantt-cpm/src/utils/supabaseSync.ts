@@ -476,6 +476,86 @@ export async function loadPortfolioFromSupabase(): Promise<{
     };
 }
 
+/** Fetch lightweight summaries for multiple projects from gantt_activities */
+export async function fetchProjectSummaries(
+    supabaseProjectIds: string[]
+): Promise<Record<string, {
+    activityCount: number;
+    duration: number;
+    remainingDur: number;
+    work: number;
+    actualWork: number;
+    remainingWork: number;
+    globalPct: number;
+    pctProg: number;
+    resources: string;
+}>> {
+    if (!supabaseProjectIds.length) return {};
+
+    // One query to get all activities for all projects
+    const { data: allActs, error } = await supabase
+        .from('gantt_activities')
+        .select('project_id, local_id, type, dur, remdur, pct, work, notes, res, sort_order, lv')
+        .in('project_id', supabaseProjectIds)
+        .order('sort_order', { ascending: true });
+    if (error) throw error;
+
+    // Group by project_id
+    const byProject = new Map<string, any[]>();
+    (allActs || []).forEach(a => {
+        if (!byProject.has(a.project_id)) byProject.set(a.project_id, []);
+        byProject.get(a.project_id)!.push(a);
+    });
+
+    const result: Record<string, any> = {};
+
+    for (const [projectId, acts] of byProject) {
+        // Filter real tasks (not hidden meta-activities)
+        const tasks = acts.filter((a: any) => a.type === 'task' && !a.local_id.startsWith('__'));
+        // First summary row (WBS 0)
+        const summaryRow = acts.find((a: any) => a.sort_order === 0 && a.type === 'summary');
+        // Hidden progress history
+        const historyRow = acts.find((a: any) => a.local_id === '__HISTORY__');
+
+        const activityCount = tasks.length;
+        const duration = summaryRow ? parseFloat(summaryRow.dur) || 0 : 0;
+        const remainingDur = summaryRow ? (summaryRow.remdur != null ? parseFloat(summaryRow.remdur) : duration) : 0;
+        const totalWork = tasks.reduce((sum: number, a: any) => sum + (parseFloat(a.work) || 0), 0);
+
+        // Aggregate unique resources
+        const resSet = new Set<string>();
+        tasks.forEach((a: any) => {
+            if (a.res) a.res.split(';').map((r: string) => r.trim()).filter(Boolean).forEach((r: string) => resSet.add(r));
+        });
+
+        // Extract global % from last progress history entry
+        let globalPct = 0;
+        if (historyRow?.notes) {
+            try {
+                const history = JSON.parse(historyRow.notes);
+                const last = history[history.length - 1];
+                if (last) globalPct = last.actualPct || 0;
+            } catch { /* ignore */ }
+        }
+        const actualWork = totalWork * globalPct / 100;
+        const remainingWork = totalWork - actualWork;
+
+        result[projectId] = {
+            activityCount,
+            duration,
+            remainingDur,
+            work: totalWork,
+            actualWork,
+            remainingWork,
+            globalPct,
+            pctProg: summaryRow ? parseFloat(summaryRow.pct) || 0 : 0,
+            resources: Array.from(resSet).join('; '),
+        };
+    }
+
+    return result;
+}
+
 /** Create a new project in gantt_projects and return its Supabase UUID */
 export async function createSupabaseProject(
     name: string,
