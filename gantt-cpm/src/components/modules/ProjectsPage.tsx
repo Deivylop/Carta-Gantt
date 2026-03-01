@@ -33,25 +33,25 @@ const COL_STORAGE_KEY = 'gantt-cpm-portfolio-columns';
 // ─── All possible Column Definitions ─────────────────────────────
 interface ColDef { key: string; label: string; w: number; align: 'left' | 'center' | 'right' }
 const ALL_COLUMNS: ColDef[] = [
-    { key: 'i',        label: '#',            w: 28,  align: 'center' },
-    { key: 'id',       label: 'ID',           w: 90,  align: 'left' },
-    { key: 'name',     label: 'NOMBRE DE TAREA', w: 220, align: 'left' },
-    { key: 'dur',      label: 'DURACIÓN',     w: 70,  align: 'right' },
-    { key: 'remDur',   label: 'DUR. RESTA',   w: 70,  align: 'right' },
-    { key: 'start',    label: 'COMIENZO',     w: 85,  align: 'center' },
-    { key: 'end',      label: 'FIN',          w: 85,  align: 'center' },
-    { key: 'pctAvance',label: '% AVANCE',     w: 65,  align: 'right' },
-    { key: 'pctProg',  label: '% PROG.',      w: 65,  align: 'right' },
-    { key: 'work',     label: 'TRABAJO',      w: 80,  align: 'right' },
-    { key: 'actual',   label: 'VALOR GANADO', w: 95,  align: 'right' },
-    { key: 'remaining',label: 'TRAB. RESTANTE', w: 95, align: 'right' },
-    { key: 'weight',   label: 'PESO',         w: 55,  align: 'right' },
-    { key: 'res',      label: 'RECURSOS',     w: 100, align: 'left' },
-    { key: 'act',      label: 'ACT.',         w: 40,  align: 'center' },
-    { key: 'status',   label: 'ESTADO',       w: 85,  align: 'center' },
-    { key: 'statusDt', label: 'F. CORTE',     w: 85,  align: 'center' },
+    { key: 'i',        label: '#',              w: 28,  align: 'center' },
+    { key: 'id',       label: 'ID',             w: 90,  align: 'left' },
+    { key: 'name',     label: 'Nombre de tarea', w: 220, align: 'left' },
+    { key: 'dur',      label: 'Duración',       w: 70,  align: 'right' },
+    { key: 'remDur',   label: 'Dur. Resta',     w: 70,  align: 'right' },
+    { key: 'start',    label: 'Comienzo',       w: 85,  align: 'center' },
+    { key: 'end',      label: 'Fin',            w: 85,  align: 'center' },
+    { key: 'pctAvance',label: '% Avance',       w: 65,  align: 'right' },
+    { key: 'pctProg',  label: '% Prog.',        w: 65,  align: 'right' },
+    { key: 'work',     label: 'Trabajo',        w: 80,  align: 'right' },
+    { key: 'actual',   label: 'Valor Ganado',   w: 95,  align: 'right' },
+    { key: 'remaining',label: 'Trab. Restante', w: 95,  align: 'right' },
+    { key: 'weight',   label: 'Peso %',         w: 55,  align: 'right' },
+    { key: 'res',      label: 'Recursos',       w: 100, align: 'left' },
+    { key: 'act',      label: 'ACT.',           w: 40,  align: 'center' },
+    { key: 'status',   label: 'Estado',         w: 85,  align: 'center' },
+    { key: 'statusDt', label: 'F. Corte',       w: 85,  align: 'center' },
 ];
-const DEFAULT_VISIBLE = ['i', 'id', 'name', 'dur', 'remDur', 'start', 'end', 'pctAvance', 'pctProg', 'work', 'actual', 'remaining', 'res', 'act'];
+const DEFAULT_VISIBLE = ['i', 'id', 'name', 'dur', 'remDur', 'statusDt', 'start', 'end', 'pctAvance', 'pctProg', 'work', 'actual', 'remaining', 'res', 'act'];
 const PORTFOLIO_COL_GROUPS = [
     { group: 'General',   keys: ['i', 'id', 'name', 'status', 'statusDt'] },
     { group: 'Duraciones', keys: ['dur', 'remDur'] },
@@ -137,7 +137,7 @@ export default function ProjectsPage({ onOpenProject }: Props) {
     const [epsModalOpen, setEpsModalOpen] = useState(false);
     const [detailPanelOpen, setDetailPanelOpen] = useState(true);
     const [detailH, setDetailH] = useState(220);
-    const detailDragRef = useRef<{ startY: number; startH: number } | null>(null);
+    const [draggingDetail, setDraggingDetail] = useState(false);
 
     // Column picker modal
     const [colPickerOpen, setColPickerOpen] = useState(false);
@@ -179,19 +179,36 @@ export default function ProjectsPage({ onOpenProject }: Props) {
         return () => { tbl.removeEventListener('scroll', a); tl.removeEventListener('scroll', b); };
     }, []);
 
+    // Ctrl+Wheel zoom (passive: false for preventDefault)
+    useEffect(() => {
+        const el = timelineContainerRef.current;
+        if (!el) return;
+        const handler = (e: WheelEvent) => {
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                setZoom(z => {
+                    if (e.deltaY < 0) return z === 'month' ? 'week' : z === 'week' ? 'day' : 'day';
+                    return z === 'day' ? 'week' : z === 'week' ? 'month' : 'month';
+                });
+            }
+        };
+        el.addEventListener('wheel', handler, { passive: false });
+        return () => el.removeEventListener('wheel', handler);
+    }, []);
+
     // Detail panel drag-resize
     useEffect(() => {
-        if (!detailDragRef.current) return;
+        if (!draggingDetail) return;
         const onMove = (e: MouseEvent) => {
-            if (!detailDragRef.current || !mainContainerRef.current) return;
+            if (!mainContainerRef.current) return;
             const rect = mainContainerRef.current.getBoundingClientRect();
             setDetailH(Math.max(80, Math.min(rect.bottom - e.clientY, 500)));
         };
-        const onUp = () => { detailDragRef.current = null; document.body.style.cursor = ''; document.body.style.userSelect = ''; };
+        const onUp = () => { setDraggingDetail(false); document.body.style.cursor = ''; document.body.style.userSelect = ''; };
         document.body.style.cursor = 'row-resize'; document.body.style.userSelect = 'none';
         document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
         return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
-    }, [detailDragRef.current]);
+    }, [draggingDetail]);
 
     // Column drag-and-drop handlers
     const handleColDragStart = useCallback((key: string) => setDragColKey(key), []);
@@ -593,11 +610,13 @@ export default function ProjectsPage({ onOpenProject }: Props) {
         } else {
             const p = node.data as ProjectMeta;
             sDate = p.startDate ? new Date(p.startDate) : p.createdAt ? new Date(p.createdAt) : null;
-            eDate = p.endDate ? new Date(p.endDate) : sDate ? new Date(sDate.getTime() + (p.duration || 90) * 86400000) : null;
+            eDate = p.endDate ? new Date(p.endDate) : null;
+            // If no endDate, use duration or default to startDate (don't add 90 days artificially)
+            if (!eDate && sDate) eDate = p.duration ? new Date(sDate.getTime() + p.duration * 86400000) : new Date(sDate);
             pct = p.globalPct;
         }
         if (!sDate) return null;
-        if (!eDate) eDate = new Date(sDate.getTime() + 90 * 86400000);
+        if (!eDate) eDate = new Date(sDate);
 
         const x = ((sDate.getTime() - timelineData.start.getTime()) / 86400000) * DAY_W;
         const w = Math.max(6, ((eDate.getTime() - sDate.getTime()) / 86400000) * DAY_W);
@@ -731,7 +750,7 @@ export default function ProjectsPage({ onOpenProject }: Props) {
                                     onDragEnd={() => { setDragColKey(null); setDragOverColKey(null); }}
                                     style={{
                                         width: col.w, flexShrink: 0, fontSize: 9, fontWeight: 700,
-                                        color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5,
+                                        color: 'var(--text-muted)', letterSpacing: 0.3,
                                         padding: '0 4px', display: 'flex', alignItems: 'center', height: '100%',
                                         justifyContent: col.align === 'center' ? 'center' : col.align === 'right' ? 'flex-end' : 'flex-start',
                                         borderRight: '1px solid var(--border-primary)',
@@ -840,6 +859,30 @@ export default function ProjectsPage({ onOpenProject }: Props) {
                                     {zoom === 'day' && timelineData.days.filter(d => d.isWeekend).map((d, i) => (
                                         <div key={'we' + i} style={{ position: 'absolute', left: d.startX * DAY_W, top: 0, bottom: 0, width: DAY_W, background: 'rgba(100,116,139,.04)', pointerEvents: 'none' }} />
                                     ))}
+                                    {/* Status date line (fecha de corte) */}
+                                    {(() => {
+                                        // Use the active project's statusDate, or the first project with a statusDate
+                                        const activeProj = pState.activeProjectId ? pState.projects.find(p => p.id === pState.activeProjectId) : null;
+                                        const sd = activeProj?.statusDate || pState.projects.find(p => p.statusDate)?.statusDate;
+                                        if (!sd) return null;
+                                        const sdTime = new Date(sd).getTime();
+                                        const sdX = ((sdTime - timelineData.start.getTime()) / 86400000) * DAY_W;
+                                        if (sdX < 0 || sdX > timelineData.totalDays * DAY_W) return null;
+                                        return (
+                                            <div key="status-line" style={{
+                                                position: 'absolute', left: sdX, top: 0, bottom: 0, width: 0,
+                                                borderRight: '2px dashed #f59e0b', zIndex: 5, pointerEvents: 'none',
+                                            }}>
+                                                <div style={{
+                                                    position: 'absolute', top: 0, left: -20, width: 40,
+                                                    fontSize: 8, textAlign: 'center', color: '#f59e0b', fontWeight: 700,
+                                                    background: 'rgba(0,0,0,.6)', borderRadius: 2, padding: '1px 3px',
+                                                }}>
+                                                    F.Corte
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
                                     {filteredNodes.map((node, i) => (
                                         <div key={node.data.id + '-tl'} style={{ position: 'absolute', left: 0, right: 0, top: i * ROW_H, height: ROW_H, borderBottom: '1px solid var(--border-primary)' }}>
                                             {renderTimelineBar(node)}
@@ -861,7 +904,7 @@ export default function ProjectsPage({ onOpenProject }: Props) {
                     <>
                         {/* Drag handle */}
                         <div
-                            onMouseDown={e => { e.preventDefault(); detailDragRef.current = { startY: e.clientY, startH: detailH }; }}
+                            onMouseDown={e => { e.preventDefault(); setDraggingDetail(true); }}
                             style={{
                                 height: 5, flexShrink: 0, cursor: 'row-resize',
                                 background: 'var(--border-primary)',
@@ -890,6 +933,21 @@ export default function ProjectsPage({ onOpenProject }: Props) {
                         <CtxItem icon={<Scissors size={12} />} label="Cortar" onClick={() => pDispatch({ type: 'CUT_PROJECT', id: contextMenu.nodeId })} />
                         <CtxItem icon={<Copy size={12} />} label="Copiar" onClick={() => pDispatch({ type: 'COPY_PROJECT', id: contextMenu.nodeId })} /></>}
                     {pState.clipboard && <CtxItem icon={<ClipboardPaste size={12} />} label="Pegar aquí" onClick={() => pDispatch({ type: 'PASTE_PROJECT', targetEpsId: contextMenu.kind === 'eps' ? contextMenu.nodeId : null })} />}
+                    <div style={{ height: 1, background: 'var(--border-primary)', margin: '3px 0' }} />
+                    <CtxItem icon={<ArrowUp size={12} />} label="Subir" onClick={() => {
+                        pDispatch({ type: 'SELECT', id: contextMenu.nodeId });
+                        const isEps = pState.epsNodes.some(e => e.id === contextMenu.nodeId);
+                        if (isEps) pDispatch({ type: 'MOVE_EPS_UP', id: contextMenu.nodeId });
+                        else { const pr = pState.projects.find(p => p.id === contextMenu.nodeId); if (pr) { const sibs = pState.projects.filter(p => p.epsId === pr.epsId); const idx = sibs.findIndex(p => p.id === pr.id); if (idx > 0) { pDispatch({ type: 'UPDATE_PROJECT', id: pr.id, updates: { priority: sibs[idx - 1].priority } }); pDispatch({ type: 'UPDATE_PROJECT', id: sibs[idx - 1].id, updates: { priority: pr.priority } }); } } }
+                    }} />
+                    <CtxItem icon={<ArrowDown size={12} />} label="Bajar" onClick={() => {
+                        pDispatch({ type: 'SELECT', id: contextMenu.nodeId });
+                        const isEps = pState.epsNodes.some(e => e.id === contextMenu.nodeId);
+                        if (isEps) pDispatch({ type: 'MOVE_EPS_DOWN', id: contextMenu.nodeId });
+                        else { const pr = pState.projects.find(p => p.id === contextMenu.nodeId); if (pr) { const sibs = pState.projects.filter(p => p.epsId === pr.epsId); const idx = sibs.findIndex(p => p.id === pr.id); if (idx >= 0 && idx < sibs.length - 1) { pDispatch({ type: 'UPDATE_PROJECT', id: pr.id, updates: { priority: sibs[idx + 1].priority } }); pDispatch({ type: 'UPDATE_PROJECT', id: sibs[idx + 1].id, updates: { priority: pr.priority } }); } } }
+                    }} />
+                    <div style={{ height: 1, background: 'var(--border-primary)', margin: '3px 0' }} />
+                    <CtxItem icon={<Columns3 size={12} />} label="Columnas..." onClick={() => setColPickerOpen(true)} />
                     <div style={{ height: 1, background: 'var(--border-primary)', margin: '3px 0' }} />
                     <CtxItem icon={<Trash2 size={12} />} label="Eliminar" color="#ef4444" onClick={() => {
                         if (contextMenu.kind === 'eps') { if (confirm('¿Eliminar EPS?')) pDispatch({ type: 'DELETE_EPS', id: contextMenu.nodeId }); }

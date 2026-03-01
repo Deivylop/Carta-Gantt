@@ -196,6 +196,8 @@ function portfolioReducer(state: PortfolioState, action: PortfolioAction): Portf
                 resources: '',
                 ...(action.initialData || {}),
             };
+            // If no endDate but startDate exists, set endDate = startDate so bar doesn't extend
+            if (!proj.endDate && proj.startDate) proj.endDate = proj.startDate;
             const expanded = new Set(state.expandedIds);
             if (action.epsId) expanded.add(action.epsId);
             return { ...state, projects: [...state.projects, proj], expandedIds: expanded, selectedId: proj.id };

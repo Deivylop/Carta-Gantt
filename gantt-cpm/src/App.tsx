@@ -310,10 +310,12 @@ function AppInner() {
           activityCount: tasks.length,
           completedCount: tasks.filter(a => a.pct === 100).length,
           criticalCount: tasks.filter(a => a.crit).length,
-          globalPct: projRow ? Math.round((projRow.pct || 0) * 10) / 10 : 0,
+          globalPct: state.progressHistory && state.progressHistory.length > 0
+            ? Math.round((state.progressHistory[state.progressHistory.length - 1].actualPct || 0) * 10) / 10
+            : (projRow ? Math.round((projRow.pct || 0) * 10) / 10 : 0),
           plannedPct: projRow ? Math.round((projRow._plannedPct || 0) * 10) / 10 : 0,
           startDate: state.projStart ? state.projStart.toISOString() : (p.startDate || null),
-          endDate: latestEF ? latestEF.toISOString() : (state.projStart ? new Date(state.projStart.getTime() + 90 * 86400000).toISOString() : (p.endDate || null)),
+          endDate: latestEF ? latestEF.toISOString() : (state.projStart ? state.projStart.toISOString() : (p.endDate || null)),
           statusDate: state.statusDate ? state.statusDate.toISOString() : (p.statusDate || null),
           duration: projRow?.dur || p.duration || 0,
           remainingDur: projRow?.remDur || p.remainingDur || 0,
@@ -360,10 +362,12 @@ function AppInner() {
           activityCount: tasks.length,
           completedCount: tasks.filter(a => a.pct === 100).length,
           criticalCount: tasks.filter(a => a.crit).length,
-          globalPct: projRow ? Math.round((projRow.pct || 0) * 10) / 10 : 0,
+          globalPct: state.progressHistory && state.progressHistory.length > 0
+            ? Math.round((state.progressHistory[state.progressHistory.length - 1].actualPct || 0) * 10) / 10
+            : (projRow ? Math.round((projRow.pct || 0) * 10) / 10 : 0),
           plannedPct: projRow ? Math.round((projRow._plannedPct || 0) * 10) / 10 : 0,
           startDate: state.projStart ? state.projStart.toISOString() : null,
-          endDate: latestEF ? latestEF.toISOString() : (state.projStart ? new Date(state.projStart.getTime() + 90 * 86400000).toISOString() : null),
+          endDate: latestEF ? latestEF.toISOString() : (state.projStart ? state.projStart.toISOString() : null),
           statusDate: state.statusDate ? state.statusDate.toISOString() : null,
           supabaseId: localStorage.getItem('sb_current_project_id') || null,
           duration: projRow?.dur || 0,
