@@ -177,6 +177,25 @@ function AppInner() {
           console.log('Restored project from local storage:', activeId);
           return;
         }
+        // No local state — check if project has a Supabase link
+        const proj = pState.projects.find(p => p.id === activeId);
+        if (proj?.supabaseId) {
+          try {
+            const data = await loadFromSupabase(proj.supabaseId);
+            if (data.projName) dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: data.projName, projStart: data.projStart, defCal: data.defCal, statusDate: data.statusDate || undefined, customFilters: data.customFilters || [], filtersMatchAll: data.filtersMatchAll !== undefined ? data.filtersMatchAll : true } });
+            if (data.resourcePool) dispatch({ type: 'SET_RESOURCES', resources: data.resourcePool });
+            if (data.activities && data.activities.length) dispatch({ type: 'SET_ACTIVITIES', activities: data.activities });
+            if (data.progressHistory) dispatch({ type: 'SET_PROGRESS_HISTORY', history: data.progressHistory });
+            if (data.ppcHistory && data.ppcHistory.length) dispatch({ type: 'SET_PPC_HISTORY', history: data.ppcHistory });
+            if (data.leanRestrictions && data.leanRestrictions.length) dispatch({ type: 'SET_LEAN_RESTRICTIONS', restrictions: data.leanRestrictions });
+            if ((data as any).scenarios && (data as any).scenarios.length) dispatch({ type: 'SET_SCENARIOS', scenarios: (data as any).scenarios });
+            localStorage.setItem('sb_current_project_id', proj.supabaseId);
+            console.log('Restored project from Supabase:', proj.supabaseId);
+            return;
+          } catch (err) {
+            console.warn('Could not load project from Supabase:', err);
+          }
+        }
       }
       // Fallback: demo data (only if no portfolio project exists at all)
       if (pState.projects.length === 0) {
@@ -428,12 +447,14 @@ function AppInner() {
   }, [pState.activeProjectId, state, saveProjectState, pDispatch]);
 
   // ── Open a project from the portfolio ──
-  const handleOpenProject = useCallback((projectId: string) => {
+  const handleOpenProject = useCallback(async (projectId: string) => {
     // Save current project first if any
     if (pState.activeProjectId && pState.activeProjectId !== projectId && state.activities.length > 0) {
       const snapshot = serializeGanttState(state);
       saveProjectState(pState.activeProjectId, snapshot);
     }
+
+    const proj = pState.projects.find(p => p.id === projectId);
 
     // Load the target project
     const saved = loadProjectState(projectId);
@@ -441,15 +462,35 @@ function AppInner() {
       restoreDatesFromSaved(saved);
       dispatch({ type: 'LOAD_STATE', state: saved });
       // Restore Supabase project ID link if available
-      const proj = pState.projects.find(p => p.id === projectId);
       if (proj?.supabaseId) {
         localStorage.setItem('sb_current_project_id', proj.supabaseId);
       } else {
         localStorage.removeItem('sb_current_project_id');
       }
+    } else if (proj?.supabaseId) {
+      // No local state but project exists in Supabase — load from there
+      try {
+        const data = await loadFromSupabase(proj.supabaseId);
+        if (data.projName) dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: data.projName, projStart: data.projStart, defCal: data.defCal, statusDate: data.statusDate || undefined, customFilters: data.customFilters || [], filtersMatchAll: data.filtersMatchAll !== undefined ? data.filtersMatchAll : true } });
+        if (data.resourcePool) dispatch({ type: 'SET_RESOURCES', resources: data.resourcePool });
+        if (data.activities && data.activities.length) dispatch({ type: 'SET_ACTIVITIES', activities: data.activities });
+        if (data.progressHistory) dispatch({ type: 'SET_PROGRESS_HISTORY', history: data.progressHistory });
+        if (data.ppcHistory && data.ppcHistory.length) dispatch({ type: 'SET_PPC_HISTORY', history: data.ppcHistory });
+        if (data.leanRestrictions && data.leanRestrictions.length) dispatch({ type: 'SET_LEAN_RESTRICTIONS', restrictions: data.leanRestrictions });
+        if ((data as any).scenarios && (data as any).scenarios.length) dispatch({ type: 'SET_SCENARIOS', scenarios: (data as any).scenarios });
+        localStorage.setItem('sb_current_project_id', proj.supabaseId);
+        console.log('Loaded project from Supabase:', proj.supabaseId);
+      } catch (err) {
+        console.error('Failed to load from Supabase, starting fresh:', err);
+        const freshActs = [
+          { ...newActivity('PROY', state.defCal), name: proj?.name || 'Nuevo Proyecto', type: 'summary' as const, lv: -1, _isProjRow: true },
+        ];
+        dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: proj?.name || 'Nuevo Proyecto', projStart: new Date(), defCal: 6 as any, statusDate: new Date() } });
+        dispatch({ type: 'SET_ACTIVITIES', activities: freshActs });
+        localStorage.removeItem('sb_current_project_id');
+      }
     } else {
-      // No saved state — start fresh with project name
-      const proj = pState.projects.find(p => p.id === projectId);
+      // No saved state and no Supabase link — start fresh with project name
       const freshActs = [
         { ...newActivity('PROY', state.defCal), name: proj?.name || 'Nuevo Proyecto', type: 'summary' as const, lv: -1, _isProjRow: true },
       ];
