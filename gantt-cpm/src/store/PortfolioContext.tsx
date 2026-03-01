@@ -41,7 +41,7 @@ export function buildTree(eps: EPSNode[], projects: ProjectMeta[], expanded: Set
     function walk(parentId: string | null, depth: number) {
         // EPS folders first
         const folders = epsChildren.get(parentId) || [];
-        folders.sort((a, b) => a.name.localeCompare(b.name));
+        folders.sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name));
         for (const folder of folders) {
             const hasKids = epsChildren.has(folder.id) || projChildren.has(folder.id);
             const isExpanded = expanded.has(folder.id);
@@ -82,7 +82,9 @@ type PortfolioAction =
     | { type: 'PASTE_PROJECT'; targetEpsId: string | null }
     | { type: 'MOVE_PROJECT'; id: string; targetEpsId: string | null }
     | { type: 'INDENT'; id: string }
-    | { type: 'OUTDENT'; id: string };
+    | { type: 'OUTDENT'; id: string }
+    | { type: 'MOVE_EPS_UP'; id: string }
+    | { type: 'MOVE_EPS_DOWN'; id: string };
 
 // ─── Initial State ──────────────────────────────────────────────
 const initialState: PortfolioState = {
@@ -102,6 +104,7 @@ function portfolioReducer(state: PortfolioState, action: PortfolioAction): Portf
             const epsNodes = (action.state.epsNodes || []).map((e, i) => ({
                 ...e,
                 epsCode: e.epsCode || ('EPS-' + String(i + 1).padStart(3, '0')),
+                order: e.order ?? i,
             }));
             return {
                 ...state,
@@ -114,12 +117,14 @@ function portfolioReducer(state: PortfolioState, action: PortfolioAction): Portf
 
         case 'ADD_EPS': {
             const epsCount = state.epsNodes.length + 1;
+            const maxOrder = state.epsNodes.filter(e => e.parentId === action.parentId).reduce((m, e) => Math.max(m, e.order ?? 0), -1);
             const node: EPSNode = {
                 id: 'eps_' + uid(),
                 name: action.name,
                 epsCode: action.epsCode || ('EPS-' + String(epsCount).padStart(3, '0')),
                 parentId: action.parentId,
                 type: 'eps',
+                order: maxOrder + 1,
             };
             const expanded = new Set(state.expandedIds);
             if (action.parentId) expanded.add(action.parentId);
@@ -327,6 +332,26 @@ function portfolioReducer(state: PortfolioState, action: PortfolioAction): Portf
                 const parentEps = state.epsNodes.find(e => e.id === proj.epsId);
                 return { ...state, projects: state.projects.map(p => p.id === action.id ? { ...p, epsId: parentEps?.parentId || null } : p) };
             }
+        }
+
+        case 'MOVE_EPS_UP': {
+            const node = state.epsNodes.find(e => e.id === action.id);
+            if (!node) return state;
+            const siblings = state.epsNodes.filter(e => e.parentId === node.parentId).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+            const idx = siblings.findIndex(e => e.id === node.id);
+            if (idx <= 0) return state;
+            const prev = siblings[idx - 1];
+            return { ...state, epsNodes: state.epsNodes.map(e => e.id === node.id ? { ...e, order: prev.order ?? 0 } : e.id === prev.id ? { ...e, order: node.order ?? 0 } : e) };
+        }
+
+        case 'MOVE_EPS_DOWN': {
+            const node = state.epsNodes.find(e => e.id === action.id);
+            if (!node) return state;
+            const siblings = state.epsNodes.filter(e => e.parentId === node.parentId).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+            const idx = siblings.findIndex(e => e.id === node.id);
+            if (idx < 0 || idx >= siblings.length - 1) return state;
+            const next = siblings[idx + 1];
+            return { ...state, epsNodes: state.epsNodes.map(e => e.id === node.id ? { ...e, order: next.order ?? 0 } : e.id === next.id ? { ...e, order: node.order ?? 0 } : e) };
         }
 
         default:

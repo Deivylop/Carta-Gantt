@@ -303,8 +303,8 @@ function AppInner() {
           if (a.EF && (!max || a.EF > max)) return a.EF;
           return max;
         }, null);
-        const tw = state.activities.reduce((s, a) => s + (a.work || 0), 0);
-        const aw = state.activities.reduce((s, a) => s + ((a.work || 0) * (a.pct || 0) / 100), 0);
+        const tw = projRow?.work || 0;
+        const ew = tw * (projRow?.pct || 0) / 100;
         const meta = pState.projects.map(p => p.id === pState.activeProjectId ? {
           ...p, name: state.projName,
           activityCount: tasks.length,
@@ -318,9 +318,9 @@ function AppInner() {
           duration: projRow?.dur || p.duration || 0,
           remainingDur: projRow?.remDur || p.remainingDur || 0,
           work: tw || p.work || 0,
-          actualWork: Math.round(aw) || p.actualWork || 0,
-          remainingWork: Math.round(tw - aw) || p.remainingWork || 0,
-          pctProg: projRow ? Math.round((projRow.pct || 0) * 10) / 10 : p.pctProg || 0,
+          actualWork: Math.round(ew) || p.actualWork || 0,
+          remainingWork: Math.round(tw - ew) || p.remainingWork || 0,
+          pctProg: projRow ? Math.round((projRow._plannedPct || 0) * 10) / 10 : p.pctProg || 0,
           weight: projRow?.weight ?? p.weight ?? null,
           resources: projRow?.res || p.resources || '',
           updatedAt: new Date().toISOString(),
@@ -352,8 +352,8 @@ function AppInner() {
         if (a.EF && (!max || a.EF > max)) return a.EF;
         return max;
       }, null);
-      const totalWork = state.activities.reduce((s, a) => s + (a.work || 0), 0);
-      const actualWork = state.activities.reduce((s, a) => s + ((a.work || 0) * (a.pct || 0) / 100), 0);
+      const totalWork = projRow?.work || 0;
+      const earnedWork = totalWork * (projRow?.pct || 0) / 100;
       pDispatch({
         type: 'UPDATE_PROJECT', id: pState.activeProjectId, updates: {
           name: state.projName,
@@ -369,9 +369,9 @@ function AppInner() {
           duration: projRow?.dur || 0,
           remainingDur: projRow?.remDur || 0,
           work: totalWork,
-          actualWork: Math.round(actualWork),
-          remainingWork: Math.round(totalWork - actualWork),
-          pctProg: projRow ? Math.round((projRow.pct || 0) * 10) / 10 : 0,
+          actualWork: Math.round(earnedWork),
+          remainingWork: Math.round(totalWork - earnedWork),
+          pctProg: projRow ? Math.round((projRow._plannedPct || 0) * 10) / 10 : 0,
           weight: projRow?.weight ?? null,
           resources: projRow?.res || '',
         }

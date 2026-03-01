@@ -9,8 +9,10 @@ import { useGantt } from '../../store/GanttContext';
 import { supabase } from '../../lib/supabase';
 import type { ModuleId } from '../ModuleTabs';
 import type { TreeNode, ProjectMeta, EPSNode } from '../../types/portfolio';
+import type { ZoomLevel } from '../../types/gantt';
 import ProjectConfigModal from '../modals/ProjectConfigModal';
 import EPSModal from '../modals/EPSModal';
+import ColumnPickerModal from '../ColumnPickerModal';
 import ProjectDetailPanel from './ProjectDetailPanel';
 import {
     FolderOpen, FolderPlus, FilePlus, Trash2, ChevronRight, ChevronDown,
@@ -18,16 +20,19 @@ import {
     Search, Edit3, GanttChart, Scissors, Copy, ClipboardPaste,
     ArrowRightLeft, Cloud, Settings, ChevronsRight, ChevronsLeft,
     ArrowRight, ArrowLeft, Network, PanelBottomOpen, PanelBottomClose,
-    ArrowUp, ArrowDown
+    ArrowUp, ArrowDown, Columns3, ZoomIn, ZoomOut, CalendarDays,
+    GripVertical,
 } from 'lucide-react';
 
 // ─── Constants ──────────────────────────────────────────────────
 const ROW_H = 28;
 const HEADER_H = 30;
+const HEADER_H_DAY = 50;
+const COL_STORAGE_KEY = 'gantt-cpm-portfolio-columns';
 
-// ─── Column Definitions ─────────────────────────────────────────
+// ─── All possible Column Definitions ─────────────────────────────
 interface ColDef { key: string; label: string; w: number; align: 'left' | 'center' | 'right' }
-const COLUMNS: ColDef[] = [
+const ALL_COLUMNS: ColDef[] = [
     { key: 'i',        label: '#',            w: 28,  align: 'center' },
     { key: 'id',       label: 'ID',           w: 90,  align: 'left' },
     { key: 'name',     label: 'NOMBRE DE TAREA', w: 220, align: 'left' },
@@ -40,10 +45,27 @@ const COLUMNS: ColDef[] = [
     { key: 'work',     label: 'TRABAJO',      w: 80,  align: 'right' },
     { key: 'actual',   label: 'VALOR GANADO', w: 95,  align: 'right' },
     { key: 'remaining',label: 'TRAB. RESTANTE', w: 95, align: 'right' },
+    { key: 'weight',   label: 'PESO',         w: 55,  align: 'right' },
     { key: 'res',      label: 'RECURSOS',     w: 100, align: 'left' },
     { key: 'act',      label: 'ACT.',         w: 40,  align: 'center' },
+    { key: 'status',   label: 'ESTADO',       w: 85,  align: 'center' },
+    { key: 'statusDt', label: 'F. CORTE',     w: 85,  align: 'center' },
 ];
-const TOTAL_W = COLUMNS.reduce((s, c) => s + c.w, 0);
+const DEFAULT_VISIBLE = ['i', 'id', 'name', 'dur', 'remDur', 'start', 'end', 'pctAvance', 'pctProg', 'work', 'actual', 'remaining', 'res', 'act'];
+const PORTFOLIO_COL_GROUPS = [
+    { group: 'General',   keys: ['i', 'id', 'name', 'status', 'statusDt'] },
+    { group: 'Duraciones', keys: ['dur', 'remDur'] },
+    { group: 'Fechas',     keys: ['start', 'end'] },
+    { group: 'Avance',     keys: ['pctAvance', 'pctProg'] },
+    { group: 'Trabajo',    keys: ['work', 'actual', 'remaining', 'weight'] },
+    { group: 'Recursos',   keys: ['res'] },
+    { group: 'Resumen',    keys: ['act'] },
+];
+
+function loadSavedCols(): string[] {
+    try { const r = localStorage.getItem(COL_STORAGE_KEY); return r ? JSON.parse(r) : DEFAULT_VISIBLE; } catch { return DEFAULT_VISIBLE; }
+}
+function saveCols(keys: string[]) { localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(keys)); }
 
 // ─── Helpers ────────────────────────────────────────────────────
 function fmtDt(iso: string | null): string {
@@ -114,13 +136,29 @@ export default function ProjectsPage({ onOpenProject }: Props) {
     // EPS modal / detail panel
     const [epsModalOpen, setEpsModalOpen] = useState(false);
     const [detailPanelOpen, setDetailPanelOpen] = useState(true);
-    const DETAIL_H = 220;
+    const [detailH, setDetailH] = useState(220);
+    const detailDragRef = useRef<{ startY: number; startH: number } | null>(null);
+
+    // Column picker modal
+    const [colPickerOpen, setColPickerOpen] = useState(false);
+    const [visibleColKeys, setVisibleColKeys] = useState<string[]>(loadSavedCols);
+    const COLUMNS = useMemo(() => visibleColKeys.map(k => ALL_COLUMNS.find(c => c.key === k)!).filter(Boolean), [visibleColKeys]);
+    const TOTAL_W = useMemo(() => COLUMNS.reduce((s, c) => s + c.w, 0), [COLUMNS]);
+
+    // Column drag reorder
+    const [dragColKey, setDragColKey] = useState<string | null>(null);
+    const [dragOverColKey, setDragOverColKey] = useState<string | null>(null);
+
+    // Timeline zoom
+    const [zoom, setZoom] = useState<ZoomLevel>('month');
+    const hdrH = zoom === 'day' ? HEADER_H_DAY : HEADER_H;
 
     // Timeline
     const [timelineWidth, setTimelineWidth] = useState(600);
     const timelineContainerRef = useRef<HTMLDivElement>(null);
     const tableBodyRef = useRef<HTMLDivElement>(null);
     const timelineBodyRef = useRef<HTMLDivElement>(null);
+    const mainContainerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const el = timelineContainerRef.current;
@@ -140,6 +178,41 @@ export default function ProjectsPage({ onOpenProject }: Props) {
         tbl.addEventListener('scroll', a); tl.addEventListener('scroll', b);
         return () => { tbl.removeEventListener('scroll', a); tl.removeEventListener('scroll', b); };
     }, []);
+
+    // Detail panel drag-resize
+    useEffect(() => {
+        if (!detailDragRef.current) return;
+        const onMove = (e: MouseEvent) => {
+            if (!detailDragRef.current || !mainContainerRef.current) return;
+            const rect = mainContainerRef.current.getBoundingClientRect();
+            setDetailH(Math.max(80, Math.min(rect.bottom - e.clientY, 500)));
+        };
+        const onUp = () => { detailDragRef.current = null; document.body.style.cursor = ''; document.body.style.userSelect = ''; };
+        document.body.style.cursor = 'row-resize'; document.body.style.userSelect = 'none';
+        document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
+        return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    }, [detailDragRef.current]);
+
+    // Column drag-and-drop handlers
+    const handleColDragStart = useCallback((key: string) => setDragColKey(key), []);
+    const handleColDragOver = useCallback((key: string) => setDragOverColKey(key), []);
+    const handleColDrop = useCallback((targetKey: string) => {
+        if (!dragColKey || dragColKey === targetKey) { setDragColKey(null); setDragOverColKey(null); return; }
+        setVisibleColKeys(prev => {
+            const arr = [...prev];
+            const fromIdx = arr.indexOf(dragColKey);
+            const toIdx = arr.indexOf(targetKey);
+            if (fromIdx < 0 || toIdx < 0) return prev;
+            arr.splice(fromIdx, 1);
+            arr.splice(toIdx, 0, dragColKey);
+            saveCols(arr);
+            return arr;
+        });
+        setDragColKey(null); setDragOverColKey(null);
+    }, [dragColKey]);
+
+    // Column picker callbacks
+    const handleColPickerApply = useCallback((keys: string[]) => { setVisibleColKeys(keys); saveCols(keys); setColPickerOpen(false); }, []);
 
     // ── Filter
     const filteredNodes = useMemo(() => {
@@ -256,14 +329,7 @@ export default function ProjectsPage({ onOpenProject }: Props) {
         if (!pState.selectedId) return;
         const isEps = pState.epsNodes.some(e => e.id === pState.selectedId);
         if (isEps) {
-            const eps = pState.epsNodes.find(e => e.id === pState.selectedId)!;
-            const siblings = pState.epsNodes.filter(e => e.parentId === eps.parentId).sort((a, b) => a.name.localeCompare(b.name));
-            const idx = siblings.findIndex(e => e.id === eps.id);
-            if (idx > 0) {
-                const prev = siblings[idx - 1];
-                pDispatch({ type: 'RENAME_EPS', id: eps.id, name: prev.name });
-                pDispatch({ type: 'RENAME_EPS', id: prev.id, name: eps.name });
-            }
+            pDispatch({ type: 'MOVE_EPS_UP', id: pState.selectedId });
         } else {
             const proj = pState.projects.find(p => p.id === pState.selectedId);
             if (proj) {
@@ -282,14 +348,7 @@ export default function ProjectsPage({ onOpenProject }: Props) {
         if (!pState.selectedId) return;
         const isEps = pState.epsNodes.some(e => e.id === pState.selectedId);
         if (isEps) {
-            const eps = pState.epsNodes.find(e => e.id === pState.selectedId)!;
-            const siblings = pState.epsNodes.filter(e => e.parentId === eps.parentId).sort((a, b) => a.name.localeCompare(b.name));
-            const idx = siblings.findIndex(e => e.id === eps.id);
-            if (idx < siblings.length - 1) {
-                const next = siblings[idx + 1];
-                pDispatch({ type: 'RENAME_EPS', id: eps.id, name: next.name });
-                pDispatch({ type: 'RENAME_EPS', id: next.id, name: eps.name });
-            }
+            pDispatch({ type: 'MOVE_EPS_DOWN', id: pState.selectedId });
         } else {
             const proj = pState.projects.find(p => p.id === pState.selectedId);
             if (proj) {
@@ -330,7 +389,7 @@ export default function ProjectsPage({ onOpenProject }: Props) {
     useEffect(() => { if (!contextMenu) return; const h = () => setContextMenu(null); window.addEventListener('click', h); return () => window.removeEventListener('click', h); }, [contextMenu]);
 
     // ══════════════════════════════════════════════════════════════
-    // TIMELINE
+    // TIMELINE (supports day / week / month zoom)
     // ══════════════════════════════════════════════════════════════
     const timelineData = useMemo(() => {
         let minDate = Infinity, maxDate = -Infinity;
@@ -354,6 +413,7 @@ export default function ProjectsPage({ onOpenProject }: Props) {
         const end = new Date(maxDate + pad);
         const totalDays = Math.ceil((end.getTime() - start.getTime()) / 86400000);
 
+        // Month headers (for month/week/day top row)
         const months: { label: string; startX: number; width: number }[] = [];
         let cursor = new Date(start.getFullYear(), start.getMonth(), 1);
         while (cursor < end) {
@@ -363,13 +423,45 @@ export default function ProjectsPage({ onOpenProject }: Props) {
             months.push({ label: cursor.toLocaleDateString('es-CL', { month: 'short', year: 'numeric' }), startX: mS, width: mE - mS });
             cursor = next;
         }
-        return { start, end, totalDays, months };
-    }, [pState.projects]);
+
+        // Week headers
+        const weeks: { label: string; startX: number; width: number }[] = [];
+        if (zoom === 'week' || zoom === 'day') {
+            let w = new Date(start);
+            w.setDate(w.getDate() - w.getDay()); // Start of week (Sunday)
+            while (w < end) {
+                const wEnd = new Date(w); wEnd.setDate(wEnd.getDate() + 7);
+                const wS = Math.max(0, (w.getTime() - start.getTime()) / 86400000);
+                const wE = Math.min(totalDays, (wEnd.getTime() - start.getTime()) / 86400000);
+                weeks.push({ label: 'S ' + String(w.getDate()).padStart(2, '0') + '/' + String(w.getMonth() + 1).padStart(2, '0'), startX: wS, width: wE - wS });
+                w = wEnd;
+            }
+        }
+
+        // Day headers
+        const days: { label: string; letter: string; startX: number; isWeekend: boolean }[] = [];
+        if (zoom === 'day') {
+            const dayNames = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
+            let d = new Date(start);
+            let dayIdx = 0;
+            while (d < end) {
+                const x = dayIdx;
+                const isWe = d.getDay() === 0 || d.getDay() === 6;
+                days.push({ label: String(d.getDate()), letter: dayNames[d.getDay()], startX: x, isWeekend: isWe });
+                d = new Date(d.getTime() + 86400000);
+                dayIdx++;
+            }
+        }
+
+        return { start, end, totalDays, months, weeks, days };
+    }, [pState.projects, zoom]);
 
     const DAY_W = useMemo(() => {
         if (!timelineData || timelineWidth <= 0) return 3;
+        if (zoom === 'day') return Math.max(14, (timelineWidth - 10) / Math.min(60, timelineData.totalDays));
+        if (zoom === 'week') return Math.max(3, (timelineWidth - 10) / Math.min(180, timelineData.totalDays));
         return Math.max(1, (timelineWidth - 10) / timelineData.totalDays);
-    }, [timelineData, timelineWidth]);
+    }, [timelineData, timelineWidth, zoom]);
 
     // ══════════════════════════════════════════════════════════════
     // GET ROW DATA (project or EPS aggregated)
@@ -384,12 +476,15 @@ export default function ProjectsPage({ onOpenProject }: Props) {
                 start: fmtDt(p.startDate), end: fmtDt(p.endDate),
                 pctAvance: p.globalPct + '%', pctProg: p.pctProg + '%',
                 work: fmtHrs(p.work), actual: fmtHrs(p.actualWork),
-                remaining: fmtHrs(p.remainingWork), res: p.resources || '',
+                remaining: fmtHrs(p.remainingWork),
+                weight: p.weight != null ? String(p.weight) : '',
+                res: p.resources || '',
                 act: String(p.activityCount),
+                status: p.status, statusDt: fmtDt(p.statusDate),
             };
         }
         const a = epsAggMap[node.data.id];
-        if (!a) return { id: node.data.epsCode || '', name: node.data.name, dur: '', remDur: '', start: '', end: '', pctAvance: '', pctProg: '', work: '', actual: '', remaining: '', res: '', act: '' };
+        if (!a) return { id: node.data.epsCode || '', name: node.data.name, dur: '', remDur: '', start: '', end: '', pctAvance: '', pctProg: '', work: '', actual: '', remaining: '', weight: '', res: '', act: '', status: '', statusDt: '' };
         return {
             id: node.data.epsCode || '', name: node.data.name,
             dur: a.duration ? a.duration + ' días' : '',
@@ -397,8 +492,8 @@ export default function ProjectsPage({ onOpenProject }: Props) {
             start: fmtDt(a.startDate), end: fmtDt(a.endDate),
             pctAvance: a.pctAvance + '%', pctProg: a.pctProg + '%',
             work: fmtHrs(a.work), actual: fmtHrs(a.actualWork),
-            remaining: fmtHrs(a.remainingWork), res: '',
-            act: String(a.activityCount),
+            remaining: fmtHrs(a.remainingWork), weight: '', res: '',
+            act: String(a.activityCount), status: '', statusDt: '',
         };
     }, [epsAggMap]);
 
@@ -554,7 +649,7 @@ export default function ProjectsPage({ onOpenProject }: Props) {
     // RENDER
     // ══════════════════════════════════════════════════════════════
     return (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-app)' }}>
+        <div ref={mainContainerRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-app)' }}>
 
             {/* ── Toolbar ── */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '5px 12px', borderBottom: '1px solid var(--border-primary)', background: 'var(--bg-ribbon)', flexShrink: 0, flexWrap: 'wrap' }}>
@@ -590,6 +685,16 @@ export default function ProjectsPage({ onOpenProject }: Props) {
 
                 <Sep />
 
+                {/* VISTA */}
+                <BtnGroup label="VISTA">
+                    <Btn icon={<Columns3 size={13} />} text="Columnas" onClick={() => setColPickerOpen(true)} />
+                    <Btn icon={<CalendarDays size={13} />} text={zoom === 'day' ? 'Día' : zoom === 'week' ? 'Sem' : 'Mes'} onClick={() => setZoom(z => z === 'month' ? 'week' : z === 'week' ? 'day' : 'month')} />
+                    <Btn icon={<ZoomIn size={13} />} onClick={() => setZoom(z => z === 'month' ? 'week' : 'day')} disabled={zoom === 'day'} />
+                    <Btn icon={<ZoomOut size={13} />} onClick={() => setZoom(z => z === 'day' ? 'week' : 'month')} disabled={zoom === 'month'} />
+                </BtnGroup>
+
+                <Sep />
+
                 {/* PROPIEDADES */}
                 <BtnGroup label="PROPIEDADES">
                     <Btn icon={<Network size={13} />} text="EPS" onClick={() => setEpsModalOpen(true)} color="#f59e0b" />
@@ -615,17 +720,27 @@ export default function ProjectsPage({ onOpenProject }: Props) {
 
                     {/* Left: Table */}
                     <div style={{ flexShrink: 0, borderRight: '2px solid var(--border-primary)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                        {/* Header */}
-                        <div style={{ display: 'flex', alignItems: 'center', borderBottom: '2px solid var(--border-primary)', background: 'var(--bg-panel)', flexShrink: 0, height: HEADER_H, minWidth: TOTAL_W }}>
+                        {/* Header (draggable columns) */}
+                        <div style={{ display: 'flex', alignItems: 'center', borderBottom: '2px solid var(--border-primary)', background: 'var(--bg-panel)', flexShrink: 0, height: hdrH, minWidth: TOTAL_W }}>
                             {COLUMNS.map(col => (
-                                <div key={col.key} style={{
-                                    width: col.w, flexShrink: 0, fontSize: 9, fontWeight: 700,
-                                    color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5,
-                                    padding: '0 4px', display: 'flex', alignItems: 'center', height: '100%',
-                                    justifyContent: col.align === 'center' ? 'center' : col.align === 'right' ? 'flex-end' : 'flex-start',
-                                    borderRight: '1px solid var(--border-primary)',
-                                    whiteSpace: 'nowrap', overflow: 'hidden',
-                                }}>
+                                <div key={col.key}
+                                    draggable={col.key !== 'i'}
+                                    onDragStart={() => handleColDragStart(col.key)}
+                                    onDragOver={e => { e.preventDefault(); handleColDragOver(col.key); }}
+                                    onDrop={() => handleColDrop(col.key)}
+                                    onDragEnd={() => { setDragColKey(null); setDragOverColKey(null); }}
+                                    style={{
+                                        width: col.w, flexShrink: 0, fontSize: 9, fontWeight: 700,
+                                        color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5,
+                                        padding: '0 4px', display: 'flex', alignItems: 'center', height: '100%',
+                                        justifyContent: col.align === 'center' ? 'center' : col.align === 'right' ? 'flex-end' : 'flex-start',
+                                        borderRight: '1px solid var(--border-primary)',
+                                        whiteSpace: 'nowrap', overflow: 'hidden',
+                                        cursor: col.key !== 'i' ? 'grab' : 'default',
+                                        background: dragOverColKey === col.key ? 'rgba(99,102,241,.15)' : 'transparent',
+                                        gap: 2,
+                                    }}>
+                                    {col.key !== 'i' && <GripVertical size={8} style={{ opacity: 0.3, flexShrink: 0 }} />}
                                     {col.label}
                                 </div>
                             ))}
@@ -644,19 +759,60 @@ export default function ProjectsPage({ onOpenProject }: Props) {
 
                     {/* Right: Timeline */}
                     <div ref={timelineContainerRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                        <div style={{ height: HEADER_H, borderBottom: '2px solid var(--border-primary)', background: 'var(--bg-panel)', overflow: 'hidden', flexShrink: 0 }}>
+                        <div style={{ height: hdrH, borderBottom: '2px solid var(--border-primary)', background: 'var(--bg-panel)', overflow: 'hidden', flexShrink: 0, position: 'relative' }}>
                             {timelineData ? (
                                 <div style={{ width: timelineData.totalDays * DAY_W, height: '100%', position: 'relative' }}>
+                                    {/* Top row: months */}
                                     {timelineData.months.map((m, i) => (
                                         <div key={i} style={{
                                             position: 'absolute', left: m.startX * DAY_W, width: m.width * DAY_W,
-                                            height: '100%', borderRight: '1px solid var(--border-primary)',
+                                            height: zoom === 'day' ? 17 : zoom === 'week' ? 15 : '100%',
+                                            borderRight: '1px solid var(--border-primary)',
                                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                                             fontSize: 9, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'capitalize',
                                             overflow: 'hidden', whiteSpace: 'nowrap',
+                                            borderBottom: zoom !== 'month' ? '1px solid var(--border-primary)' : undefined,
                                         }}>
                                             {m.width * DAY_W > 30 ? m.label : ''}
                                         </div>
+                                    ))}
+                                    {/* Week row (for week zoom) */}
+                                    {zoom === 'week' && timelineData.weeks.map((w, i) => (
+                                        <div key={'w' + i} style={{
+                                            position: 'absolute', left: w.startX * DAY_W, width: w.width * DAY_W,
+                                            top: 15, height: 15,
+                                            borderRight: '1px solid var(--border-primary)',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            fontSize: 8, color: 'var(--text-muted)', overflow: 'hidden', whiteSpace: 'nowrap',
+                                        }}>
+                                            {w.width * DAY_W > 35 ? w.label : ''}
+                                        </div>
+                                    ))}
+                                    {/* Day rows (for day zoom) */}
+                                    {zoom === 'day' && timelineData.days.map((d, i) => (
+                                        <React.Fragment key={'d' + i}>
+                                            <div style={{
+                                                position: 'absolute', left: d.startX * DAY_W, width: DAY_W,
+                                                top: 17, height: 16,
+                                                borderRight: '1px solid var(--border-primary)',
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                fontSize: 9, color: d.isWeekend ? '#64748b' : 'var(--text-muted)',
+                                                background: d.isWeekend ? 'rgba(100,116,139,.08)' : 'transparent',
+                                            }}>
+                                                {DAY_W >= 14 ? d.label : ''}
+                                            </div>
+                                            <div style={{
+                                                position: 'absolute', left: d.startX * DAY_W, width: DAY_W,
+                                                top: 33, height: 17,
+                                                borderRight: '1px solid var(--border-primary)',
+                                                borderTop: '1px solid var(--border-primary)',
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                fontSize: 8, fontWeight: 600, color: d.isWeekend ? '#64748b' : 'var(--text-muted)',
+                                                background: d.isWeekend ? 'rgba(100,116,139,.08)' : 'transparent',
+                                            }}>
+                                                {DAY_W >= 10 ? d.letter : ''}
+                                            </div>
+                                        </React.Fragment>
                                     ))}
                                 </div>
                             ) : (
@@ -668,8 +824,21 @@ export default function ProjectsPage({ onOpenProject }: Props) {
                         <div ref={timelineBodyRef} style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
                             {timelineData ? (
                                 <div style={{ position: 'relative', width: timelineData.totalDays * DAY_W, minHeight: filteredNodes.length * ROW_H }}>
+                                    {/* Month gridlines (always) */}
                                     {timelineData.months.map((m, i) => (
                                         <div key={'gl' + i} style={{ position: 'absolute', left: m.startX * DAY_W, top: 0, bottom: 0, borderRight: '1px solid var(--border-primary)', width: 0 }} />
+                                    ))}
+                                    {/* Week gridlines (week/day zoom) */}
+                                    {zoom !== 'month' && timelineData.weeks.map((w, i) => (
+                                        <div key={'wl' + i} style={{ position: 'absolute', left: w.startX * DAY_W, top: 0, bottom: 0, borderRight: '1px dashed rgba(100,116,139,.15)', width: 0 }} />
+                                    ))}
+                                    {/* Day gridlines (day zoom) */}
+                                    {zoom === 'day' && timelineData.days.map((d, i) => (
+                                        <div key={'dl' + i} style={{ position: 'absolute', left: d.startX * DAY_W, top: 0, bottom: 0, borderRight: d.isWeekend ? '1px solid rgba(100,116,139,.12)' : '1px dotted rgba(100,116,139,.08)', width: 0 }} />
+                                    ))}
+                                    {/* Weekend shading (day zoom) */}
+                                    {zoom === 'day' && timelineData.days.filter(d => d.isWeekend).map((d, i) => (
+                                        <div key={'we' + i} style={{ position: 'absolute', left: d.startX * DAY_W, top: 0, bottom: 0, width: DAY_W, background: 'rgba(100,116,139,.04)', pointerEvents: 'none' }} />
                                     ))}
                                     {filteredNodes.map((node, i) => (
                                         <div key={node.data.id + '-tl'} style={{ position: 'absolute', left: 0, right: 0, top: i * ROW_H, height: ROW_H, borderBottom: '1px solid var(--border-primary)' }}>
@@ -687,11 +856,24 @@ export default function ProjectsPage({ onOpenProject }: Props) {
                     </div>
                 </div>
 
-                {/* ── Bottom: Detail Panel ── */}
+                {/* ── Bottom: Detail Panel (resizable) ── */}
                 {detailPanelOpen && selectedProject && (
-                    <div style={{ height: DETAIL_H, flexShrink: 0, overflow: 'hidden' }}>
-                        <ProjectDetailPanel projectId={selectedProject.id} customCalendars={ganttState.customCalendars || []} />
-                    </div>
+                    <>
+                        {/* Drag handle */}
+                        <div
+                            onMouseDown={e => { e.preventDefault(); detailDragRef.current = { startY: e.clientY, startH: detailH }; }}
+                            style={{
+                                height: 5, flexShrink: 0, cursor: 'row-resize',
+                                background: 'var(--border-primary)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}
+                        >
+                            <div style={{ width: 40, height: 2, borderRadius: 1, background: 'var(--text-muted)', opacity: 0.4 }} />
+                        </div>
+                        <div style={{ height: detailH, flexShrink: 0, overflow: 'hidden' }}>
+                            <ProjectDetailPanel projectId={selectedProject.id} customCalendars={ganttState.customCalendars || []} />
+                        </div>
+                    </>
                 )}
             </div>
 
@@ -767,6 +949,15 @@ export default function ProjectsPage({ onOpenProject }: Props) {
 
             <ProjectConfigModal open={configModalOpen} project={configProject} epsId={configEpsId} onSave={handleConfigSave} onClose={() => setConfigModalOpen(false)} customCalendars={ganttState.customCalendars || []} />
             <EPSModal open={epsModalOpen} onClose={() => setEpsModalOpen(false)} />
+            {colPickerOpen && (
+                <ColumnPickerModal
+                    onClose={() => setColPickerOpen(false)}
+                    externalColumns={ALL_COLUMNS.map(c => ({ key: c.key, label: c.label }))}
+                    externalSelected={visibleColKeys}
+                    onExternalApply={handleColPickerApply}
+                    customGroups={PORTFOLIO_COL_GROUPS}
+                />
+            )}
         </div>
     );
 }

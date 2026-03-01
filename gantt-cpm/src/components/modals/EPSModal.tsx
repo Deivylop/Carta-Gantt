@@ -66,7 +66,7 @@ export default function EPSModal({ open, onClose }: Props) {
 
     function walk(parentId: string | null, depth: number) {
         const children = childMap.get(parentId) || [];
-        children.sort((a, b) => a.name.localeCompare(b.name));
+        children.sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name));
         for (const eps of children) {
             const hasKids = childMap.has(eps.id);
             const isExpanded = state.expandedIds.has(eps.id);
@@ -128,28 +128,12 @@ export default function EPSModal({ open, onClose }: Props) {
 
     const handleMoveUp = () => {
         if (!selectedEpsId) return;
-        const eps = state.epsNodes.find(e => e.id === selectedEpsId);
-        if (!eps) return;
-        const siblings = (childMap.get(eps.parentId) || []).sort((a, b) => a.name.localeCompare(b.name));
-        const idx = siblings.findIndex(e => e.id === eps.id);
-        if (idx > 0) {
-            const prev = siblings[idx - 1];
-            dispatch({ type: 'RENAME_EPS', id: eps.id, name: prev.name });
-            dispatch({ type: 'RENAME_EPS', id: prev.id, name: eps.name });
-        }
+        dispatch({ type: 'MOVE_EPS_UP', id: selectedEpsId });
     };
 
     const handleMoveDown = () => {
         if (!selectedEpsId) return;
-        const eps = state.epsNodes.find(e => e.id === selectedEpsId);
-        if (!eps) return;
-        const siblings = (childMap.get(eps.parentId) || []).sort((a, b) => a.name.localeCompare(b.name));
-        const idx = siblings.findIndex(e => e.id === eps.id);
-        if (idx >= 0 && idx < siblings.length - 1) {
-            const next = siblings[idx + 1];
-            dispatch({ type: 'RENAME_EPS', id: eps.id, name: next.name });
-            dispatch({ type: 'RENAME_EPS', id: next.id, name: eps.name });
-        }
+        dispatch({ type: 'MOVE_EPS_DOWN', id: selectedEpsId });
     };
 
     const handleSaveField = (id: string, field: 'epsCode' | 'name', value: string) => {

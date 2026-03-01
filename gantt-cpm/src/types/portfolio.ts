@@ -11,6 +11,7 @@ export interface EPSNode {
     parentId: string | null;   // null = root-level
     type: 'eps';               // only folders
     color?: string;            // visual accent for grouping
+    order: number;             // explicit sort order within siblings
 }
 
 /** Metadata about a project stored in the portfolio */
