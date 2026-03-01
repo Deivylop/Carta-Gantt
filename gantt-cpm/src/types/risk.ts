@@ -4,20 +4,36 @@
 // ═══════════════════════════════════════════════════════════════════
 
 // ─── Qualitative Scoring ────────────────────────────────────────
-/** Impact / Probability level  (Very Low → Very High) */
-export type ImpactLevel = 'VL' | 'L' | 'M' | 'H' | 'VH';
+/** Impact / Probability level  (Very Low → Very High, up to 7 levels) */
+export type ImpactLevel = 'VL' | 'L' | 'ML' | 'M' | 'MH' | 'H' | 'VH';
+
+/** All 7 possible level keys ordered HIGH → LOW */
+export const ALL_LEVEL_KEYS: ImpactLevel[] = ['VH', 'H', 'MH', 'M', 'ML', 'L', 'VL'];
+
+/** Get the level keys for a given scale size (2-7) */
+export function getLevelKeysForSize(n: number): ImpactLevel[] {
+  switch (n) {
+    case 2:  return ['VH', 'VL'];
+    case 3:  return ['VH', 'M', 'VL'];
+    case 4:  return ['VH', 'H', 'L', 'VL'];
+    case 5:  return ['VH', 'H', 'M', 'L', 'VL'];
+    case 6:  return ['VH', 'H', 'MH', 'M', 'L', 'VL'];
+    case 7:  return ['VH', 'H', 'MH', 'M', 'ML', 'L', 'VL'];
+    default: return ['VH', 'H', 'M', 'L', 'VL'];
+  }
+}
 
 export const IMPACT_LABELS: Record<ImpactLevel, string> = {
-  VL: 'Muy Bajo', L: 'Bajo', M: 'Medio', H: 'Alto', VH: 'Muy Alto',
+  VL: 'Muy Bajo', L: 'Bajo', ML: 'Medio-Bajo', M: 'Medio', MH: 'Medio-Alto', H: 'Alto', VH: 'Muy Alto',
 };
 
 /** Numeric weight per level for matrix score (defaults – overridden by RiskScoringConfig) */
 export const IMPACT_WEIGHT: Record<ImpactLevel, number> = {
-  VL: 1, L: 2, M: 4, H: 8, VH: 16,
+  VL: 1, L: 3, ML: 4, M: 5, MH: 6, H: 7, VH: 9,
 };
 
 export const PROB_RANGES: Record<ImpactLevel, string> = {
-  VL: '1-10%', L: '11-30%', M: '31-50%', H: '51-70%', VH: '71-99%',
+  VL: '<=10%', L: '<=30%', ML: '<=40%', M: '<=50%', MH: '<=60%', H: '<=70%', VH: '<=90%',
 };
 
 // ─── Customizable Risk Scoring Configuration ────────────────────
@@ -35,7 +51,7 @@ export interface ImpactType {
   id: string;            // e.g. 'schedule', 'cost', 'performance'
   label: string;         // e.g. 'Programa', 'Costo', 'Desempeño'
   scored: boolean;       // Whether this type is scored (checkbox in P6)
-  levels: Record<ImpactLevel, string>;  // Threshold labels per level
+  levels: Record<string, string>;  // Threshold labels per level key
 }
 
 /** Tolerance band for color-coding the matrix */
@@ -50,57 +66,73 @@ export type PIDScoreMode = 'highest' | 'average_impacts' | 'average_scores';
 
 /** Complete Risk Scoring Configuration – stored per project */
 export interface RiskScoringConfig {
-  /** Probability scale (5 levels with weights & thresholds) */
+  /** Probability scale (2-7 levels with weights & thresholds) */
   probabilityScale: ScaleLevel[];
+  /** Impact scale (2-7 levels with separate weights from probability) */
+  impactScale: ScaleLevel[];
   /** Impact types / dimensions (Schedule, Cost, Performance, etc.) */
   impactTypes: ImpactType[];
-  /** Tolerance scale for matrix cell coloring */
+  /** Tolerance scale for matrix cell coloring (2-7 bands) */
   toleranceLevels: ToleranceLevel[];
   /** How PID score is calculated */
   pidScoreMode: PIDScoreMode;
 }
 
-/** Default probability scale (P6-style) */
+/** Default probability scale (matching P6/Pertmaster style) */
 export const DEFAULT_PROBABILITY_SCALE: ScaleLevel[] = [
-  { key: 'VH', label: 'Muy Alto', weight: 16, threshold: '>70%' },
-  { key: 'H',  label: 'Alto',     weight: 8,  threshold: '>50%' },
-  { key: 'M',  label: 'Medio',    weight: 4,  threshold: '>30%' },
-  { key: 'L',  label: 'Bajo',     weight: 2,  threshold: '>10%' },
-  { key: 'VL', label: 'Muy Bajo', weight: 1,  threshold: '<=10%' },
+  { key: 'VH', label: 'Muy Alta',  weight: 9, threshold: '≤90%' },
+  { key: 'H',  label: 'Alta',      weight: 7, threshold: '≤70%' },
+  { key: 'M',  label: 'Media',     weight: 5, threshold: '≤50%' },
+  { key: 'L',  label: 'Baja',      weight: 3, threshold: '≤30%' },
+  { key: 'VL', label: 'Muy Bajo',  weight: 1, threshold: '≤10%' },
+];
+
+/** Default impact scale (separate weights from probability) */
+export const DEFAULT_IMPACT_SCALE: ScaleLevel[] = [
+  { key: 'VH', label: 'Muy Alto', weight: 8,   threshold: '' },
+  { key: 'H',  label: 'Alto',     weight: 4,   threshold: '' },
+  { key: 'M',  label: 'Medio',    weight: 2,   threshold: '' },
+  { key: 'L',  label: 'Bajo',     weight: 1,   threshold: '' },
+  { key: 'VL', label: 'Muy Bajo', weight: 0.5, threshold: '' },
 ];
 
 /** Default impact types (P6-style: Schedule, Cost, Performance) */
 export const DEFAULT_IMPACT_TYPES: ImpactType[] = [
   {
     id: 'schedule', label: 'Programa', scored: true,
-    levels: { VL: '<=5', L: '>5', M: '>10', H: '>20', VH: '>40' },
+    levels: { VL: '<=5', L: '>5', ML: '>8', M: '>10', MH: '>15', H: '>20', VH: '>40' },
   },
   {
     id: 'cost', label: 'Costo', scored: true,
-    levels: { VL: '<=$30.000', L: '>$30.000', M: '>$75.000', H: '>$150.000', VH: '>$600.000' },
+    levels: { VL: '<=$30.000', L: '>$30.000', ML: '>$50.000', M: '>$75.000', MH: '>$100.000', H: '>$150.000', VH: '>$600.000' },
   },
   {
     id: 'performance', label: 'Desempeño', scored: false,
     levels: {
       VL: 'Falla menor en aceptación',
       L: 'Falla en más de un criterio menor',
+      ML: 'Déficit menor en aceptación',
       M: 'Déficit en cumplir criterios de aceptación',
+      MH: 'Déficit notable en aceptación',
       H: 'Déficit significativo en aceptación',
       VH: 'Falla en cumplir criterios de aceptación',
     },
   },
 ];
 
-/** Default tolerance levels (3 bands: Low / Medium / High) */
+/** Default tolerance levels (5 bands matching P6 screenshot) */
 export const DEFAULT_TOLERANCE_LEVELS: ToleranceLevel[] = [
-  { label: 'Alto',   color: '#ef4444', minScore: 24 },  // >23
-  { label: 'Medio',  color: '#f59e0b', minScore: 6 },   // >5
-  { label: 'Bajo',   color: '#22c55e', minScore: 0 },   // <=5
+  { label: 'Muy Alto', color: '#7f1d1d', minScore: 50 },
+  { label: 'Alto',     color: '#ef4444', minScore: 35 },
+  { label: 'Medio',    color: '#f59e0b', minScore: 23 },
+  { label: 'Bajo',     color: '#eab308', minScore: 5 },
+  { label: 'Muy Bajo', color: '#22c55e', minScore: 0 },
 ];
 
 /** Default Risk Scoring Configuration */
 export const DEFAULT_RISK_SCORING: RiskScoringConfig = {
   probabilityScale: DEFAULT_PROBABILITY_SCALE,
+  impactScale: DEFAULT_IMPACT_SCALE,
   impactTypes: DEFAULT_IMPACT_TYPES,
   toleranceLevels: DEFAULT_TOLERANCE_LEVELS,
   pidScoreMode: 'highest',
@@ -353,18 +385,27 @@ export const DEFAULT_RISK_STATE: RiskAnalysisState = {
   riskScoring: { ...DEFAULT_RISK_SCORING },
 };
 
-/** Build weight lookup from config (probability or impact) */
-function buildWeightMap(cfg?: RiskScoringConfig): Record<ImpactLevel, number> {
+/** Build probability weight lookup from config */
+function buildProbWeightMap(cfg?: RiskScoringConfig): Record<string, number> {
   if (!cfg) return IMPACT_WEIGHT;
   const map: Record<string, number> = {};
   for (const s of cfg.probabilityScale) map[s.key] = s.weight;
-  return map as Record<ImpactLevel, number>;
+  return map;
+}
+
+/** Build impact weight lookup from config (SEPARATE from probability weights) */
+function buildImpactWeightMap(cfg?: RiskScoringConfig): Record<string, number> {
+  if (!cfg?.impactScale) return IMPACT_WEIGHT;
+  const map: Record<string, number> = {};
+  for (const s of cfg.impactScale) map[s.key] = s.weight;
+  return map;
 }
 
 /** Compute qualitative score using config-based weights & PID mode */
 export function computeQualScore(qs: QualitativeScore, cfg?: RiskScoringConfig): number {
-  const wMap = buildWeightMap(cfg);
-  const pW = wMap[qs.probability] ?? IMPACT_WEIGHT[qs.probability];
+  const pMap = buildProbWeightMap(cfg);
+  const iMap = buildImpactWeightMap(cfg);
+  const pW = pMap[qs.probability] ?? IMPACT_WEIGHT[qs.probability] ?? 1;
 
   // Determine which impact dimensions are scored
   const impactTypes = cfg?.impactTypes ?? DEFAULT_IMPACT_TYPES;
@@ -376,7 +417,7 @@ export function computeQualScore(qs: QualitativeScore, cfg?: RiskScoringConfig):
   if (scoredDims.length === 0) return 0;
 
   const mode: PIDScoreMode = cfg?.pidScoreMode ?? 'highest';
-  const impactWeights = scoredDims.map(d => wMap[qs[dimKey(d.id)]] ?? IMPACT_WEIGHT[qs[dimKey(d.id)]]);
+  const impactWeights = scoredDims.map(d => iMap[qs[dimKey(d.id)]] ?? IMPACT_WEIGHT[qs[dimKey(d.id)]] ?? 1);
 
   let impactVal: number;
   if (mode === 'highest') {
@@ -385,10 +426,10 @@ export function computeQualScore(qs: QualitativeScore, cfg?: RiskScoringConfig):
     impactVal = impactWeights.reduce((a, b) => a + b, 0) / impactWeights.length;
   } else {
     // average_scores: average of individual P×I scores
-    const scores = impactWeights.map(iw => pW * iw);
-    return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+    const scores = impactWeights.map(iw => Math.ceil(pW * iw));
+    return Math.ceil(scores.reduce((a, b) => a + b, 0) / scores.length);
   }
-  return Math.round(pW * impactVal);
+  return Math.ceil(pW * impactVal);
 }
 
 /** Score → color using tolerance levels */

@@ -10,16 +10,25 @@
 import React, { useState, useCallback } from 'react';
 import { useGantt } from '../../store/GanttContext';
 import type {
-  RiskScoringConfig, ScaleLevel, ImpactType, ToleranceLevel, PIDScoreMode, ImpactLevel,
+  RiskScoringConfig, ScaleLevel, ImpactType, ToleranceLevel, PIDScoreMode,
 } from '../../types/risk';
 import {
-  DEFAULT_RISK_SCORING, DEFAULT_PROBABILITY_SCALE, DEFAULT_IMPACT_TYPES, DEFAULT_TOLERANCE_LEVELS,
-  IMPACT_WEIGHT,
+  DEFAULT_RISK_SCORING, DEFAULT_PROBABILITY_SCALE, DEFAULT_IMPACT_SCALE,
+  DEFAULT_IMPACT_TYPES, DEFAULT_TOLERANCE_LEVELS,
+  IMPACT_WEIGHT, IMPACT_LABELS, getLevelKeysForSize, ALL_LEVEL_KEYS,
 } from '../../types/risk';
 import { X, Plus, Trash2, RotateCcw } from 'lucide-react';
 
-const LEVELS: ImpactLevel[] = ['VH', 'H', 'M', 'L', 'VL'];
-const LEVEL_LABELS: Record<ImpactLevel, string> = { VH: 'Muy Alto', H: 'Alto', M: 'Medio', L: 'Bajo', VL: 'Muy Bajo' };
+/** Default prob weights per scale size (index 0 = highest key) */
+const PROB_DEFAULTS: Record<number, number[]> = {
+  2: [9, 1], 3: [9, 5, 1], 4: [9, 7, 3, 1],
+  5: [9, 7, 5, 3, 1], 6: [9, 8, 7, 5, 3, 1], 7: [9, 8, 7, 5, 3, 2, 1],
+};
+/** Default impact weights per scale size */
+const IMP_DEFAULTS: Record<number, number[]> = {
+  2: [8, 0.5], 3: [8, 2, 0.5], 4: [8, 4, 1, 0.5],
+  5: [8, 4, 2, 1, 0.5], 6: [8, 6, 4, 2, 1, 0.5], 7: [8, 6, 4, 2, 1, 0.5, 0.25],
+};
 
 interface Props { open: boolean; onClose: () => void; }
 
@@ -29,9 +38,12 @@ export default function RiskScoringModal({ open, onClose }: Props) {
 
   // Local draft
   const [probScale, setProbScale] = useState<ScaleLevel[]>(() => [...existing.probabilityScale]);
+  const [impScale, setImpScale] = useState<ScaleLevel[]>(() => [...(existing.impactScale ?? DEFAULT_IMPACT_SCALE)]);
   const [impTypes, setImpTypes] = useState<ImpactType[]>(() => existing.impactTypes.map(t => ({ ...t, levels: { ...t.levels } })));
   const [tols, setTols] = useState<ToleranceLevel[]>(() => existing.toleranceLevels.map(t => ({ ...t })));
   const [pidMode, setPidMode] = useState<PIDScoreMode>(existing.pidScoreMode);
+  const scaleSize = probScale.length;
+  const activeKeys = probScale.map(s => s.key);
 
   // ─── Handlers: Probability Scale ───────────────────────────
   const setProbWeight = useCallback((idx: number, val: number) => {
@@ -41,22 +53,47 @@ export default function RiskScoringModal({ open, onClose }: Props) {
     setProbScale(s => s.map((lv, i) => i === idx ? { ...lv, threshold: val } : lv));
   }, []);
 
+  // ─── Handlers: Impact Scale ────────────────────────────────
+  const setImpWeight = useCallback((idx: number, val: number) => {
+    setImpScale(s => s.map((lv, i) => i === idx ? { ...lv, weight: val } : lv));
+  }, []);
+  const setImpThresholdScale = useCallback((idx: number, val: string) => {
+    setImpScale(s => s.map((lv, i) => i === idx ? { ...lv, threshold: val } : lv));
+  }, []);
+
+  // ─── Handler: Change scale size (2-7) ─────────────────────
+  const changeScaleSize = useCallback((n: number) => {
+    const keys = getLevelKeysForSize(n);
+    const pDef = PROB_DEFAULTS[n] ?? PROB_DEFAULTS[5];
+    const iDef = IMP_DEFAULTS[n] ?? IMP_DEFAULTS[5];
+    setProbScale(old => keys.map((k, i) => {
+      const prev = old.find(s => s.key === k);
+      return prev ? { ...prev } : { key: k, label: IMPACT_LABELS[k], weight: pDef[i] ?? 1, threshold: '' };
+    }));
+    setImpScale(old => keys.map((k, i) => {
+      const prev = old.find(s => s.key === k);
+      return prev ? { ...prev } : { key: k, label: IMPACT_LABELS[k], weight: iDef[i] ?? 1, threshold: '' };
+    }));
+  }, []);
+
   // ─── Handlers: Impact Types ────────────────────────────────
   const toggleScored = useCallback((idx: number) => {
     setImpTypes(ts => ts.map((t, i) => i === idx ? { ...t, scored: !t.scored } : t));
   }, []);
-  const setImpThreshold = useCallback((typeIdx: number, lvl: ImpactLevel, val: string) => {
+  const setImpThreshold = useCallback((typeIdx: number, lvl: string, val: string) => {
     setImpTypes(ts => ts.map((t, i) => i === typeIdx ? { ...t, levels: { ...t.levels, [lvl]: val } } : t));
   }, []);
   const setImpLabel = useCallback((idx: number, val: string) => {
     setImpTypes(ts => ts.map((t, i) => i === idx ? { ...t, label: val } : t));
   }, []);
   const addImpType = useCallback(() => {
+    const emptyLevels: Record<string, string> = {};
+    for (const k of ALL_LEVEL_KEYS) emptyLevels[k] = '';
     setImpTypes(ts => [...ts, {
       id: 'custom_' + Date.now().toString(36),
       label: 'Nuevo Tipo',
       scored: true,
-      levels: { VL: '', L: '', M: '', H: '', VH: '' },
+      levels: emptyLevels,
     }]);
   }, []);
   const removeImpType = useCallback((idx: number) => {
@@ -67,33 +104,41 @@ export default function RiskScoringModal({ open, onClose }: Props) {
   const setTolField = useCallback((idx: number, field: keyof ToleranceLevel, val: string | number) => {
     setTols(ts => ts.map((t, i) => i === idx ? { ...t, [field]: val } : t));
   }, []);
+  const addTolerance = useCallback(() => {
+    setTols(ts => [...ts, { label: 'Nuevo', color: '#3b82f6', minScore: 0 }]);
+  }, []);
+  const removeTolerance = useCallback((idx: number) => {
+    setTols(ts => ts.filter((_, i) => i !== idx));
+  }, []);
 
   // ─── Save ──────────────────────────────────────────────────
   const handleSave = useCallback(() => {
     const cfg: RiskScoringConfig = {
       probabilityScale: probScale,
+      impactScale: impScale,
       impactTypes: impTypes,
       toleranceLevels: tols,
       pidScoreMode: pidMode,
     };
     dispatch({ type: 'SET_RISK_SCORING', scoring: cfg });
     onClose();
-  }, [probScale, impTypes, tols, pidMode, dispatch, onClose]);
+  }, [probScale, impScale, impTypes, tols, pidMode, dispatch, onClose]);
 
   // ─── Reset ─────────────────────────────────────────────────
   const handleReset = useCallback(() => {
     setProbScale([...DEFAULT_PROBABILITY_SCALE]);
+    setImpScale([...DEFAULT_IMPACT_SCALE]);
     setImpTypes(DEFAULT_IMPACT_TYPES.map(t => ({ ...t, levels: { ...t.levels } })));
     setTols(DEFAULT_TOLERANCE_LEVELS.map(t => ({ ...t })));
     setPidMode('highest');
   }, []);
 
-  // ─── PID Matrix Preview ─────────────────────────────────────
-  const pidMatrix = LEVELS.map(pLvl => {
+  // ─── PID Matrix Preview (separate prob × impact weights) ────
+  const pidMatrix = activeKeys.map(pLvl => {
     const pW = probScale.find(s => s.key === pLvl)?.weight ?? IMPACT_WEIGHT[pLvl];
-    return LEVELS.map(iLvl => {
-      const iW = probScale.find(s => s.key === iLvl)?.weight ?? IMPACT_WEIGHT[iLvl];
-      return Math.round(pW * iW);
+    return activeKeys.map(iLvl => {
+      const iW = impScale.find(s => s.key === iLvl)?.weight ?? IMPACT_WEIGHT[iLvl];
+      return Math.ceil(pW * iW);
     });
   });
 
@@ -113,7 +158,7 @@ export default function RiskScoringModal({ open, onClose }: Props) {
     }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{
         background: 'var(--bg-panel)', border: '1px solid var(--border-primary)',
-        borderRadius: 8, width: 980, maxHeight: '90vh', overflow: 'auto',
+        borderRadius: 8, width: 1050, maxHeight: '90vh', overflow: 'auto',
         boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
       }}>
         {/* Header */}
@@ -134,8 +179,20 @@ export default function RiskScoringModal({ open, onClose }: Props) {
 
         {/* Body – 2-column layout mirroring P6 dialog */}
         <div style={{ display: 'flex', padding: 16, gap: 16 }}>
-          {/* ─── LEFT: Probability Scale + Tolerance Scale ─── */}
-          <div style={{ width: 280, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* ─── LEFT: Scale Size, Prob Scale, Impact Scale, Tolerance ─── */}
+          <div style={{ width: 320, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {/* Scale size selector */}
+            <fieldset style={fieldsetS}>
+              <legend style={legendS}>Configuración de Escalas</legend>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 10 }}>
+                <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>Items en la escala:</span>
+                <select value={scaleSize} onChange={e => changeScaleSize(Number(e.target.value))}
+                  style={{ fontSize: 10, padding: '2px 6px', borderRadius: 3, border: '1px solid var(--border-primary)', background: 'var(--bg-input)', color: 'var(--text-primary)' }}>
+                  {[2, 3, 4, 5, 6, 7].map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+            </fieldset>
+
             {/* Probability Scale */}
             <fieldset style={fieldsetS}>
               <legend style={legendS}>Escala de Probabilidad</legend>
@@ -150,10 +207,10 @@ export default function RiskScoringModal({ open, onClose }: Props) {
                 <tbody>
                   {probScale.map((lv, i) => (
                     <tr key={lv.key}>
-                      <td style={{ ...tdSm, fontWeight: 600 }}>{LEVEL_LABELS[lv.key]}</td>
+                      <td style={{ ...tdSm, fontWeight: 600 }}>{IMPACT_LABELS[lv.key]}</td>
                       <td style={tdSm}>
-                        <input type="number" min={1} value={lv.weight}
-                          onChange={e => setProbWeight(i, parseInt(e.target.value) || 1)}
+                        <input type="number" min={0} step="any" value={lv.weight}
+                          onChange={e => setProbWeight(i, parseFloat(e.target.value) || 0)}
                           style={inputNarrow} />
                       </td>
                       <td style={tdSm}>
@@ -167,21 +224,59 @@ export default function RiskScoringModal({ open, onClose }: Props) {
               </table>
             </fieldset>
 
-            {/* Tolerance Scale */}
+            {/* Impact Scale (SEPARATE weights from probability) */}
             <fieldset style={fieldsetS}>
-              <legend style={legendS}>Escala de Tolerancia</legend>
+              <legend style={legendS}>Escala de Impacto</legend>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
                 <thead>
                   <tr>
                     <th style={thSm}></th>
+                    <th style={thSm}>Peso</th>
+                    <th style={thSm}>Descripción</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {impScale.map((lv, i) => (
+                    <tr key={lv.key}>
+                      <td style={{ ...tdSm, fontWeight: 600 }}>{IMPACT_LABELS[lv.key]}</td>
+                      <td style={tdSm}>
+                        <input type="number" min={0} step="any" value={lv.weight}
+                          onChange={e => setImpWeight(i, parseFloat(e.target.value) || 0)}
+                          style={inputNarrow} />
+                      </td>
+                      <td style={tdSm}>
+                        <input value={lv.threshold}
+                          onChange={e => setImpThresholdScale(i, e.target.value)}
+                          style={inputWide} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </fieldset>
+
+            {/* Tolerance Scale */}
+            <fieldset style={fieldsetS}>
+              <legend style={legendS}>Escala de Tolerancia</legend>
+              <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+                <button onClick={addTolerance} style={btnAdd}><Plus size={10} /> Agregar</button>
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
+                <thead>
+                  <tr>
+                    <th style={thSm}>Label</th>
                     <th style={thSm}>Color</th>
                     <th style={thSm}>Score ≥</th>
+                    <th style={thSm}></th>
                   </tr>
                 </thead>
                 <tbody>
                   {tols.map((t, i) => (
                     <tr key={i}>
-                      <td style={{ ...tdSm, fontWeight: 600 }}>{t.label}</td>
+                      <td style={tdSm}>
+                        <input value={t.label} onChange={e => setTolField(i, 'label', e.target.value)}
+                          style={{ ...inputWide, fontWeight: 600 }} />
+                      </td>
                       <td style={tdSm}>
                         <input type="color" value={t.color}
                           onChange={e => setTolField(i, 'color', e.target.value)}
@@ -192,6 +287,14 @@ export default function RiskScoringModal({ open, onClose }: Props) {
                           onChange={e => setTolField(i, 'minScore', parseInt(e.target.value) || 0)}
                           style={inputNarrow} />
                       </td>
+                      <td style={tdSm}>
+                        {tols.length > 1 && (
+                          <button onClick={() => removeTolerance(i)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: 2 }}>
+                            <Trash2 size={10} />
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -200,7 +303,7 @@ export default function RiskScoringModal({ open, onClose }: Props) {
           </div>
 
           {/* ─── RIGHT: Impact Types & PID Matrix ─── */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
             {/* Impact Scales & Types */}
             <fieldset style={fieldsetS}>
               <legend style={legendS}>Tipos de Impacto y Escalas</legend>
@@ -213,7 +316,7 @@ export default function RiskScoringModal({ open, onClose }: Props) {
                     <tr>
                       <th style={thSm}>Tipo de Impacto</th>
                       <th style={thSm}>Score?</th>
-                      {LEVELS.map(l => <th key={l} style={thSm}>{LEVEL_LABELS[l]}</th>)}
+                      {activeKeys.map(l => <th key={l} style={thSm}>{IMPACT_LABELS[l]}</th>)}
                       <th style={thSm}></th>
                     </tr>
                   </thead>
@@ -227,10 +330,10 @@ export default function RiskScoringModal({ open, onClose }: Props) {
                         <td style={{ ...tdSm, textAlign: 'center' }}>
                           <input type="checkbox" checked={t.scored} onChange={() => toggleScored(ti)} />
                         </td>
-                        {LEVELS.map(l => (
+                        {activeKeys.map(l => (
                           <td key={l} style={tdSm}>
-                            <input value={t.levels[l]} onChange={e => setImpThreshold(ti, l, e.target.value)}
-                              style={inputWide} title={`${t.label} - ${LEVEL_LABELS[l]}`} />
+                            <input value={t.levels[l] || ''} onChange={e => setImpThreshold(ti, l, e.target.value)}
+                              style={inputWide} title={`${t.label} - ${IMPACT_LABELS[l]}`} />
                           </td>
                         ))}
                         <td style={tdSm}>
@@ -266,32 +369,32 @@ export default function RiskScoringModal({ open, onClose }: Props) {
                 ))}
               </div>
 
-              {/* Matrix preview */}
+              {/* Matrix preview – N×N dynamic */}
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ borderCollapse: 'collapse', fontSize: 10 }}>
                   <thead>
                     <tr>
                       <th style={{ ...thSm, background: 'var(--bg-panel)' }}></th>
-                      <th style={{ ...thSm, fontSize: 8 }} colSpan={5}>Impactos</th>
+                      <th style={{ ...thSm, fontSize: 8 }} colSpan={scaleSize}>Impactos</th>
                     </tr>
                     <tr>
                       <th style={{ ...thSm, background: 'var(--bg-panel)' }}></th>
-                      {LEVELS.map(l => <th key={l} style={{ ...thSm, minWidth: 42 }}>{LEVEL_LABELS[l]}</th>)}
+                      {activeKeys.map(l => <th key={l} style={{ ...thSm, minWidth: 38 }}>{IMPACT_LABELS[l]}</th>)}
                     </tr>
                   </thead>
                   <tbody>
-                    {LEVELS.map((pLvl, pi) => (
+                    {activeKeys.map((pLvl, pi) => (
                       <tr key={pLvl}>
                         <td style={{ ...tdSm, fontWeight: 600, fontSize: 9, whiteSpace: 'nowrap' }}>
-                          {LEVEL_LABELS[pLvl]} %
+                          {IMPACT_LABELS[pLvl]} %
                         </td>
-                        {LEVELS.map((_, ii) => {
+                        {activeKeys.map((_, ii) => {
                           const val = pidMatrix[pi][ii];
                           return (
                             <td key={ii} style={{
                               ...tdSm, textAlign: 'center', fontWeight: 700,
                               background: tolColor(val), color: '#fff',
-                              minWidth: 42,
+                              minWidth: 38,
                             }}>
                               {val}
                             </td>

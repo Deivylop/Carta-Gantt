@@ -12,12 +12,11 @@ import type {
 import {
   IMPACT_LABELS, IMPACT_WEIGHT, PROB_RANGES,
   computeQualScore, scoreColor, scoreLabel, createBlankRiskEvent,
-  DEFAULT_RISK_SCORING,
+  DEFAULT_RISK_SCORING, DEFAULT_IMPACT_SCALE,
 } from '../../types/risk';
 import { Plus, Trash2, Shield, ShieldAlert, Settings } from 'lucide-react';
 import RiskScoringModal from '../modals/RiskScoringModal';
 
-const LEVELS: ImpactLevel[] = ['VL', 'L', 'M', 'H', 'VH'];
 const CATEGORIES: RiskCategory[] = [
   'Técnico', 'Externo', 'Organizacional', 'Gestión',
   'Clima', 'Suministro', 'Regulatorio', 'Diseño',
@@ -50,6 +49,14 @@ export default function RiskQualitativePanel() {
   const selected = useMemo(() => risks.find(r => r.id === selectedId) ?? null, [risks, selectedId]);
   const scoringCfg = state.riskState.riskScoring ?? DEFAULT_RISK_SCORING;
   const [scoringOpen, setScoringOpen] = useState(false);
+
+  // Derive active level keys from config (dynamic N)
+  const activeKeys = useMemo<ImpactLevel[]>(
+    () => scoringCfg.probabilityScale.map(s => s.key),
+    [scoringCfg.probabilityScale],
+  );
+  // LOW→HIGH for matrix Y-axis
+  const activeKeysReversed = useMemo(() => [...activeKeys].reverse(), [activeKeys]);
 
   // ─── Auto-save helper: dispatch UPDATE immediately ────────────
   const updateRisk = useCallback((riskId: string, partial: Partial<RiskEvent>) => {
@@ -99,25 +106,27 @@ export default function RiskQualitativePanel() {
   // ─── Risk Matrix data ─────────────────────────────────────────
   const matrixData = useMemo(() => {
     const grid: Record<string, RiskEvent[]> = {};
-    for (const p of LEVELS) for (const i of LEVELS) grid[`${p}-${i}`] = [];
+    for (const p of activeKeys) for (const i of activeKeys) grid[`${p}-${i}`] = [];
     const src = mitigationView === 'pre' ? 'preMitigation' : 'postMitigation';
     for (const r of risks) {
       const qs = r[src] || r.preMitigation;
       if (!qs) continue;
-      // Use config weights to find the max-impact level
-      const wMap: Record<string, number> = {};
-      for (const s of scoringCfg.probabilityScale) wMap[s.key] = s.weight;
+      // Use IMPACT weights (not probability) to find the max-impact level
+      const iMap: Record<string, number> = {};
+      for (const s of (scoringCfg.impactScale ?? DEFAULT_IMPACT_SCALE)) iMap[s.key] = s.weight;
       const maxImpact = (['schedule', 'cost', 'performance'] as const)
-        .reduce((m, k) => (wMap[qs[k]] ?? IMPACT_WEIGHT[qs[k]]) > (wMap[m] ?? IMPACT_WEIGHT[m]) ? qs[k] : m, 'VL' as ImpactLevel);
+        .reduce((m, k) => (iMap[qs[k]] ?? IMPACT_WEIGHT[qs[k]]) > (iMap[m] ?? IMPACT_WEIGHT[m]) ? qs[k] : m, 'VL' as ImpactLevel);
       grid[`${qs.probability}-${maxImpact}`]?.push(r);
     }
     return grid;
-  }, [risks, mitigationView, scoringCfg]);
+  }, [risks, mitigationView, scoringCfg, activeKeys]);
 
   const cellScore = (probLvl: ImpactLevel, impLvl: ImpactLevel) => {
-    const wMap: Record<string, number> = {};
-    for (const s of scoringCfg.probabilityScale) wMap[s.key] = s.weight;
-    return Math.round((wMap[probLvl] ?? IMPACT_WEIGHT[probLvl]) * (wMap[impLvl] ?? IMPACT_WEIGHT[impLvl]));
+    const pMap: Record<string, number> = {};
+    for (const s of scoringCfg.probabilityScale) pMap[s.key] = s.weight;
+    const iMap: Record<string, number> = {};
+    for (const s of (scoringCfg.impactScale ?? DEFAULT_IMPACT_SCALE)) iMap[s.key] = s.weight;
+    return Math.ceil((pMap[probLvl] ?? IMPACT_WEIGHT[probLvl]) * (iMap[impLvl] ?? IMPACT_WEIGHT[impLvl]));
   };
 
   const qsSource = mitigationView === 'pre' ? 'preMitigation' : 'postMitigation';
@@ -221,17 +230,17 @@ export default function RiskQualitativePanel() {
                       </td>
                       {/* Prob - INLINE SELECT */}
                       <td style={tdS}>
-                        <LevelSelect value={qs?.probability || 'M'}
+                        <LevelSelect value={qs?.probability || 'M'} levels={activeKeys}
                           onChange={(v) => updateQS(r.id, qsSource as 'preMitigation' | 'postMitigation', 'probability', v)} />
                       </td>
                       {/* Schedule - INLINE SELECT */}
                       <td style={tdS}>
-                        <LevelSelect value={qs?.schedule || 'M'}
+                        <LevelSelect value={qs?.schedule || 'M'} levels={activeKeys}
                           onChange={(v) => updateQS(r.id, qsSource as 'preMitigation' | 'postMitigation', 'schedule', v)} />
                       </td>
                       {/* Cost - INLINE SELECT */}
                       <td style={tdS}>
-                        <LevelSelect value={qs?.cost || 'M'}
+                        <LevelSelect value={qs?.cost || 'M'} levels={activeKeys}
                           onChange={(v) => updateQS(r.id, qsSource as 'preMitigation' | 'postMitigation', 'cost', v)} />
                       </td>
                       {/* Score - computed */}
@@ -305,18 +314,18 @@ export default function RiskQualitativePanel() {
                   <thead>
                     <tr>
                       <th style={{ width: 30 }}></th>
-                      {LEVELS.map(l => (
+                      {activeKeys.map(l => (
                         <th key={l} style={{ fontSize: 8, fontWeight: 600, textAlign: 'center', padding: 2, color: 'var(--text-secondary)' }}>{l}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {([...LEVELS].reverse()).map(pLvl => (
+                    {activeKeysReversed.map(pLvl => (
                       <tr key={pLvl}>
                         <td style={{ fontSize: 8, fontWeight: 600, textAlign: 'right', paddingRight: 3, color: 'var(--text-secondary)' }}>
                           {pLvl}<br /><span style={{ fontSize: 7, fontWeight: 400 }}>{scoringCfg.probabilityScale.find(s => s.key === pLvl)?.threshold ?? PROB_RANGES[pLvl]}</span>
                         </td>
-                        {LEVELS.map(iLvl => {
+                        {activeKeys.map(iLvl => {
                           const cellRisks = matrixData[`${pLvl}-${iLvl}`] || [];
                           const cs = cellScore(pLvl, iLvl);
                           return (
@@ -511,9 +520,9 @@ export default function RiskQualitativePanel() {
             {detailTab === 'matrix' && (
               <div style={{ display: 'flex', gap: 24 }}>
                 <ScoreCard title="Pre-Mitigación" qs={selected.preMitigation}
-                  onChange={(f, v) => updateQS(selected.id, 'preMitigation', f, v)} scoringCfg={scoringCfg} />
+                  onChange={(f, v) => updateQS(selected.id, 'preMitigation', f, v)} scoringCfg={scoringCfg} levels={activeKeys} />
                 <ScoreCard title="Post-Mitigación" qs={selected.postMitigation}
-                  onChange={(f, v) => updateQS(selected.id, 'postMitigation', f, v)} scoringCfg={scoringCfg} />
+                  onChange={(f, v) => updateQS(selected.id, 'postMitigation', f, v)} scoringCfg={scoringCfg} levels={activeKeys} />
               </div>
             )}
           </div>
@@ -576,10 +585,10 @@ function InlineNumber({ value, prefix, onCommit }: {
   );
 }
 
-/** Level badge that is a select dropdown */
-function LevelSelect({ value, onChange }: { value: ImpactLevel; onChange: (v: ImpactLevel) => void }) {
+/** Level badge that is a select dropdown (accepts dynamic levels list) */
+function LevelSelect({ value, onChange, levels }: { value: ImpactLevel; onChange: (v: ImpactLevel) => void; levels: ImpactLevel[] }) {
   const w = IMPACT_WEIGHT[value];
-  const bg = w >= 16 ? '#ef4444' : w >= 8 ? '#f97316' : w >= 4 ? '#f59e0b' : w >= 2 ? '#22c55e' : '#3b82f6';
+  const bg = w >= 8 ? '#ef4444' : w >= 6 ? '#f97316' : w >= 4 ? '#f59e0b' : w >= 2 ? '#22c55e' : '#3b82f6';
   return (
     <select value={value}
       onClick={e => e.stopPropagation()}
@@ -590,7 +599,7 @@ function LevelSelect({ value, onChange }: { value: ImpactLevel; onChange: (v: Im
         borderRadius: 3, padding: '1px 2px', cursor: 'pointer',
         appearance: 'none', WebkitAppearance: 'none', width: 32,
       }}>
-      {LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
+      {levels.map(l => <option key={l} value={l}>{l}</option>)}
     </select>
   );
 }
@@ -625,11 +634,12 @@ function DetailTextArea({ value, riskId, field, update }: {
   );
 }
 
-function ScoreCard({ title, qs, onChange, scoringCfg }: {
+function ScoreCard({ title, qs, onChange, scoringCfg, levels }: {
   title: string;
   qs: QualitativeScore;
   onChange: (field: keyof QualitativeScore, val: ImpactLevel) => void;
   scoringCfg?: import('../../types/risk').RiskScoringConfig;
+  levels: ImpactLevel[];
 }) {
   const sc = computeQualScore(qs, scoringCfg);
   return (
@@ -649,7 +659,7 @@ function ScoreCard({ title, qs, onChange, scoringCfg }: {
           </span>
           <select value={qs[field]} onChange={e => onChange(field, e.target.value as ImpactLevel)}
             style={{ fontSize: 10, padding: '2px 4px', borderRadius: 3, border: '1px solid var(--border-primary)', background: 'var(--bg-input)', color: 'var(--text-primary)', width: 60 }}>
-            {LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
+            {levels.map(l => <option key={l} value={l}>{l}</option>)}
           </select>
           <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>
             {IMPACT_LABELS[qs[field]]}

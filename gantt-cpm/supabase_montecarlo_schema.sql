@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS public.risk_probability_scale (
     id             uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
     config_id      uuid NOT NULL REFERENCES public.risk_scoring_config(id) ON DELETE CASCADE,
 
-    level_key      text NOT NULL CHECK (level_key IN ('VL','L','M','H','VH')),
+    level_key      text NOT NULL CHECK (level_key IN ('VL','L','ML','M','MH','H','VH')),
     label          text NOT NULL DEFAULT '',
     weight         numeric NOT NULL DEFAULT 1,
     threshold      text NOT NULL DEFAULT '',     -- e.g. '>70%', '<=10%'
@@ -75,6 +75,24 @@ CREATE TABLE IF NOT EXISTS public.risk_probability_scale (
 
 CREATE INDEX IF NOT EXISTS idx_risk_prob_scale_config
     ON public.risk_probability_scale(config_id);
+
+-- 1b2. Escala de Impacto (2-7 niveles por proyecto, pesos separados de probabilidad)
+CREATE TABLE IF NOT EXISTS public.risk_impact_scale (
+    id             uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
+    config_id      uuid NOT NULL REFERENCES public.risk_scoring_config(id) ON DELETE CASCADE,
+
+    level_key      text NOT NULL CHECK (level_key IN ('VL','L','ML','M','MH','H','VH')),
+    label          text NOT NULL DEFAULT '',
+    weight         numeric NOT NULL DEFAULT 1,
+    threshold      text NOT NULL DEFAULT '',
+
+    sort_order     int DEFAULT 0,
+
+    UNIQUE(config_id, level_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_risk_impact_scale_config
+    ON public.risk_impact_scale(config_id);
 
 -- 1c. Tipos de Impacto (Schedule, Cost, Performance, custom...)
 CREATE TABLE IF NOT EXISTS public.risk_impact_types (
@@ -148,16 +166,16 @@ CREATE TABLE IF NOT EXISTS public.risk_events (
     rbs            text DEFAULT '',        -- Risk Breakdown Structure code
 
     -- Evaluación Cualitativa (Pre-Mitigación)
-    pre_probability    text DEFAULT 'M' CHECK (pre_probability IN ('VL','L','M','H','VH')),
-    pre_schedule       text DEFAULT 'M' CHECK (pre_schedule IN ('VL','L','M','H','VH')),
-    pre_cost           text DEFAULT 'M' CHECK (pre_cost IN ('VL','L','M','H','VH')),
-    pre_performance    text DEFAULT 'M' CHECK (pre_performance IN ('VL','L','M','H','VH')),
+    pre_probability    text DEFAULT 'M' CHECK (pre_probability IN ('VL','L','ML','M','MH','H','VH')),
+    pre_schedule       text DEFAULT 'M' CHECK (pre_schedule IN ('VL','L','ML','M','MH','H','VH')),
+    pre_cost           text DEFAULT 'M' CHECK (pre_cost IN ('VL','L','ML','M','MH','H','VH')),
+    pre_performance    text DEFAULT 'M' CHECK (pre_performance IN ('VL','L','ML','M','MH','H','VH')),
 
     -- Evaluación Cualitativa (Post-Mitigación)
-    post_probability   text DEFAULT 'M' CHECK (post_probability IN ('VL','L','M','H','VH')),
-    post_schedule      text DEFAULT 'M' CHECK (post_schedule IN ('VL','L','M','H','VH')),
-    post_cost          text DEFAULT 'M' CHECK (post_cost IN ('VL','L','M','H','VH')),
-    post_performance   text DEFAULT 'M' CHECK (post_performance IN ('VL','L','M','H','VH')),
+    post_probability   text DEFAULT 'M' CHECK (post_probability IN ('VL','L','ML','M','MH','H','VH')),
+    post_schedule      text DEFAULT 'M' CHECK (post_schedule IN ('VL','L','ML','M','MH','H','VH')),
+    post_cost          text DEFAULT 'M' CHECK (post_cost IN ('VL','L','ML','M','MH','H','VH')),
+    post_performance   text DEFAULT 'M' CHECK (post_performance IN ('VL','L','ML','M','MH','H','VH')),
 
     -- Mitigación
     mitigation_response text DEFAULT 'accept'
@@ -592,6 +610,7 @@ CREATE TRIGGER trg_single_active_run
 
 ALTER TABLE public.risk_scoring_config        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.risk_probability_scale      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.risk_impact_scale           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.risk_impact_types           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.risk_tolerance_levels       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.risk_events               ENABLE ROW LEVEL SECURITY;
@@ -618,8 +637,8 @@ DECLARE
 BEGIN
     FOR tbl IN
         SELECT unnest(ARRAY[
-            'risk_scoring_config', 'risk_probability_scale', 'risk_impact_types',
-            'risk_tolerance_levels',
+            'risk_scoring_config', 'risk_probability_scale', 'risk_impact_scale',
+            'risk_impact_types', 'risk_tolerance_levels',
             'risk_events', 'risk_task_impacts', 'risk_distributions',
             'risk_sim_params', 'risk_simulation_runs',
             'risk_run_percentiles', 'risk_run_date_percentiles',
@@ -631,19 +650,35 @@ BEGIN
         ])
     LOOP
         EXECUTE format(
-            'CREATE POLICY IF NOT EXISTS "%1$s_select" ON public.%1$I FOR SELECT USING (true);',
+            'DROP POLICY IF EXISTS "%1$s_select" ON public.%1$I;',
             tbl
         );
         EXECUTE format(
-            'CREATE POLICY IF NOT EXISTS "%1$s_insert" ON public.%1$I FOR INSERT WITH CHECK (true);',
+            'CREATE POLICY "%1$s_select" ON public.%1$I FOR SELECT USING (true);',
             tbl
         );
         EXECUTE format(
-            'CREATE POLICY IF NOT EXISTS "%1$s_update" ON public.%1$I FOR UPDATE USING (true) WITH CHECK (true);',
+            'DROP POLICY IF EXISTS "%1$s_insert" ON public.%1$I;',
             tbl
         );
         EXECUTE format(
-            'CREATE POLICY IF NOT EXISTS "%1$s_delete" ON public.%1$I FOR DELETE USING (true);',
+            'CREATE POLICY "%1$s_insert" ON public.%1$I FOR INSERT WITH CHECK (true);',
+            tbl
+        );
+        EXECUTE format(
+            'DROP POLICY IF EXISTS "%1$s_update" ON public.%1$I;',
+            tbl
+        );
+        EXECUTE format(
+            'CREATE POLICY "%1$s_update" ON public.%1$I FOR UPDATE USING (true) WITH CHECK (true);',
+            tbl
+        );
+        EXECUTE format(
+            'DROP POLICY IF EXISTS "%1$s_delete" ON public.%1$I;',
+            tbl
+        );
+        EXECUTE format(
+            'CREATE POLICY "%1$s_delete" ON public.%1$I FOR DELETE USING (true);',
             tbl
         );
     END LOOP;
