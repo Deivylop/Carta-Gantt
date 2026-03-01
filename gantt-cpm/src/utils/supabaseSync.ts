@@ -596,11 +596,14 @@ export async function fetchProjectSummaries(
             if (a.res) a.res.split(';').map((r: string) => r.trim()).filter(Boolean).forEach((r: string) => resSet.add(r));
         });
 
-        // Extract global % from last progress history entry
+        // Extract global % from last progress history entry, fallback to projMeta.pct
         let globalPct = 0;
         if (historyEntries.length > 0) {
             const last = historyEntries[historyEntries.length - 1];
             if (last) globalPct = last.actualPct || 0;
+        } else if (projMeta?.pct) {
+            // No progress history saved yet — use the CPM-computed project row %
+            globalPct = Math.round((projMeta.pct || 0) * 10) / 10;
         }
 
         // Planned % (from CPM engine) — stored in projMeta

@@ -148,57 +148,59 @@ function AppInner() {
   const saveTimeoutRef = useRef<number | null>(null);
   const switchingProjectRef = useRef(false); // guard: suppress auto-save during project switch
 
-  // 1. Initial Load – restore active project from localStorage or Supabase
+  // 1. Initial Load – restore active project from localStorage FIRST (fast),
+  //    then verify against Supabase (source of truth, overrides if it has data).
   useEffect(() => {
     const initApp = async () => {
-      // Try Supabase first (if a remote project is linked)
       const pid = typeof window !== 'undefined' ? localStorage.getItem('sb_current_project_id') : null;
-      if (pid) {
-        try {
-          const data = await loadFromSupabase(pid);
-          if (data.projName) dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: data.projName, projStart: data.projStart, defCal: data.defCal, statusDate: data.statusDate || undefined, customFilters: data.customFilters || [], filtersMatchAll: data.filtersMatchAll !== undefined ? data.filtersMatchAll : true } });
-          if (data.resourcePool) dispatch({ type: 'SET_RESOURCES', resources: data.resourcePool });
-          if (data.activities && data.activities.length) dispatch({ type: 'SET_ACTIVITIES', activities: data.activities });
-          if (data.progressHistory) dispatch({ type: 'SET_PROGRESS_HISTORY', history: data.progressHistory });
-          if (data.ppcHistory && data.ppcHistory.length) dispatch({ type: 'SET_PPC_HISTORY', history: data.ppcHistory });
-          if (data.leanRestrictions && data.leanRestrictions.length) dispatch({ type: 'SET_LEAN_RESTRICTIONS', restrictions: data.leanRestrictions });
-          if ((data as any).scenarios && (data as any).scenarios.length) dispatch({ type: 'SET_SCENARIOS', scenarios: (data as any).scenarios });
-          return;
-        } catch (err) {
-          console.warn('Could not auto-load from Supabase, starting fresh', err);
-        }
-      }
-      // Try loading active project from local portfolio (pState is already synchronously loaded)
       const activeId = pState.activeProjectId;
+
+      // ── Step A: Quick-restore from localStorage (instant, avoids blank screen) ──
+      let localLoaded = false;
       if (activeId) {
         const saved = loadProjectState(activeId);
         if (saved) {
           restoreDatesFromSaved(saved);
           dispatch({ type: 'LOAD_STATE', state: saved });
-          console.log('Restored project from local storage:', activeId);
-          return;
+          localLoaded = true;
+          console.log('[initApp] Quick-restored from localStorage:', activeId);
         }
-        // No local state — check if project has a Supabase link
-        const proj = pState.projects.find(p => p.id === activeId);
-        if (proj?.supabaseId) {
-          try {
-            const data = await loadFromSupabase(proj.supabaseId);
+      }
+
+      // ── Step B: Verify / overlay from Supabase (async, source of truth) ──
+      const sbPid = pid || (activeId ? pState.projects.find(p => p.id === activeId)?.supabaseId : null) || null;
+      if (sbPid) {
+        try {
+          const data = await loadFromSupabase(sbPid);
+          if (data.activities && data.activities.length) {
+            // Supabase has real activity data → use it (more authoritative)
             if (data.projName) dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: data.projName, projStart: data.projStart, defCal: data.defCal, statusDate: data.statusDate || undefined, customFilters: data.customFilters || [], filtersMatchAll: data.filtersMatchAll !== undefined ? data.filtersMatchAll : true } });
             if (data.resourcePool) dispatch({ type: 'SET_RESOURCES', resources: data.resourcePool });
-            if (data.activities && data.activities.length) dispatch({ type: 'SET_ACTIVITIES', activities: data.activities });
+            dispatch({ type: 'SET_ACTIVITIES', activities: data.activities });
             if (data.progressHistory) dispatch({ type: 'SET_PROGRESS_HISTORY', history: data.progressHistory });
             if (data.ppcHistory && data.ppcHistory.length) dispatch({ type: 'SET_PPC_HISTORY', history: data.ppcHistory });
             if (data.leanRestrictions && data.leanRestrictions.length) dispatch({ type: 'SET_LEAN_RESTRICTIONS', restrictions: data.leanRestrictions });
             if ((data as any).scenarios && (data as any).scenarios.length) dispatch({ type: 'SET_SCENARIOS', scenarios: (data as any).scenarios });
-            localStorage.setItem('sb_current_project_id', proj.supabaseId);
-            console.log('Restored project from Supabase:', proj.supabaseId);
+            if (!pid) localStorage.setItem('sb_current_project_id', sbPid);
+            console.log('[initApp] Loaded from Supabase:', sbPid);
             return;
-          } catch (err) {
-            console.warn('Could not load project from Supabase:', err);
           }
+          // Supabase project exists but has NO activities (possibly caught mid-save)
+          if (localLoaded) {
+            console.warn('[initApp] Supabase has no activities but localStorage does — keeping localStorage data; auto-save will heal Supabase');
+            return;
+          }
+          console.warn('[initApp] Supabase has no activities and no localStorage data');
+        } catch (err) {
+          console.warn('[initApp] Supabase load failed:', err);
+          if (localLoaded) return; // localStorage already restored, that's fine
         }
       }
-      // Fallback: demo data (only if no portfolio project exists at all)
+
+      // ── Step C: If nothing loaded yet, we're done (localStorage already loaded above if available) ──
+      if (localLoaded) return;
+
+      // ── Step D: Fallback – demo data only if no portfolio projects exist at all ──
       if (pState.projects.length === 0) {
         loadDemoData();
       }
