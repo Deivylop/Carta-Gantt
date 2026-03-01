@@ -385,12 +385,23 @@ function portfolioReducer(state: PortfolioState, action: PortfolioAction): Portf
         }
 
         case 'SYNC_FROM_SUPABASE': {
-            // Merge Supabase projects into portfolio.
-            // If a supabaseId already exists in our projects, skip it.
-            // Otherwise, create the project and ensure a default EPS exists.
+            // Full bidirectional sync with Supabase:
+            // 1. Remove local projects whose supabaseId no longer exists in Supabase
+            // 2. Add Supabase projects not yet in the local portfolio
+            const supabaseIds = new Set(action.supabaseProjects.map(sp => sp.id));
             const existingSupaIds = new Set(state.projects.map(p => p.supabaseId).filter(Boolean));
-            const newProjects = action.supabaseProjects.filter(sp => !existingSupaIds.has(sp.id));
-            if (newProjects.length === 0) return state;
+
+            // Prune: remove projects whose supabaseId was deleted from Supabase
+            let projects = state.projects.filter(p => {
+                if (!p.supabaseId) return true; // local-only projects stay
+                return supabaseIds.has(p.supabaseId); // keep only if still in Supabase
+            });
+
+            // Add: new Supabase projects not yet tracked locally
+            const currentSupaIds = new Set(projects.map(p => p.supabaseId).filter(Boolean));
+            const newProjects = action.supabaseProjects.filter(sp => !currentSupaIds.has(sp.id));
+
+            if (newProjects.length === 0 && projects.length === state.projects.length) return state;
 
             // Ensure at least one EPS exists — create a default if empty
             let epsNodes = [...state.epsNodes];
@@ -413,8 +424,7 @@ function portfolioReducer(state: PortfolioState, action: PortfolioAction): Portf
             }
 
             const now = nowISO();
-            const baseCount = state.projects.length;
-            const projects = [...state.projects];
+            const baseCount = projects.length;
             newProjects.forEach((sp, i) => {
                 const prjCode = 'PRY-' + String(baseCount + i + 1).padStart(3, '0');
                 projects.push({
@@ -450,7 +460,12 @@ function portfolioReducer(state: PortfolioState, action: PortfolioAction): Portf
             const expanded = new Set(state.expandedIds);
             expanded.add(defaultEpsId);
 
-            return { ...state, epsNodes, projects, expandedIds: expanded };
+            // Clean up activeProjectId if the active project was deleted
+            const activeProjectId = state.activeProjectId && projects.some(p => p.id === state.activeProjectId)
+                ? state.activeProjectId
+                : null;
+
+            return { ...state, epsNodes, projects, expandedIds: expanded, activeProjectId };
         }
 
         default:
