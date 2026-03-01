@@ -96,6 +96,32 @@ const initialState: PortfolioState = {
     clipboard: null,
 };
 
+/** Read portfolio from localStorage synchronously (used as lazy initializer) */
+function loadInitialState(): PortfolioState {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+            const data = JSON.parse(raw);
+            const epsNodes = (data.epsNodes || []).map((e: any, i: number) => ({
+                ...e,
+                epsCode: e.epsCode || ('EPS-' + String(i + 1).padStart(3, '0')),
+                order: e.order ?? i,
+            }));
+            return {
+                epsNodes,
+                projects: data.projects || [],
+                expandedIds: new Set(data.expandedIds || []),
+                selectedId: null,
+                activeProjectId: data.activeProjectId || null,
+                clipboard: null,
+            };
+        }
+    } catch (e) {
+        console.warn('Failed to load portfolio from localStorage', e);
+    }
+    return initialState;
+}
+
 // ─── Reducer ────────────────────────────────────────────────────
 function portfolioReducer(state: PortfolioState, action: PortfolioAction): PortfolioState {
     switch (action.type) {
@@ -381,36 +407,11 @@ export function usePortfolio() {
 
 // ─── Provider ───────────────────────────────────────────────────
 export function PortfolioProvider({ children }: { children: React.ReactNode }) {
-    const [state, dispatch] = useReducer(portfolioReducer, initialState);
-    const loadedRef = React.useRef(false);
+    // Synchronous init from localStorage — no race condition possible
+    const [state, dispatch] = useReducer(portfolioReducer, undefined as any, loadInitialState);
 
-    // Load from localStorage on mount
-    useEffect(() => {
-        try {
-            const raw = localStorage.getItem(STORAGE_KEY);
-            if (raw) {
-                const data = JSON.parse(raw);
-                dispatch({
-                    type: 'LOAD',
-                    state: {
-                        epsNodes: data.epsNodes || [],
-                        projects: data.projects || [],
-                        expandedIds: data.expandedIds || [],
-                        activeProjectId: data.activeProjectId || null,
-                    },
-                });
-            }
-        } catch (e) {
-            console.warn('Failed to load portfolio from localStorage', e);
-        }
-        // Mark as loaded so the save effect can start running
-        loadedRef.current = true;
-    }, []);
-
-    // Auto-save to localStorage on state changes
+    // Auto-save to localStorage on state changes (debounced)
     const savePortfolio = useCallback(() => {
-        // Guard: never save before the initial load has run
-        if (!loadedRef.current) return;
         try {
             const data = {
                 epsNodes: state.epsNodes,
@@ -425,15 +426,13 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     }, [state]);
 
     useEffect(() => {
-        // Debounce save
         const t = setTimeout(() => savePortfolio(), 300);
         return () => clearTimeout(t);
     }, [savePortfolio]);
 
-    // Guarantee save on page close/refresh (not debounced)
+    // Guarantee save on page close/refresh (synchronous, not debounced)
     useEffect(() => {
         const handleBeforeUnload = () => {
-            if (!loadedRef.current) return;
             try {
                 const data = {
                     epsNodes: state.epsNodes,

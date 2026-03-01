@@ -147,9 +147,10 @@ function AppInner() {
 
   const saveTimeoutRef = useRef<number | null>(null);
 
-  // 1. Initial Load & Auto-load from Supabase
+  // 1. Initial Load – restore active project from localStorage or Supabase
   useEffect(() => {
     const initApp = async () => {
+      // Try Supabase first (if a remote project is linked)
       const pid = typeof window !== 'undefined' ? localStorage.getItem('sb_current_project_id') : null;
       if (pid) {
         try {
@@ -166,30 +167,25 @@ function AppInner() {
           console.warn('Could not auto-load from Supabase, starting fresh', err);
         }
       }
-      // 2. Try loading active project from local portfolio storage
-      try {
-        const portfolioRaw = localStorage.getItem('gantt-cpm-portfolio');
-        if (portfolioRaw) {
-          const portfolio = JSON.parse(portfolioRaw);
-          const activeId = portfolio.activeProjectId;
-          if (activeId) {
-            const projRaw = localStorage.getItem('gantt-cpm-project-' + activeId);
-            if (projRaw) {
-              const saved = restoreDatesFromSaved(JSON.parse(projRaw));
-              dispatch({ type: 'LOAD_STATE', state: saved });
-              console.log('Restored project from local storage:', activeId);
-              return;
-            }
-          }
+      // Try loading active project from local portfolio (pState is already synchronously loaded)
+      const activeId = pState.activeProjectId;
+      if (activeId) {
+        const saved = loadProjectState(activeId);
+        if (saved) {
+          restoreDatesFromSaved(saved);
+          dispatch({ type: 'LOAD_STATE', state: saved });
+          console.log('Restored project from local storage:', activeId);
+          return;
         }
-      } catch (e) {
-        console.warn('Could not load project from local portfolio', e);
       }
-
-      loadDemoData();
+      // Fallback: demo data (only if no portfolio project exists at all)
+      if (pState.projects.length === 0) {
+        loadDemoData();
+      }
     };
     initApp();
-  }, [dispatch]); // run once
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once on mount — pState is synchronously available
 
   // 2. Auto-save on state changes (only if a project is already connected)
   useEffect(() => {
