@@ -118,7 +118,7 @@ function AppInner() {
   const [resizing, setResizing] = useState<'v' | 'h' | null>(null);
   const [activeModule, setActiveModule] = useState<ModuleId>(() => {
     const saved = localStorage.getItem('gantt_active_module');
-    const valid: ModuleId[] = ['inicio', 'projects', 'gantt', 'lookAhead', 'dashboard', 'whatIf', 'config'];
+    const valid: ModuleId[] = ['inicio', 'projects', 'gantt', 'lookAhead', 'dashboard', 'whatIf', 'risk', 'config'];
     return saved && valid.includes(saved as ModuleId) ? saved as ModuleId : 'projects';
   });
 
