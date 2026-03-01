@@ -61,7 +61,8 @@ export interface PortfolioState {
     epsNodes: EPSNode[];
     projects: ProjectMeta[];
     expandedIds: Set<string>;  // expanded EPS folders
-    selectedId: string | null; // selected EPS or project ID
+    selectedId: string | null; // primary selected EPS or project ID
+    selectedIds: Set<string>;  // multi-selected node IDs (Shift/Ctrl)
     activeProjectId: string | null; // currently opened project
     clipboard: { mode: 'cut' | 'copy'; projectId: string } | null; // cut/copy clipboard
 }

@@ -354,11 +354,16 @@ export default function ProjectsPage({ onOpenProject }: Props) {
     }, [configProject, configEpsId, nextProjectCode, pDispatch]);
 
     const handleDelete = useCallback(() => {
-        if (!pState.selectedId) return;
-        const isEps = pState.epsNodes.some(e => e.id === pState.selectedId);
-        if (isEps) { if (confirm('¿Eliminar esta carpeta EPS?')) pDispatch({ type: 'DELETE_EPS', id: pState.selectedId }); }
-        else { if (confirm('¿Eliminar este proyecto?')) pDispatch({ type: 'DELETE_PROJECT', id: pState.selectedId }); }
-    }, [pState.selectedId, pState.epsNodes, pDispatch]);
+        if (pState.selectedIds.size === 0) return;
+        const ids = Array.from(pState.selectedIds);
+        const epsIds = ids.filter(id => pState.epsNodes.some(e => e.id === id));
+        const projIds = ids.filter(id => pState.projects.some(p => p.id === id));
+        const count = epsIds.length + projIds.length;
+        const msg = count > 1 ? `¿Eliminar ${count} elementos seleccionados?` : (epsIds.length ? '¿Eliminar esta carpeta EPS?' : '¿Eliminar este proyecto?');
+        if (!confirm(msg)) return;
+        epsIds.forEach(id => pDispatch({ type: 'DELETE_EPS', id }));
+        projIds.forEach(id => pDispatch({ type: 'DELETE_PROJECT', id }));
+    }, [pState.selectedIds, pState.epsNodes, pState.projects, pDispatch]);
 
     const handleOpenProject = useCallback((id: string) => onOpenProject(id), [onOpenProject]);
     const handleRename = useCallback((id: string, v: string) => {
@@ -552,9 +557,12 @@ export default function ProjectsPage({ onOpenProject }: Props) {
     // ══════════════════════════════════════════════════════════════
     // RENDER ROW
     // ══════════════════════════════════════════════════════════════
+    // Flat list of node IDs for Shift-range selection
+    const flatNodeIds = useMemo(() => filteredNodes.map(n => n.data.id), [filteredNodes]);
+
     const renderRow = (node: TreeNode, index: number) => {
         const nodeId = node.data.id;
-        const isSelected = pState.selectedId === nodeId;
+        const isSelected = pState.selectedIds.has(nodeId);
         const isActive = node.kind === 'project' && pState.activeProjectId === nodeId;
         const isCut = pState.clipboard?.mode === 'cut' && pState.clipboard.projectId === nodeId;
         const isEps = node.kind === 'eps';
@@ -562,7 +570,7 @@ export default function ProjectsPage({ onOpenProject }: Props) {
 
         return (
             <div key={nodeId}
-                onClick={() => pDispatch({ type: 'SELECT', id: nodeId })}
+                onClick={(e) => pDispatch({ type: 'SELECT', id: nodeId, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey, flatIds: flatNodeIds })}
                 onDoubleClick={() => { if (node.kind === 'project') handleOpenProject(nodeId); else pDispatch({ type: 'TOGGLE_EXPAND', id: nodeId }); }}
                 onContextMenu={e => handleContextMenu(e, nodeId, node.kind)}
                 style={{
@@ -631,7 +639,7 @@ export default function ProjectsPage({ onOpenProject }: Props) {
     // ══════════════════════════════════════════════════════════════
     const renderTimelineBar = (node: TreeNode) => {
         if (!timelineData) return null;
-        const isSelected = pState.selectedId === node.data.id;
+        const isSelected = pState.selectedIds.has(node.data.id);
         const isEps = node.kind === 'eps';
 
         let sDate: Date | null = null, eDate: Date | null = null;
@@ -684,7 +692,7 @@ export default function ProjectsPage({ onOpenProject }: Props) {
         return (
             <div style={{ position: 'absolute', left: x, top: by, width: w, height: bh, borderRadius: 3, overflow: 'hidden', cursor: 'pointer', boxShadow: isSelected ? `0 0 0 2px ${barColor}66` : 'none' }}
                 title={`${p.name}: ${fmtDt(p.startDate)} → ${fmtDt(p.endDate)}`}
-                onClick={() => pDispatch({ type: 'SELECT', id: node.data.id })}>
+                onClick={(e) => pDispatch({ type: 'SELECT', id: node.data.id, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey, flatIds: flatNodeIds })}>
                 {/* Background bar */}
                 <div style={{ position: 'absolute', inset: 0, background: barColor, opacity: 0.35 }} />
                 {/* Progress fill */}
@@ -711,7 +719,7 @@ export default function ProjectsPage({ onOpenProject }: Props) {
                 <BtnGroup label="INSERTAR">
                     <Btn icon={<FolderPlus size={13} />} text="EPS" onClick={handleAddEps} />
                     <Btn icon={<FilePlus size={13} />} text="Proyecto" onClick={handleAddProject} />
-                    <Btn icon={<Trash2 size={13} />} text="Eliminar" onClick={handleDelete} disabled={!pState.selectedId} color="#ef4444" />
+                    <Btn icon={<Trash2 size={13} />} text="Eliminar" onClick={handleDelete} disabled={pState.selectedIds.size === 0} color="#ef4444" />
                 </BtnGroup>
 
                 <Sep />
@@ -922,11 +930,15 @@ export default function ProjectsPage({ onOpenProject }: Props) {
                                             </div>
                                         );
                                     })()}
-                                    {filteredNodes.map((node, i) => (
-                                        <div key={node.data.id + '-tl'} style={{ position: 'absolute', left: 0, right: 0, top: i * ROW_H, height: ROW_H, borderBottom: '1px solid var(--border-primary)' }}>
+                                    {filteredNodes.map((node, i) => {
+                                        const tlSelected = pState.selectedIds.has(node.data.id);
+                                        return (
+                                        <div key={node.data.id + '-tl'} style={{ position: 'absolute', left: 0, right: 0, top: i * ROW_H, height: ROW_H, borderBottom: '1px solid var(--border-primary)', background: tlSelected ? 'rgba(99,102,241,.10)' : 'transparent' }}
+                                            onClick={(e) => pDispatch({ type: 'SELECT', id: node.data.id, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey, flatIds: flatNodeIds })}>
                                             {renderTimelineBar(node)}
                                         </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)', gap: 6, padding: 30 }}>

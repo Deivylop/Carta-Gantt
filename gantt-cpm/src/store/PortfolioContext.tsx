@@ -74,7 +74,7 @@ type PortfolioAction =
     | { type: 'UPDATE_PROJECT'; id: string; updates: Partial<ProjectMeta> }
     | { type: 'DELETE_PROJECT'; id: string }
     | { type: 'TOGGLE_EXPAND'; id: string }
-    | { type: 'SELECT'; id: string | null }
+    | { type: 'SELECT'; id: string | null; shift?: boolean; ctrl?: boolean; flatIds?: string[] }
     | { type: 'SET_ACTIVE_PROJECT'; id: string | null }
     | { type: 'EXPAND_ALL' }
     | { type: 'COLLAPSE_ALL' }
@@ -95,6 +95,7 @@ const initialState: PortfolioState = {
     projects: [],
     expandedIds: new Set<string>(),
     selectedId: null,
+    selectedIds: new Set<string>(),
     activeProjectId: null,
     clipboard: null,
 };
@@ -115,6 +116,7 @@ function loadInitialState(): PortfolioState {
                 projects: data.projects || [],
                 expandedIds: new Set(data.expandedIds || []),
                 selectedId: null,
+                selectedIds: new Set<string>(),
                 activeProjectId: data.activeProjectId || null,
                 clipboard: null,
             };
@@ -266,8 +268,30 @@ function portfolioReducer(state: PortfolioState, action: PortfolioAction): Portf
             return { ...state, expandedIds: expanded };
         }
 
-        case 'SELECT':
-            return { ...state, selectedId: action.id };
+        case 'SELECT': {
+            const clickedId = action.id;
+            if (action.shift && state.selectedId && clickedId && action.flatIds) {
+                // Shift: range selection from selectedId to clickedId using flat order
+                const flat = action.flatIds;
+                const aIdx = flat.indexOf(state.selectedId);
+                const bIdx = flat.indexOf(clickedId);
+                if (aIdx >= 0 && bIdx >= 0) {
+                    const lo = Math.min(aIdx, bIdx);
+                    const hi = Math.max(aIdx, bIdx);
+                    const next = new Set(state.selectedIds);
+                    for (let i = lo; i <= hi; i++) next.add(flat[i]);
+                    return { ...state, selectedIds: next };
+                }
+            }
+            if (action.ctrl && clickedId) {
+                // Ctrl: toggle individual
+                const next = new Set(state.selectedIds);
+                if (next.has(clickedId)) next.delete(clickedId); else next.add(clickedId);
+                return { ...state, selectedId: clickedId, selectedIds: next };
+            }
+            // Normal click: single selection
+            return { ...state, selectedId: clickedId, selectedIds: clickedId ? new Set([clickedId]) : new Set<string>() };
+        }
 
         case 'SET_ACTIVE_PROJECT':
             return { ...state, activeProjectId: action.id };
