@@ -115,20 +115,27 @@ export default function RiskQualitativePanel() {
   }, [bottomH]);
 
   // ─── Risk Matrix data (separate pre & post) ──────────────────
+  // Only use scored impact dimensions for matrix placement (matching computeQualScore)
+  const scoredDimKeys = useMemo(() => {
+    const types = scoringCfg.impactTypes ?? [];
+    return types.filter(t => t.scored).map(t => t.id as keyof QualitativeScore);
+  }, [scoringCfg.impactTypes]);
+
   const buildMatrix = useCallback((src: 'preMitigation' | 'postMitigation') => {
     const grid: Record<string, RiskEvent[]> = {};
     for (const p of activeKeys) for (const i of activeKeys) grid[`${p}-${i}`] = [];
+    const dims = scoredDimKeys.length > 0 ? scoredDimKeys : (['schedule', 'cost'] as const);
     for (const r of risks) {
       const qs = r[src] || r.preMitigation;
       if (!qs) continue;
       const iMap: Record<string, number> = {};
       for (const s of (scoringCfg.impactScale ?? DEFAULT_IMPACT_SCALE)) iMap[s.key] = s.weight;
-      const maxImpact = (['schedule', 'cost', 'performance'] as const)
+      const maxImpact = dims
         .reduce((m, k) => (iMap[qs[k]] ?? IMPACT_WEIGHT[qs[k]]) > (iMap[m] ?? IMPACT_WEIGHT[m]) ? qs[k] : m, 'VL' as ImpactLevel);
       grid[`${qs.probability}-${maxImpact}`]?.push(r);
     }
     return grid;
-  }, [risks, scoringCfg, activeKeys]);
+  }, [risks, scoringCfg, activeKeys, scoredDimKeys]);
 
   const matrixDataPre = useMemo(() => buildMatrix('preMitigation'), [buildMatrix]);
   const matrixDataPost = useMemo(() => buildMatrix('postMitigation'), [buildMatrix]);
