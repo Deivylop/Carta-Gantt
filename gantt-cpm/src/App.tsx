@@ -182,6 +182,7 @@ function AppInner() {
             if (data.ppcHistory && data.ppcHistory.length) dispatch({ type: 'SET_PPC_HISTORY', history: data.ppcHistory });
             if (data.leanRestrictions && data.leanRestrictions.length) dispatch({ type: 'SET_LEAN_RESTRICTIONS', restrictions: data.leanRestrictions });
             if ((data as any).scenarios && (data as any).scenarios.length) dispatch({ type: 'SET_SCENARIOS', scenarios: (data as any).scenarios });
+            if ((data as any).riskState) dispatch({ type: 'LOAD_RISK_STATE', riskState: (data as any).riskState });
             if (!pid) localStorage.setItem('sb_current_project_id', sbPid);
             console.log('[initApp] Loaded from Supabase:', sbPid);
             return;
@@ -242,7 +243,7 @@ function AppInner() {
       }
     }, 800);
     return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
-  }, [state.activities, state.resourcePool, state.projName, state.projStart, state.defCal, state.statusDate, state.ppcHistory, state.leanRestrictions, state.progressHistory, state.scenarios, pState.activeProjectId, saveProjectState]);
+  }, [state.activities, state.resourcePool, state.projName, state.projStart, state.defCal, state.statusDate, state.ppcHistory, state.leanRestrictions, state.progressHistory, state.scenarios, state.riskState.riskEvents, state.riskState.distributions, state.riskState.simulationRuns, state.riskState.riskScoring, state.riskState.params, pState.activeProjectId, saveProjectState]);
 
   // 3. Listen to Supabase Events
   useEffect(() => {
@@ -258,6 +259,7 @@ function AppInner() {
         if (data.ppcHistory && data.ppcHistory.length) dispatch({ type: 'SET_PPC_HISTORY', history: data.ppcHistory });
         if (data.leanRestrictions && data.leanRestrictions.length) dispatch({ type: 'SET_LEAN_RESTRICTIONS', restrictions: data.leanRestrictions });
         if ((data as any).scenarios && (data as any).scenarios.length) dispatch({ type: 'SET_SCENARIOS', scenarios: (data as any).scenarios });
+        if ((data as any).riskState) dispatch({ type: 'LOAD_RISK_STATE', riskState: (data as any).riskState });
         localStorage.setItem('sb_current_project_id', pid);
         alert('Proyecto cargado exitosamente');
       } catch (err: any) {
@@ -524,6 +526,7 @@ function AppInner() {
         if (data.ppcHistory && data.ppcHistory.length) dispatch({ type: 'SET_PPC_HISTORY', history: data.ppcHistory });
         if (data.leanRestrictions && data.leanRestrictions.length) dispatch({ type: 'SET_LEAN_RESTRICTIONS', restrictions: data.leanRestrictions });
         if ((data as any).scenarios && (data as any).scenarios.length) dispatch({ type: 'SET_SCENARIOS', scenarios: (data as any).scenarios });
+        if ((data as any).riskState) dispatch({ type: 'LOAD_RISK_STATE', riskState: (data as any).riskState });
         console.log('Loaded project from Supabase:', proj.supabaseId);
       } catch (err) {
         console.error('Failed to load from Supabase, using fresh state:', err);

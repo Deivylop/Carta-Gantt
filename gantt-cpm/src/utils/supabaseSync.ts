@@ -3,6 +3,8 @@ import type { GanttState } from '../store/GanttContext';
 import { BUILTIN_FILTERS } from '../store/GanttContext';
 import { newActivity, isoDate, parseDate } from './cpm';
 import { deriveResString } from './helpers';
+import type { RiskAnalysisState, RiskScoringConfig, SimulationResult, DurationDistribution, RiskEvent, RiskTaskImpact, SimulationParams } from '../types/risk';
+import { DEFAULT_RISK_STATE } from '../types/risk';
 
 // Maps Calendar factors directly as in original HTML
 let isSaving = false;
@@ -237,9 +239,293 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
             });
             if (arRows.length) { const { error: ae } = await supabase.from('gantt_activity_resources').insert(arRows); if (ae) throw ae; }
         }
+
+        // ═══ 7. RISK DATA ═══
+        await saveRiskDataToSupabase(currentId as string, state.riskState);
+
         return currentId as string;
     } finally {
         isSaving = false;
+    }
+}
+
+/** Save all risk analysis data for a project */
+async function saveRiskDataToSupabase(projectId: string, riskState: RiskAnalysisState | undefined): Promise<void> {
+    if (!riskState) return;
+
+    // 7a. Clear old risk data (cascade-safe order — children before parents)
+    // risk_simulation_runs CASCADE → percentiles, histogram, activity stats, criticality, sensitivity, snapshots
+    await supabase.from('risk_simulation_runs').delete().eq('project_id', projectId);
+    await supabase.from('risk_sim_params').delete().eq('project_id', projectId);
+    await supabase.from('risk_distributions').delete().eq('project_id', projectId);
+    // risk_events CASCADE → risk_task_impacts
+    await supabase.from('risk_events').delete().eq('project_id', projectId);
+    // risk_scoring_config CASCADE → probability_scale, impact_scale, impact_types, tolerance_levels
+    await supabase.from('risk_scoring_config').delete().eq('project_id', projectId);
+
+    // 7b. Risk Scoring Config
+    const scoring = riskState.riskScoring;
+    if (scoring) {
+        const { data: cfgData, error: cfgErr } = await supabase
+            .from('risk_scoring_config')
+            .insert({ project_id: projectId, pid_score_mode: scoring.pidScoreMode || 'highest' })
+            .select().single();
+        if (cfgErr) throw cfgErr;
+        const configId = cfgData.id;
+
+        // Probability scale
+        if (scoring.probabilityScale?.length) {
+            const rows = scoring.probabilityScale.map((s, i) => ({
+                config_id: configId, level_key: s.key, label: s.label,
+                weight: s.weight, threshold: s.threshold || '', sort_order: i,
+            }));
+            const { error } = await supabase.from('risk_probability_scale').insert(rows);
+            if (error) throw error;
+        }
+
+        // Impact scale
+        if (scoring.impactScale?.length) {
+            const rows = scoring.impactScale.map((s, i) => ({
+                config_id: configId, level_key: s.key, label: s.label,
+                weight: s.weight, threshold: s.threshold || '', sort_order: i,
+            }));
+            const { error } = await supabase.from('risk_impact_scale').insert(rows);
+            if (error) throw error;
+        }
+
+        // Impact types
+        if (scoring.impactTypes?.length) {
+            const rows = scoring.impactTypes.map((t, i) => ({
+                config_id: configId, type_id: t.id, label: t.label, scored: t.scored,
+                threshold_vl: t.levels?.VL || '', threshold_l: t.levels?.L || '',
+                threshold_m: t.levels?.M || '', threshold_h: t.levels?.H || '',
+                threshold_vh: t.levels?.VH || '', sort_order: i,
+            }));
+            const { error } = await supabase.from('risk_impact_types').insert(rows);
+            if (error) throw error;
+        }
+
+        // Tolerance levels
+        if (scoring.toleranceLevels?.length) {
+            const rows = scoring.toleranceLevels.map((t, i) => ({
+                config_id: configId, label: t.label, color: t.color,
+                min_score: t.minScore, sort_order: i,
+            }));
+            const { error } = await supabase.from('risk_tolerance_levels').insert(rows);
+            if (error) throw error;
+        }
+    }
+
+    // 7c. Risk Events
+    const eventUuidMap: Record<string, string> = {};
+    if (riskState.riskEvents?.length) {
+        const rows = riskState.riskEvents.map((ev, i) => ({
+            project_id: projectId, local_id: ev.id, code: ev.code || '',
+            name: ev.name || '', description: ev.description || '',
+            cause: ev.cause || '', effect: ev.effect || '',
+            threat_or_opportunity: ev.threatOrOpportunity || 'threat',
+            status: ev.status || 'proposed', category: ev.category || 'Otro',
+            owner: ev.owner || '', notes: ev.notes || '', rbs: ev.rbs || '',
+            pre_probability: ev.preMitigation?.probability || 'M',
+            pre_schedule: ev.preMitigation?.schedule || 'M',
+            pre_cost: ev.preMitigation?.cost || 'M',
+            pre_performance: ev.preMitigation?.performance || 'M',
+            post_probability: ev.postMitigation?.probability || 'M',
+            post_schedule: ev.postMitigation?.schedule || 'M',
+            post_cost: ev.postMitigation?.cost || 'M',
+            post_performance: ev.postMitigation?.performance || 'M',
+            mitigation_response: ev.mitigationResponse || 'accept',
+            mitigation_title: ev.mitigationTitle || '',
+            mitigation_cost: ev.mitigationCost || 0,
+            quantified: !!ev.quantified, probability: ev.probability ?? 50,
+            impact_type: ev.impactType || 'addDays', impact_value: ev.impactValue ?? 5,
+            mitigated: !!ev.mitigated,
+            mitigated_probability: ev.mitigatedProbability ?? null,
+            mitigated_impact_value: ev.mitigatedImpactValue ?? null,
+            start_date: ev.startDate || null, end_date: ev.endDate || null,
+            sort_order: i,
+        }));
+        const { data: evData, error: evErr } = await supabase.from('risk_events').insert(rows).select();
+        if (evErr) throw evErr;
+        (evData as any[]).forEach(e => { eventUuidMap[e.local_id] = e.id; });
+
+        // 7d. Risk Task Impacts
+        const tiRows: any[] = [];
+        riskState.riskEvents.forEach(ev => {
+            const evUuid = eventUuidMap[ev.id];
+            if (!evUuid || !ev.taskImpacts?.length) return;
+            ev.taskImpacts.forEach((ti, i) => {
+                tiRows.push({
+                    risk_event_id: evUuid, project_id: projectId,
+                    task_local_id: ti.taskId,
+                    schedule_shape: ti.scheduleShape || 'none',
+                    schedule_min: ti.scheduleMin ?? null,
+                    schedule_likely: ti.scheduleLikely ?? null,
+                    schedule_max: ti.scheduleMax ?? null,
+                    cost_shape: ti.costShape || 'none',
+                    cost_min: ti.costMin ?? null,
+                    cost_likely: ti.costLikely ?? null,
+                    cost_max: ti.costMax ?? null,
+                    correlate: !!ti.correlate,
+                    impact_ranges: !!ti.impactRanges,
+                    event_existence: !!ti.eventExistence,
+                    sort_order: i,
+                });
+            });
+        });
+        if (tiRows.length) {
+            const { error } = await supabase.from('risk_task_impacts').insert(tiRows);
+            if (error) throw error;
+        }
+    }
+
+    // 7e. Distributions
+    const distEntries = Object.entries(riskState.distributions || {});
+    if (distEntries.length) {
+        const rows = distEntries.map(([actId, d]) => ({
+            project_id: projectId, activity_local_id: actId,
+            dist_type: d.type || 'none',
+            dist_min: d.min ?? null, most_likely: d.mostLikely ?? null, dist_max: d.max ?? null,
+        }));
+        const { error } = await supabase.from('risk_distributions').insert(rows);
+        if (error) throw error;
+    }
+
+    // 7f. Simulation Parameters
+    if (riskState.params) {
+        const p = riskState.params;
+        const { error } = await supabase.from('risk_sim_params').insert({
+            project_id: projectId, iterations: p.iterations || 1000,
+            seed: p.seed ?? null, use_mitigated: !!p.useMitigated,
+            confidence_levels: p.confidenceLevels || [10, 25, 50, 75, 80, 90],
+        });
+        if (error) throw error;
+    }
+
+    // 7g. Simulation Runs + child tables
+    if (riskState.simulationRuns?.length) {
+        for (const run of riskState.simulationRuns) {
+            const { data: runData, error: runErr } = await supabase
+                .from('risk_simulation_runs')
+                .insert({
+                    project_id: projectId, local_id: run.id, name: run.name || '',
+                    run_at: run.runAt,
+                    param_iterations: run.params?.iterations || 1000,
+                    param_seed: run.params?.seed ?? null,
+                    param_use_mitigated: !!run.params?.useMitigated,
+                    param_confidence_levels: run.params?.confidenceLevels || [10, 25, 50, 75, 80, 90],
+                    completed_iterations: run.completedIterations,
+                    deterministic_duration: run.deterministicDuration,
+                    deterministic_finish: run.deterministicFinish,
+                    mean_duration: run.meanDuration,
+                    std_dev_duration: run.stdDevDuration,
+                    is_active: run.id === riskState.activeRunId,
+                }).select().single();
+            if (runErr) throw runErr;
+            const runUuid = runData.id;
+
+            // Duration percentiles
+            const pctlEntries = Object.entries(run.durationPercentiles || {});
+            if (pctlEntries.length) {
+                await supabase.from('risk_run_percentiles').insert(
+                    pctlEntries.map(([p, d]) => ({ run_id: runUuid, percentile: Number(p), duration: d }))
+                );
+            }
+
+            // Date percentiles
+            const datePctlEntries = Object.entries(run.datePercentiles || {});
+            if (datePctlEntries.length) {
+                await supabase.from('risk_run_date_percentiles').insert(
+                    datePctlEntries.map(([p, d]) => ({ run_id: runUuid, percentile: Number(p), finish_date: d }))
+                );
+            }
+
+            // Histogram
+            if (run.histogram?.length) {
+                await supabase.from('risk_run_histogram').insert(
+                    run.histogram.map((h, i) => ({
+                        run_id: runUuid, bin_start: h.binStart, bin_end: h.binEnd,
+                        count: h.count, cum_pct: h.cumPct, sort_order: i,
+                    }))
+                );
+            }
+
+            // Activity stats + per-activity percentiles
+            const actPctlEntries = Object.entries(run.activityPercentiles || {});
+            if (actPctlEntries.length) {
+                // Deterministic stats
+                await supabase.from('risk_run_activity_stats').insert(
+                    actPctlEntries.map(([actId, s]) => ({
+                        run_id: runUuid, activity_local_id: actId,
+                        deterministic_start: s.deterministicStart || null,
+                        deterministic_finish: s.deterministicFinish || null,
+                        deterministic_duration: s.deterministicDuration ?? null,
+                    }))
+                );
+
+                // Activity finish date percentiles
+                const adpRows: any[] = [];
+                actPctlEntries.forEach(([actId, s]) => {
+                    Object.entries(s.datePercentiles || {}).forEach(([p, d]) => {
+                        adpRows.push({ run_id: runUuid, activity_local_id: actId, percentile: Number(p), finish_date: d });
+                    });
+                });
+                if (adpRows.length) await supabase.from('risk_run_act_date_pctls').insert(adpRows);
+
+                // Activity start date percentiles
+                const aspRows: any[] = [];
+                actPctlEntries.forEach(([actId, s]) => {
+                    Object.entries(s.startDatePercentiles || {}).forEach(([p, d]) => {
+                        aspRows.push({ run_id: runUuid, activity_local_id: actId, percentile: Number(p), start_date: d });
+                    });
+                });
+                if (aspRows.length) await supabase.from('risk_run_act_start_pctls').insert(aspRows);
+
+                // Activity duration percentiles
+                const adurRows: any[] = [];
+                actPctlEntries.forEach(([actId, s]) => {
+                    Object.entries(s.durationPercentiles || {}).forEach(([p, d]) => {
+                        adurRows.push({ run_id: runUuid, activity_local_id: actId, percentile: Number(p), duration: d });
+                    });
+                });
+                if (adurRows.length) await supabase.from('risk_run_act_dur_pctls').insert(adurRows);
+            }
+
+            // Criticality index
+            const critEntries = Object.entries(run.criticalityIndex || {});
+            if (critEntries.length) {
+                await supabase.from('risk_run_criticality').insert(
+                    critEntries.map(([actId, ci]) => ({ run_id: runUuid, activity_local_id: actId, criticality_index: ci }))
+                );
+            }
+
+            // Sensitivity index
+            const sensEntries = Object.entries(run.sensitivityIndex || {});
+            if (sensEntries.length) {
+                await supabase.from('risk_run_sensitivity').insert(
+                    sensEntries.map(([actId, si]) => ({ run_id: runUuid, activity_local_id: actId, sensitivity_index: si }))
+                );
+            }
+
+            // Distribution snapshot
+            const dSnapEntries = Object.entries(run.distributionsSnapshot || {});
+            if (dSnapEntries.length) {
+                await supabase.from('risk_run_dist_snapshot').insert(
+                    dSnapEntries.map(([actId, d]) => ({
+                        run_id: runUuid, activity_local_id: actId,
+                        dist_type: d.type, dist_min: d.min ?? null,
+                        most_likely: d.mostLikely ?? null, dist_max: d.max ?? null,
+                    }))
+                );
+            }
+
+            // Events snapshot (JSONB)
+            if (run.riskEventsSnapshot?.length) {
+                await supabase.from('risk_run_events_snapshot').insert(
+                    run.riskEventsSnapshot.map((ev, i) => ({ run_id: runUuid, event_data: ev, sort_order: i }))
+                );
+            }
+        }
     }
 }
 
@@ -436,13 +722,306 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
         filtersMatchAll,
         ppcHistory,
         leanRestrictions,
-        scenarios
+        scenarios,
+        riskState: await loadRiskStateFromSupabase(projectId),
     };
 }
 
-/** Delete a project from Supabase (cascades to activities, deps, resources, etc.) */
+/** Load risk analysis state from Supabase for a project */
+async function loadRiskStateFromSupabase(projectId: string): Promise<Partial<RiskAnalysisState>> {
+    const result: Partial<RiskAnalysisState> = {};
+
+    // ── Risk Scoring Config ──
+    const { data: cfgRow } = await supabase
+        .from('risk_scoring_config').select('*').eq('project_id', projectId).maybeSingle();
+
+    if (cfgRow) {
+        const configId = cfgRow.id;
+
+        // Probability scale
+        const { data: probRows } = await supabase
+            .from('risk_probability_scale').select('*').eq('config_id', configId).order('sort_order');
+        const probabilityScale = (probRows || []).map((r: any) => ({
+            key: r.level_key, label: r.label, weight: Number(r.weight), threshold: r.threshold || '',
+        }));
+
+        // Impact scale
+        const { data: impRows } = await supabase
+            .from('risk_impact_scale').select('*').eq('config_id', configId).order('sort_order');
+        const impactScale = (impRows || []).map((r: any) => ({
+            key: r.level_key, label: r.label, weight: Number(r.weight), threshold: r.threshold || '',
+        }));
+
+        // Impact types
+        const { data: typeRows } = await supabase
+            .from('risk_impact_types').select('*').eq('config_id', configId).order('sort_order');
+        const impactTypes = (typeRows || []).map((r: any) => ({
+            id: r.type_id, label: r.label, scored: !!r.scored,
+            levels: {
+                VL: r.threshold_vl || '', L: r.threshold_l || '',
+                ML: '', M: r.threshold_m || '', MH: '',
+                H: r.threshold_h || '', VH: r.threshold_vh || '',
+            },
+        }));
+
+        // Tolerance levels
+        const { data: tolRows } = await supabase
+            .from('risk_tolerance_levels').select('*').eq('config_id', configId).order('sort_order');
+        const toleranceLevels = (tolRows || []).map((r: any) => ({
+            label: r.label, color: r.color, minScore: Number(r.min_score),
+        }));
+
+        result.riskScoring = {
+            probabilityScale,
+            impactScale,
+            impactTypes,
+            toleranceLevels,
+            pidScoreMode: cfgRow.pid_score_mode || 'highest',
+        } as RiskScoringConfig;
+    }
+
+    // ── Risk Events ──
+    const { data: evRows } = await supabase
+        .from('risk_events').select('*').eq('project_id', projectId).order('sort_order');
+
+    if (evRows && evRows.length) {
+        // Pre-fetch all task impacts for this project in one query
+        const { data: allTiRows } = await supabase
+            .from('risk_task_impacts').select('*').eq('project_id', projectId).order('sort_order');
+        const tiByEvent: Record<string, any[]> = {};
+        (allTiRows || []).forEach((ti: any) => {
+            if (!tiByEvent[ti.risk_event_id]) tiByEvent[ti.risk_event_id] = [];
+            tiByEvent[ti.risk_event_id].push(ti);
+        });
+
+        result.riskEvents = evRows.map((r: any) => {
+            const taskImpacts: RiskTaskImpact[] = (tiByEvent[r.id] || []).map((ti: any) => ({
+                taskId: ti.task_local_id,
+                scheduleShape: ti.schedule_shape || 'none',
+                scheduleMin: ti.schedule_min != null ? Number(ti.schedule_min) : undefined,
+                scheduleLikely: ti.schedule_likely != null ? Number(ti.schedule_likely) : undefined,
+                scheduleMax: ti.schedule_max != null ? Number(ti.schedule_max) : undefined,
+                costShape: ti.cost_shape || 'none',
+                costMin: ti.cost_min != null ? Number(ti.cost_min) : undefined,
+                costLikely: ti.cost_likely != null ? Number(ti.cost_likely) : undefined,
+                costMax: ti.cost_max != null ? Number(ti.cost_max) : undefined,
+                correlate: !!ti.correlate,
+                impactRanges: !!ti.impact_ranges,
+                eventExistence: !!ti.event_existence,
+            }));
+
+            return {
+                id: r.local_id,
+                code: r.code || '',
+                name: r.name || '',
+                description: r.description || '',
+                cause: r.cause || '',
+                effect: r.effect || '',
+                threatOrOpportunity: r.threat_or_opportunity || 'threat',
+                status: r.status || 'proposed',
+                category: r.category || 'Otro',
+                owner: r.owner || '',
+                notes: r.notes || '',
+                rbs: r.rbs || '',
+                preMitigation: {
+                    probability: r.pre_probability || 'M',
+                    schedule: r.pre_schedule || 'M',
+                    cost: r.pre_cost || 'M',
+                    performance: r.pre_performance || 'M',
+                },
+                postMitigation: {
+                    probability: r.post_probability || 'M',
+                    schedule: r.post_schedule || 'M',
+                    cost: r.post_cost || 'M',
+                    performance: r.post_performance || 'M',
+                },
+                mitigationResponse: r.mitigation_response || 'accept',
+                mitigationTitle: r.mitigation_title || '',
+                mitigationCost: Number(r.mitigation_cost) || 0,
+                quantified: !!r.quantified,
+                probability: Number(r.probability) ?? 50,
+                taskImpacts,
+                affectedActivityIds: taskImpacts.map(ti => ti.taskId),
+                impactType: r.impact_type || 'addDays',
+                impactValue: Number(r.impact_value) ?? 5,
+                mitigated: !!r.mitigated,
+                mitigatedProbability: r.mitigated_probability != null ? Number(r.mitigated_probability) : undefined,
+                mitigatedImpactValue: r.mitigated_impact_value != null ? Number(r.mitigated_impact_value) : undefined,
+                startDate: r.start_date || undefined,
+                endDate: r.end_date || undefined,
+            } as RiskEvent;
+        });
+    }
+
+    // ── Distributions ──
+    const { data: distRows } = await supabase
+        .from('risk_distributions').select('*').eq('project_id', projectId);
+    if (distRows && distRows.length) {
+        const distributions: Record<string, DurationDistribution> = {};
+        distRows.forEach((r: any) => {
+            distributions[r.activity_local_id] = {
+                type: r.dist_type || 'none',
+                min: r.dist_min != null ? Number(r.dist_min) : undefined,
+                mostLikely: r.most_likely != null ? Number(r.most_likely) : undefined,
+                max: r.dist_max != null ? Number(r.dist_max) : undefined,
+            };
+        });
+        result.distributions = distributions;
+    }
+
+    // ── Simulation Parameters ──
+    const { data: paramsRow } = await supabase
+        .from('risk_sim_params').select('*').eq('project_id', projectId).maybeSingle();
+    if (paramsRow) {
+        result.params = {
+            iterations: paramsRow.iterations || 1000,
+            seed: paramsRow.seed ?? null,
+            useMitigated: !!paramsRow.use_mitigated,
+            confidenceLevels: paramsRow.confidence_levels || [10, 25, 50, 75, 80, 90],
+        } as SimulationParams;
+    }
+
+    // ── Simulation Runs ──
+    const { data: runRows } = await supabase
+        .from('risk_simulation_runs').select('*').eq('project_id', projectId).order('run_at', { ascending: false });
+
+    if (runRows && runRows.length) {
+        const runs: SimulationResult[] = [];
+        let activeRunId: string | null = null;
+
+        for (const rr of runRows) {
+            const runUuid = rr.id;
+            const localId = rr.local_id;
+            if (rr.is_active) activeRunId = localId;
+
+            // Fetch all child tables for this run in parallel
+            const [pctlRes, datePctlRes, histRes, statsRes, adpRes, aspRes, adurRes, critRes, sensRes, dsnapRes, esnapRes] = await Promise.all([
+                supabase.from('risk_run_percentiles').select('*').eq('run_id', runUuid),
+                supabase.from('risk_run_date_percentiles').select('*').eq('run_id', runUuid),
+                supabase.from('risk_run_histogram').select('*').eq('run_id', runUuid).order('sort_order'),
+                supabase.from('risk_run_activity_stats').select('*').eq('run_id', runUuid),
+                supabase.from('risk_run_act_date_pctls').select('*').eq('run_id', runUuid),
+                supabase.from('risk_run_act_start_pctls').select('*').eq('run_id', runUuid),
+                supabase.from('risk_run_act_dur_pctls').select('*').eq('run_id', runUuid),
+                supabase.from('risk_run_criticality').select('*').eq('run_id', runUuid),
+                supabase.from('risk_run_sensitivity').select('*').eq('run_id', runUuid),
+                supabase.from('risk_run_dist_snapshot').select('*').eq('run_id', runUuid),
+                supabase.from('risk_run_events_snapshot').select('*').eq('run_id', runUuid).order('sort_order'),
+            ]);
+
+            // Duration percentiles
+            const durationPercentiles: Record<number, number> = {};
+            (pctlRes.data || []).forEach((r: any) => { durationPercentiles[r.percentile] = Number(r.duration); });
+
+            // Date percentiles
+            const datePercentiles: Record<number, string> = {};
+            (datePctlRes.data || []).forEach((r: any) => { datePercentiles[r.percentile] = r.finish_date; });
+
+            // Histogram
+            const histogram = (histRes.data || []).map((r: any) => ({
+                binStart: Number(r.bin_start), binEnd: Number(r.bin_end),
+                count: r.count, cumPct: Number(r.cum_pct),
+            }));
+
+            // Activity percentiles
+            const activityPercentiles: Record<string, any> = {};
+            // Deterministic stats
+            (statsRes.data || []).forEach((r: any) => {
+                activityPercentiles[r.activity_local_id] = {
+                    deterministicStart: r.deterministic_start || '',
+                    deterministicFinish: r.deterministic_finish || '',
+                    deterministicDuration: r.deterministic_duration != null ? Number(r.deterministic_duration) : 0,
+                    datePercentiles: {},
+                    startDatePercentiles: {},
+                    durationPercentiles: {},
+                };
+            });
+            // Finish date percentiles
+            (adpRes.data || []).forEach((r: any) => {
+                if (activityPercentiles[r.activity_local_id])
+                    activityPercentiles[r.activity_local_id].datePercentiles[r.percentile] = r.finish_date;
+            });
+            // Start date percentiles
+            (aspRes.data || []).forEach((r: any) => {
+                if (activityPercentiles[r.activity_local_id])
+                    activityPercentiles[r.activity_local_id].startDatePercentiles[r.percentile] = r.start_date;
+            });
+            // Duration percentiles
+            (adurRes.data || []).forEach((r: any) => {
+                if (activityPercentiles[r.activity_local_id])
+                    activityPercentiles[r.activity_local_id].durationPercentiles[r.percentile] = Number(r.duration);
+            });
+
+            // Criticality index
+            const criticalityIndex: Record<string, number> = {};
+            (critRes.data || []).forEach((r: any) => { criticalityIndex[r.activity_local_id] = Number(r.criticality_index); });
+
+            // Sensitivity index
+            const sensitivityIndex: Record<string, number> = {};
+            (sensRes.data || []).forEach((r: any) => { sensitivityIndex[r.activity_local_id] = Number(r.sensitivity_index); });
+
+            // Distribution snapshot
+            const distributionsSnapshot: Record<string, DurationDistribution> = {};
+            (dsnapRes.data || []).forEach((r: any) => {
+                distributionsSnapshot[r.activity_local_id] = {
+                    type: r.dist_type || 'none',
+                    min: r.dist_min != null ? Number(r.dist_min) : undefined,
+                    mostLikely: r.most_likely != null ? Number(r.most_likely) : undefined,
+                    max: r.dist_max != null ? Number(r.dist_max) : undefined,
+                };
+            });
+
+            // Events snapshot
+            const riskEventsSnapshot = (esnapRes.data || []).map((r: any) => r.event_data as RiskEvent);
+
+            runs.push({
+                id: localId,
+                name: rr.name || '',
+                runAt: rr.run_at,
+                params: {
+                    iterations: rr.param_iterations || 1000,
+                    seed: rr.param_seed ?? null,
+                    useMitigated: !!rr.param_use_mitigated,
+                    confidenceLevels: rr.param_confidence_levels || [10, 25, 50, 75, 80, 90],
+                },
+                completedIterations: rr.completed_iterations,
+                durationPercentiles,
+                datePercentiles,
+                deterministicDuration: Number(rr.deterministic_duration),
+                deterministicFinish: rr.deterministic_finish,
+                meanDuration: Number(rr.mean_duration),
+                stdDevDuration: Number(rr.std_dev_duration),
+                criticalityIndex,
+                sensitivityIndex,
+                histogram,
+                activityPercentiles,
+                distributionsSnapshot,
+                riskEventsSnapshot,
+            });
+        }
+
+        result.simulationRuns = runs;
+        result.activeRunId = activeRunId;
+    }
+
+    result.running = false;
+    result.progress = 0;
+
+    return result;
+}
+
+/** Delete a project from Supabase (cascades to activities, deps, resources, risk, etc.) */
 export async function deleteProjectFromSupabase(supabaseId: string): Promise<void> {
     // Delete in cascade-safe order (child tables first)
+    // Risk simulation runs → cascades to all risk_run_* child tables
+    await supabase.from('risk_simulation_runs').delete().eq('project_id', supabaseId);
+    await supabase.from('risk_sim_params').delete().eq('project_id', supabaseId);
+    await supabase.from('risk_distributions').delete().eq('project_id', supabaseId);
+    await supabase.from('risk_task_impacts').delete().eq('project_id', supabaseId);
+    await supabase.from('risk_events').delete().eq('project_id', supabaseId);
+    // risk_scoring_config → cascades to probability/impact scale, impact_types, tolerance
+    await supabase.from('risk_scoring_config').delete().eq('project_id', supabaseId);
+    // Original gantt tables
     await supabase.from('gantt_activity_resources').delete().eq('project_id', supabaseId);
     await supabase.from('gantt_dependencies').delete().eq('project_id', supabaseId);
     await supabase.from('gantt_activities').delete().eq('project_id', supabaseId);
