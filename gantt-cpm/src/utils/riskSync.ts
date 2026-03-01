@@ -4,6 +4,7 @@
 // ═══════════════════════════════════════════════════════════════════
 import { supabase } from '../lib/supabase';
 import type { SimulationResult, DurationDistribution, RiskEvent, RiskAnalysisState } from '../types/risk';
+import { createBlankRiskEvent } from '../types/risk';
 
 // ─── Save a simulation run to Supabase ──────────────────────────
 export async function saveRiskRunToSupabase(
@@ -104,7 +105,7 @@ export async function saveRiskConfigToSupabase(
     }
   }
 
-  // Upsert risk events
+  // Upsert risk events – store full object as JSONB for the rich P6 model
   await supabase.from('gantt_risk_events').delete().eq('project_id', projectId);
   if (riskEvents.length > 0) {
     const evtRows = riskEvents.map(r => ({
@@ -122,6 +123,23 @@ export async function saveRiskConfigToSupabase(
       mitigated_probability: r.mitigatedProbability ?? null,
       mitigated_impact_value: r.mitigatedImpactValue ?? null,
       notes: r.notes,
+      // New P6-style fields stored as JSONB
+      risk_data: {
+        cause: r.cause,
+        effect: r.effect,
+        threatOrOpportunity: r.threatOrOpportunity,
+        status: r.status,
+        preMitigation: r.preMitigation,
+        postMitigation: r.postMitigation,
+        mitigationResponse: r.mitigationResponse,
+        mitigationTitle: r.mitigationTitle,
+        mitigationCost: r.mitigationCost,
+        quantified: r.quantified,
+        taskImpacts: r.taskImpacts,
+        startDate: r.startDate,
+        endDate: r.endDate,
+        rbs: r.rbs,
+      },
     }));
     const { error } = await supabase.from('gantt_risk_events').insert(evtRows);
     if (error) console.warn('[riskSync] Failed to save risk events:', error);
@@ -160,7 +178,9 @@ export async function loadRiskConfigFromSupabase(
 
   if (evtData && evtData.length > 0) {
     for (const row of evtData) {
+      const rd = row.risk_data || {};
       riskEvents.push({
+        ...createBlankRiskEvent(),
         id: row.id,
         name: row.name,
         description: row.description || '',
@@ -174,6 +194,21 @@ export async function loadRiskConfigFromSupabase(
         mitigatedProbability: row.mitigated_probability ?? undefined,
         mitigatedImpactValue: row.mitigated_impact_value ?? undefined,
         notes: row.notes || '',
+        // New P6-style fields from JSONB
+        cause: rd.cause || '',
+        effect: rd.effect || '',
+        threatOrOpportunity: rd.threatOrOpportunity || 'threat',
+        status: rd.status || 'proposed',
+        preMitigation: rd.preMitigation || { probability: 'M', schedule: 'M', cost: 'M', performance: 'M' },
+        postMitigation: rd.postMitigation || { probability: 'M', schedule: 'M', cost: 'M', performance: 'M' },
+        mitigationResponse: rd.mitigationResponse || 'accept',
+        mitigationTitle: rd.mitigationTitle || '',
+        mitigationCost: rd.mitigationCost || 0,
+        quantified: rd.quantified || false,
+        taskImpacts: rd.taskImpacts || [],
+        startDate: rd.startDate || undefined,
+        endDate: rd.endDate || undefined,
+        rbs: rd.rbs || '',
       });
     }
   }

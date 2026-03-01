@@ -57,6 +57,8 @@ CREATE TABLE IF NOT EXISTS gantt_risk_events (
     mitigated_probability NUMERIC,
     mitigated_impact_value NUMERIC,
     notes       TEXT DEFAULT '',
+    -- P6-style qualitative + quantitative data (JSONB blob)
+    risk_data   JSONB DEFAULT '{}',                     -- {cause, effect, preMitigation, postMitigation, taskImpacts, ...}
     created_at  TIMESTAMPTZ DEFAULT now()
 );
 

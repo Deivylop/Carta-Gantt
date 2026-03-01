@@ -5,7 +5,7 @@
 import type { Activity, CalendarType, CustomCalendar } from '../types/gantt';
 import type {
   DurationDistribution, RiskEvent, SimulationParams,
-  IterationResult, SimulationResult, HistogramBin,
+  IterationResult, SimulationResult, HistogramBin, RiskTaskImpact,
 } from '../types/risk';
 import { deepCloneActivities } from './whatIfEngine';
 import { calcCPM, isoDate, calWorkDays } from './cpm';
@@ -154,33 +154,62 @@ export function runIteration(
     sampledDurations[a.id] = newDur;
   }
 
-  // 3. Apply risk events
+  // 3. Apply risk events (new P6-style risk drivers + legacy fallback)
   for (const risk of riskEvents) {
+    // Determine effective probability
     const prob = useMitigated && risk.mitigated
       ? (risk.mitigatedProbability ?? risk.probability)
       : risk.probability;
-    const impact = useMitigated && risk.mitigated
-      ? (risk.mitigatedImpactValue ?? risk.impactValue)
-      : risk.impactValue;
 
     if (rng() * 100 >= prob) continue; // risk not triggered
 
-    for (const actId of risk.affectedActivityIds) {
-      const act = acts.find(a => a.id === actId);
-      if (!act || act._isProjRow || act.type === 'summary') continue;
-      if ((act.pct || 0) >= 100) continue;
+    // ── New: Per-task impact distributions (quantified risk drivers) ──
+    if (risk.quantified && risk.taskImpacts && risk.taskImpacts.length > 0) {
+      for (const ti of risk.taskImpacts) {
+        const act = acts.find(a => a.id === ti.taskId);
+        if (!act || act._isProjRow || act.type === 'summary') continue;
+        if ((act.pct || 0) >= 100) continue;
 
-      if (risk.impactType === 'addDays') {
-        const add = Math.max(0, Math.round(impact));
-        act.dur = (act.dur || 0) + add;
-        if (act.remDur != null) act.remDur = (act.remDur || 0) + add;
-      } else {
-        // multiply
-        const factor = Math.max(0.1, impact);
-        act.dur = Math.max(1, Math.round((act.dur || 1) * factor));
-        if (act.remDur != null) act.remDur = Math.max(1, Math.round((act.remDur || 1) * factor));
+        // Sample schedule impact
+        if (ti.scheduleShape && ti.scheduleShape !== 'none') {
+          const schDist: DurationDistribution = {
+            type: ti.scheduleShape,
+            min: ti.scheduleMin,
+            mostLikely: ti.scheduleLikely,
+            max: ti.scheduleMax,
+          };
+          const sampledDays = sampleDuration(schDist, rng);
+          if (sampledDays > 0) {
+            const addDays = Math.max(0, Math.round(sampledDays));
+            act.dur = Math.max(1, (act.dur || 0) + addDays);
+            if (act.remDur != null) act.remDur = Math.max(1, (act.remDur || 0) + addDays);
+            sampledDurations[ti.taskId] = act.dur;
+          }
+        }
       }
-      sampledDurations[actId] = act.dur;
+    } else {
+      // ── Legacy fallback: simple addDays / multiply for all affected activities ──
+      const impact = useMitigated && risk.mitigated
+        ? (risk.mitigatedImpactValue ?? risk.impactValue)
+        : risk.impactValue;
+
+      for (const actId of risk.affectedActivityIds) {
+        const act = acts.find(a => a.id === actId);
+        if (!act || act._isProjRow || act.type === 'summary') continue;
+        if ((act.pct || 0) >= 100) continue;
+
+        if (risk.impactType === 'addDays') {
+          const add = Math.max(0, Math.round(impact));
+          act.dur = (act.dur || 0) + add;
+          if (act.remDur != null) act.remDur = (act.remDur || 0) + add;
+        } else {
+          // multiply
+          const factor = Math.max(0.1, impact);
+          act.dur = Math.max(1, Math.round((act.dur || 1) * factor));
+          if (act.remDur != null) act.remDur = Math.max(1, Math.round((act.remDur || 1) * factor));
+        }
+        sampledDurations[actId] = act.dur;
+      }
     }
   }
 

@@ -3,6 +3,36 @@
 // Inspired by Oracle Primavera Risk Analysis (Pertmaster)
 // ═══════════════════════════════════════════════════════════════════
 
+// ─── Qualitative Scoring ────────────────────────────────────────
+/** Impact / Probability level  (Very Low → Very High) */
+export type ImpactLevel = 'VL' | 'L' | 'M' | 'H' | 'VH';
+
+export const IMPACT_LABELS: Record<ImpactLevel, string> = {
+  VL: 'Muy Bajo', L: 'Bajo', M: 'Medio', H: 'Alto', VH: 'Muy Alto',
+};
+
+/** Numeric weight per level for matrix score */
+export const IMPACT_WEIGHT: Record<ImpactLevel, number> = {
+  VL: 1, L: 2, M: 4, H: 8, VH: 16,
+};
+
+export const PROB_RANGES: Record<ImpactLevel, string> = {
+  VL: '1-10%', L: '11-30%', M: '31-50%', H: '51-70%', VH: '71-99%',
+};
+
+export type ThreatOrOpportunity = 'threat' | 'opportunity';
+export type RiskStatus = 'proposed' | 'open' | 'closed' | 'mitigated';
+export type MitigationResponse = 'accept' | 'mitigate' | 'transfer' | 'avoid' | 'exploit' | 'enhance';
+
+/** Qualitative scoring for one dimension */
+export interface QualitativeScore {
+  probability: ImpactLevel;
+  schedule: ImpactLevel;
+  cost: ImpactLevel;
+  performance: ImpactLevel;
+}
+
+// ─── Quantitative / Distribution Types ──────────────────────────
 /** Probability distribution types */
 export type DistributionType =
   | 'triangular'   // min, mostLikely, max
@@ -21,36 +51,86 @@ export interface DurationDistribution {
   max?: number;
 }
 
+/** Per-task impact for a quantitative risk driver */
+export interface RiskTaskImpact {
+  taskId: string;
+  /** Schedule impact distribution */
+  scheduleShape: DistributionType;
+  scheduleMin?: number;
+  scheduleLikely?: number;
+  scheduleMax?: number;
+  /** Cost impact distribution */
+  costShape: DistributionType;
+  costMin?: number;
+  costLikely?: number;
+  costMax?: number;
+  /** Correlate schedule & cost */
+  correlate: boolean;
+  /** Use impact ranges (checkbox) */
+  impactRanges: boolean;
+  /** Model as discrete event existence */
+  eventExistence: boolean;
+}
+
 /** Risk event categories */
 export type RiskCategory =
   | 'Técnico' | 'Externo' | 'Organizacional' | 'Gestión'
   | 'Clima' | 'Suministro' | 'Regulatorio' | 'Diseño'
   | 'Subcontrato' | 'Otro';
 
-/** A discrete risk event that can affect activities */
+/** A discrete risk event (full P6-style) */
 export interface RiskEvent {
   id: string;
   name: string;
   description: string;
-  /** Probability of occurrence (0-100%) */
-  probability: number;
-  /** Affected activity IDs */
-  affectedActivityIds: string[];
-  /** Impact type: add days or multiply duration */
-  impactType: 'addDays' | 'multiply';
-  /** Impact value (days to add, or multiplier factor) */
-  impactValue: number;
+  cause: string;
+  effect: string;
+  /** Threat or Opportunity */
+  threatOrOpportunity: ThreatOrOpportunity;
+  /** Status */
+  status: RiskStatus;
   /** Category */
   category: RiskCategory;
   /** Owner / responsible */
   owner: string;
-  /** Is risk mitigated? */
-  mitigated: boolean;
-  /** Post-mitigation probability (0-100%) */
-  mitigatedProbability?: number;
-  /** Post-mitigation impact value */
-  mitigatedImpactValue?: number;
   notes: string;
+
+  // ── Qualitative Assessment ──
+  /** Pre-mitigation qualitative scores */
+  preMitigation: QualitativeScore;
+  /** Post-mitigation qualitative scores */
+  postMitigation: QualitativeScore;
+  /** Mitigation response strategy */
+  mitigationResponse: MitigationResponse;
+  /** Mitigation title / description */
+  mitigationTitle: string;
+  /** Mitigation cost */
+  mitigationCost: number;
+
+  // ── Quantitative Assessment ──
+  /** Quantified risk (show in quantitative analysis) */
+  quantified: boolean;
+  /** Overall probability for MC simulation (0-100%) */
+  probability: number;
+  /** Per-task impact definitions (risk drivers) */
+  taskImpacts: RiskTaskImpact[];
+
+  // ── Legacy compat ──
+  /** Affected activity IDs (derived from taskImpacts) */
+  affectedActivityIds: string[];
+  /** Simple impact type (legacy fallback) */
+  impactType: 'addDays' | 'multiply';
+  /** Simple impact value (legacy fallback) */
+  impactValue: number;
+  mitigated: boolean;
+  mitigatedProbability?: number;
+  mitigatedImpactValue?: number;
+
+  // ── Dates ──
+  startDate?: string;
+  endDate?: string;
+  /** RBS (Risk Breakdown Structure) code */
+  rbs?: string;
 }
 
 /** Simulation parameters */
@@ -128,9 +208,9 @@ export interface SimulationResult {
 
 /** Full risk analysis state for a project */
 export interface RiskAnalysisState {
-  /** Duration distributions per activity */
+  /** Duration distributions per activity (inherent uncertainty) */
   distributions: Record<string, DurationDistribution>;
-  /** Risk events register */
+  /** Risk events register (qualitative + quantitative) */
   riskEvents: RiskEvent[];
   /** Simulation parameters */
   params: SimulationParams;
@@ -143,6 +223,11 @@ export interface RiskAnalysisState {
   /** Progress 0-100 */
   progress: number;
 }
+
+/** Default qualitative score (medium across the board) */
+export const DEFAULT_QUALITATIVE: QualitativeScore = {
+  probability: 'M', schedule: 'M', cost: 'M', performance: 'M',
+};
 
 /** Default simulation parameters */
 export const DEFAULT_SIM_PARAMS: SimulationParams = {
@@ -162,3 +247,62 @@ export const DEFAULT_RISK_STATE: RiskAnalysisState = {
   running: false,
   progress: 0,
 };
+
+/** Compute qualitative score  (probability weight × max impact weight) */
+export function computeQualScore(qs: QualitativeScore): number {
+  const pW = IMPACT_WEIGHT[qs.probability];
+  const maxI = Math.max(IMPACT_WEIGHT[qs.schedule], IMPACT_WEIGHT[qs.cost], IMPACT_WEIGHT[qs.performance]);
+  return pW * maxI;
+}
+
+/** Score → color */
+export function scoreColor(score: number): string {
+  if (score >= 64) return '#ef4444';   // Very High (red)
+  if (score >= 32) return '#f97316';   // High (orange)
+  if (score >= 16) return '#f59e0b';   // Medium (yellow-amber)
+  if (score >= 4) return '#22c55e';    // Low (green)
+  return '#3b82f6';                    // Very Low (blue)
+}
+
+/** Score → label */
+export function scoreLabel(score: number): string {
+  if (score >= 64) return 'Muy Alto';
+  if (score >= 32) return 'Alto';
+  if (score >= 16) return 'Medio';
+  if (score >= 4) return 'Bajo';
+  return 'Muy Bajo';
+}
+
+/** Create a new blank RiskEvent */
+export function createBlankRiskEvent(partial?: Partial<RiskEvent>): RiskEvent {
+  return {
+    id: 'risk_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 5),
+    name: '',
+    description: '',
+    cause: '',
+    effect: '',
+    threatOrOpportunity: 'threat',
+    status: 'proposed',
+    category: 'Otro',
+    owner: '',
+    notes: '',
+    preMitigation: { ...DEFAULT_QUALITATIVE },
+    postMitigation: { ...DEFAULT_QUALITATIVE },
+    mitigationResponse: 'accept',
+    mitigationTitle: '',
+    mitigationCost: 0,
+    quantified: false,
+    probability: 50,
+    taskImpacts: [],
+    affectedActivityIds: [],
+    impactType: 'addDays',
+    impactValue: 5,
+    mitigated: false,
+    mitigatedProbability: undefined,
+    mitigatedImpactValue: undefined,
+    startDate: undefined,
+    endDate: undefined,
+    rbs: '',
+    ...partial,
+  };
+}

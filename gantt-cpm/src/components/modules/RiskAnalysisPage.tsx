@@ -8,17 +8,20 @@ import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { useGantt } from '../../store/GanttContext';
 import { runSimulation } from '../../utils/monteCarloEngine';
 import { saveRiskRunToSupabase, loadRiskRunsFromSupabase, deleteRiskRunFromSupabase, saveRiskConfigToSupabase, loadRiskConfigFromSupabase } from '../../utils/riskSync';
+import type { SimulationResult, RiskAnalysisState } from '../../types/risk';
 import RiskDistributionPanel from './RiskDistributionPanel';
 import RiskResultsChart from './RiskResultsChart';
 import RiskTornadoChart from './RiskTornadoChart';
-import RiskRegisterPanel from './RiskRegisterPanel';
-import { Dice5, BarChart3, Activity, AlertTriangle, Play, Trash2, Clock, ChevronDown, ChevronRight, Settings } from 'lucide-react';
+import RiskQualitativePanel from './RiskQualitativePanel';
+import RiskQuantitativePanel from './RiskQuantitativePanel';
+import { Dice5, BarChart3, Activity, AlertTriangle, Play, Trash2, Clock, ChevronDown, ChevronRight, Settings, Shield, ShieldAlert } from 'lucide-react';
 
-type SubTab = 'distributions' | 'risks' | 'results' | 'tornado';
+type SubTab = 'qualitative' | 'quantitative' | 'distributions' | 'results' | 'tornado';
 
 const SUB_TABS: { id: SubTab; label: string; icon: React.ReactNode }[] = [
+  { id: 'qualitative',   label: 'Cualitativo',    icon: <ShieldAlert size={13} /> },
+  { id: 'quantitative',  label: 'Cuantitativo',   icon: <Shield size={13} /> },
   { id: 'distributions', label: 'Distribuciones', icon: <Activity size={13} /> },
-  { id: 'risks',         label: 'Riesgos',        icon: <AlertTriangle size={13} /> },
   { id: 'results',       label: 'Resultados',     icon: <BarChart3 size={13} /> },
   { id: 'tornado',       label: 'Tornado',        icon: <Dice5 size={13} /> },
 ];
@@ -26,7 +29,7 @@ const SUB_TABS: { id: SubTab; label: string; icon: React.ReactNode }[] = [
 export default function RiskAnalysisPage() {
   const { state, dispatch } = useGantt();
   const risk = state.riskState;
-  const [subTab, setSubTab] = useState<SubTab>('distributions');
+  const [subTab, setSubTab] = useState<SubTab>('qualitative');
   const [sidebarW] = useState(250);
   const [showParams, setShowParams] = useState(true);
   const abortRef = useRef(false);
@@ -44,19 +47,19 @@ export default function RiskAnalysisPage() {
   useEffect(() => {
     const pid = supabaseProjectId.current;
     if (!pid) return;
-    loadRiskRunsFromSupabase(pid).then(runs => {
+    loadRiskRunsFromSupabase(pid).then((runs: SimulationResult[]) => {
       if (runs.length > 0 && risk.simulationRuns.length === 0) {
         for (const r of runs) {
           dispatch({ type: 'RISK_SIM_COMPLETE', result: r });
         }
       }
-    }).catch(err => console.warn('[Risk] Failed to load runs from Supabase:', err));
+    }).catch((err: unknown) => console.warn('[Risk] Failed to load runs from Supabase:', err));
     // Also load risk config (distributions + events)
-    loadRiskConfigFromSupabase(pid).then(cfg => {
+    loadRiskConfigFromSupabase(pid).then((cfg: Partial<RiskAnalysisState> | null) => {
       if (cfg) {
         dispatch({ type: 'LOAD_RISK_STATE', riskState: cfg });
       }
-    }).catch(err => console.warn('[Risk] Failed to load config from Supabase:', err));
+    }).catch((err: unknown) => console.warn('[Risk] Failed to load config from Supabase:', err));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Active simulation result
@@ -98,11 +101,11 @@ export default function RiskAnalysisPage() {
         // Save to Supabase
         const pid = supabaseProjectId.current;
         if (pid) {
-          saveRiskRunToSupabase(pid, result).catch(err =>
+          saveRiskRunToSupabase(pid, result).catch((err: unknown) =>
             console.warn('[Risk] Failed to save run to Supabase:', err)
           );
           // Also save config (distributions + events)
-          saveRiskConfigToSupabase(pid, risk.distributions, risk.riskEvents).catch(err =>
+          saveRiskConfigToSupabase(pid, risk.distributions, risk.riskEvents).catch((err: unknown) =>
             console.warn('[Risk] Failed to save config to Supabase:', err)
           );
         }
@@ -119,7 +122,7 @@ export default function RiskAnalysisPage() {
     dispatch({ type: 'DELETE_RISK_RUN', runId });
     const pid = supabaseProjectId.current;
     if (pid) {
-      deleteRiskRunFromSupabase(pid, runId).catch(err =>
+      deleteRiskRunFromSupabase(pid, runId).catch((err: unknown) =>
         console.warn('[Risk] Failed to delete run from Supabase:', err)
       );
     }
@@ -346,8 +349,9 @@ export default function RiskAnalysisPage() {
 
         {/* Tab content */}
         <div style={{ flex: 1, overflow: 'hidden' }}>
+          {subTab === 'qualitative' && <RiskQualitativePanel />}
+          {subTab === 'quantitative' && <RiskQuantitativePanel />}
           {subTab === 'distributions' && <RiskDistributionPanel />}
-          {subTab === 'risks' && <RiskRegisterPanel />}
           {subTab === 'results' && (
             activeResult
               ? <RiskResultsChart result={activeResult} />

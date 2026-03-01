@@ -5,6 +5,7 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { useGantt } from '../../store/GanttContext';
 import type { RiskEvent, RiskCategory } from '../../types/risk';
+import { createBlankRiskEvent } from '../../types/risk';
 import { Plus, Trash2, Edit3, Save, X } from 'lucide-react';
 
 const CATEGORIES: RiskCategory[] = [
@@ -12,25 +13,6 @@ const CATEGORIES: RiskCategory[] = [
   'Clima', 'Suministro', 'Regulatorio', 'Diseño',
   'Subcontrato', 'Otro',
 ];
-
-function newRiskEvent(partial?: Partial<RiskEvent>): RiskEvent {
-  return {
-    id: 'risk_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 5),
-    name: '',
-    description: '',
-    probability: 50,
-    affectedActivityIds: [],
-    impactType: 'addDays',
-    impactValue: 5,
-    category: 'Otro',
-    owner: '',
-    mitigated: false,
-    mitigatedProbability: undefined,
-    mitigatedImpactValue: undefined,
-    notes: '',
-    ...partial,
-  };
-}
 
 export default function RiskRegisterPanel() {
   const { state, dispatch } = useGantt();
@@ -44,7 +26,7 @@ export default function RiskRegisterPanel() {
   );
 
   const handleAdd = useCallback(() => {
-    const evt = newRiskEvent();
+    const evt = createBlankRiskEvent();
     setDraft(evt);
     setEditingId(evt.id);
   }, []);
