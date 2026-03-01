@@ -4,6 +4,8 @@
 // ═══════════════════════════════════════════════════════════════════
 import React, { createContext, useContext, useReducer, type ReactNode } from 'react';
 import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, VisibleRow, ProgressHistoryEntry, BaselineEntry, CustomCalendar, CustomFilter, MFPConfig, LeanRestriction, PPCWeekRecord, CNCEntry, WhatIfScenario } from '../types/gantt';
+import type { DurationDistribution, RiskEvent, SimulationParams, SimulationResult, RiskAnalysisState } from '../types/risk';
+import { DEFAULT_RISK_STATE, DEFAULT_SIM_PARAMS } from '../types/risk';
 import { createScenario, deepCloneActivities, rebaseScenario, recalcScenarioCPM, recordChange } from '../utils/whatIfEngine';
 import { calcCPM, calcMultipleFloatPaths, traceChain, newActivity, isoDate, parseDate, addDays, calWorkDays, fmtDate } from '../utils/cpm';
 import { autoId, computeOutlineNumbers, syncResFromString, deriveResString, distributeWork, strToPreds, predsToStr, newPoolResource } from '../utils/helpers';
@@ -145,6 +147,8 @@ export interface GanttState {
     // What-If Scenarios
     scenarios: WhatIfScenario[];
     activeScenarioId: string | null;
+    // Risk Analysis / Monte Carlo
+    riskState: RiskAnalysisState;
     // Scenario mode fields (set by ScenarioGanttProvider)
     _scenarioMode?: boolean;
     _masterActivities?: Activity[];
@@ -260,7 +264,20 @@ export type Action =
     | { type: 'SET_SCENARIO_SIM_STATUS_DATE'; scenarioId: string; simStatusDate: string | null }
     | { type: 'MERGE_SCENARIO'; scenarioId: string }
     | { type: 'DUPLICATE_SCENARIO'; scenarioId: string }
-    | { type: 'SET_SCENARIOS'; scenarios: WhatIfScenario[] };
+    | { type: 'SET_SCENARIOS'; scenarios: WhatIfScenario[] }
+    // Risk Analysis / Monte Carlo actions
+    | { type: 'SET_RISK_DISTRIBUTION'; activityId: string; dist: DurationDistribution }
+    | { type: 'SET_RISK_DISTRIBUTIONS_BULK'; distributions: Record<string, DurationDistribution> }
+    | { type: 'ADD_RISK_EVENT'; event: RiskEvent }
+    | { type: 'UPDATE_RISK_EVENT'; event: RiskEvent }
+    | { type: 'DELETE_RISK_EVENT'; eventId: string }
+    | { type: 'SET_RISK_SIM_PARAMS'; params: Partial<SimulationParams> }
+    | { type: 'RISK_SIM_START' }
+    | { type: 'RISK_SIM_PROGRESS'; progress: number }
+    | { type: 'RISK_SIM_COMPLETE'; result: SimulationResult }
+    | { type: 'SET_RISK_ACTIVE_RUN'; runId: string | null }
+    | { type: 'DELETE_RISK_RUN'; runId: string }
+    | { type: 'LOAD_RISK_STATE'; riskState: Partial<RiskAnalysisState> };
 
 // Module-level restriction cache (set synchronously in reducer before buildVisRows)
 let _moduleRestrictions: LeanRestriction[] = [];
@@ -1862,6 +1879,39 @@ function reducer(state: GanttState, action: Action): GanttState {
             return { ...state, scenarios: hydrated };
         }
 
+        // ─── Risk Analysis / Monte Carlo ─────────────────────────────
+        case 'SET_RISK_DISTRIBUTION': {
+            const dists = { ...state.riskState.distributions, [action.activityId]: action.dist };
+            return { ...state, riskState: { ...state.riskState, distributions: dists } };
+        }
+        case 'SET_RISK_DISTRIBUTIONS_BULK':
+            return { ...state, riskState: { ...state.riskState, distributions: { ...state.riskState.distributions, ...action.distributions } } };
+        case 'ADD_RISK_EVENT':
+            return { ...state, riskState: { ...state.riskState, riskEvents: [...state.riskState.riskEvents, action.event] } };
+        case 'UPDATE_RISK_EVENT':
+            return { ...state, riskState: { ...state.riskState, riskEvents: state.riskState.riskEvents.map(e => e.id === action.event.id ? action.event : e) } };
+        case 'DELETE_RISK_EVENT':
+            return { ...state, riskState: { ...state.riskState, riskEvents: state.riskState.riskEvents.filter(e => e.id !== action.eventId) } };
+        case 'SET_RISK_SIM_PARAMS':
+            return { ...state, riskState: { ...state.riskState, params: { ...state.riskState.params, ...action.params } } };
+        case 'RISK_SIM_START':
+            return { ...state, riskState: { ...state.riskState, running: true, progress: 0 } };
+        case 'RISK_SIM_PROGRESS':
+            return { ...state, riskState: { ...state.riskState, progress: action.progress } };
+        case 'RISK_SIM_COMPLETE': {
+            const runs = [action.result, ...state.riskState.simulationRuns];
+            return { ...state, riskState: { ...state.riskState, running: false, progress: 100, simulationRuns: runs, activeRunId: action.result.id } };
+        }
+        case 'SET_RISK_ACTIVE_RUN':
+            return { ...state, riskState: { ...state.riskState, activeRunId: action.runId } };
+        case 'DELETE_RISK_RUN': {
+            const filtered = state.riskState.simulationRuns.filter(r => r.id !== action.runId);
+            const newActive = state.riskState.activeRunId === action.runId ? (filtered[0]?.id || null) : state.riskState.activeRunId;
+            return { ...state, riskState: { ...state.riskState, simulationRuns: filtered, activeRunId: newActive } };
+        }
+        case 'LOAD_RISK_STATE':
+            return { ...state, riskState: { ...state.riskState, ...action.riskState } };
+
         default:
             return state;
     }
@@ -1944,6 +1994,7 @@ const initialState: GanttState = {
     ppcHistory: [],
     scenarios: [],
     activeScenarioId: null,
+    riskState: { ...DEFAULT_RISK_STATE },
 };
 
 // ─── Context ────────────────────────────────────────────────────

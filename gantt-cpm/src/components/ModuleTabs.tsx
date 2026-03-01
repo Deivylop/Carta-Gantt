@@ -3,9 +3,9 @@
 // Tabs beyond 'Proyectos' are hidden until a project is opened.
 // ═══════════════════════════════════════════════════════════════════
 import React, { useMemo } from 'react';
-import { Home, CalendarRange, BarChart3, Settings, GanttChart, GitBranch, Building2, Briefcase } from 'lucide-react';
+import { Home, CalendarRange, BarChart3, Settings, GanttChart, GitBranch, Building2, Briefcase, Dice5 } from 'lucide-react';
 
-export type ModuleId = 'inicio' | 'projects' | 'gantt' | 'lookAhead' | 'dashboard' | 'whatIf' | 'config';
+export type ModuleId = 'inicio' | 'projects' | 'gantt' | 'lookAhead' | 'dashboard' | 'whatIf' | 'risk' | 'config';
 
 interface Tab {
   id: ModuleId;
@@ -19,8 +19,7 @@ const TABS: Tab[] = [
   { id: 'projects',   label: 'Proyectos',       icon: <Building2 size={16} /> },
   { id: 'gantt',      label: 'Carta Gantt',     icon: <GanttChart size={16} />,     requiresProject: true },
   { id: 'lookAhead',  label: 'Look Ahead',      icon: <CalendarRange size={16} />,  requiresProject: true },
-  { id: 'whatIf',     label: 'What-If',         icon: <GitBranch size={16} />,      requiresProject: true },
-  { id: 'dashboard',  label: 'Dashboard',       icon: <BarChart3 size={16} />,      requiresProject: true },
+  { id: 'whatIf',     label: 'What-If',         icon: <GitBranch size={16} />,      requiresProject: true },  { id: 'risk',        label: 'Riesgos',         icon: <Dice5 size={16} />,          requiresProject: true },  { id: 'dashboard',  label: 'Dashboard',       icon: <BarChart3 size={16} />,      requiresProject: true },
   { id: 'config',     label: 'Configuración',   icon: <Settings size={16} />,       requiresProject: true },
 ];
 

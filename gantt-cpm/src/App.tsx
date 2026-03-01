@@ -30,6 +30,7 @@ import LookAheadPage from './components/modules/LookAheadPage';
 import DashboardPage from './components/modules/DashboardPage';
 import ConfigPage from './components/modules/ConfigPage';
 import WhatIfPage from './components/modules/WhatIfPage';
+import RiskAnalysisPage from './components/modules/RiskAnalysisPage';
 import ProjectsPage from './components/modules/ProjectsPage';
 import { PortfolioProvider, usePortfolio } from './store/PortfolioContext';
 import { newActivity } from './utils/cpm';
@@ -582,6 +583,9 @@ function AppInner() {
 
       {/* ── Module: What-If Scenarios ── */}
       {activeModule === 'whatIf' && <div style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0, overflow:'hidden' }}><WhatIfPage /></div>}
+
+      {/* ── Module: Risk Analysis / Monte Carlo ── */}
+      {activeModule === 'risk' && <div style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0, overflow:'hidden' }}><RiskAnalysisPage /></div>}
 
       {/* ── Module: Carta Gantt (existing) ── */}
       {activeModule === 'gantt' && (<>
