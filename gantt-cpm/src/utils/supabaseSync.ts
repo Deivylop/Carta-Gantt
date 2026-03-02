@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable no-constant-binary-expression */
 import { supabase } from '../lib/supabase';
 import type { GanttState } from '../store/GanttContext';
 import { BUILTIN_FILTERS } from '../store/GanttContext';
@@ -658,7 +660,7 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
             try {
                 const parsed = JSON.parse(na.notes);
                 progressHistory = Array.isArray(parsed) ? parsed : (parsed.history || []);
-            } catch (e) { }
+            } catch { /* ignore */ }
             return false;
         }
         // Extract hidden custom filters if found
@@ -671,17 +673,17 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
                 const builtins = BUILTIN_FILTERS.map(bf => ({ ...bf, active: builtinActive.includes(bf.id) }));
                 customFilters = [...builtins, ...userFilters];
                 if (filterData.filtersMatchAll !== undefined) filtersMatchAll = filterData.filtersMatchAll;
-            } catch (e) { }
+            } catch { /* ignore */ }
             return false;
         }
         // Extract hidden PPC history if found
         if (na.id === '__PPC__') {
-            try { ppcHistory = JSON.parse(na.notes); } catch (e) { }
+            try { ppcHistory = JSON.parse(na.notes); } catch { /* ignore */ }
             return false;
         }
         // Extract hidden Lean restrictions if found
         if (na.id === '__RESTRICTIONS__') {
-            try { leanRestrictions = JSON.parse(na.notes); } catch (e) { }
+            try { leanRestrictions = JSON.parse(na.notes); } catch { /* ignore */ }
             return false;
         }
         // Extract hidden What-If scenarios if found
@@ -704,12 +706,12 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
                     })),
                     changes: sc.changes || [],
                 }));
-            } catch (e) { }
+            } catch { /* ignore malformed scenarios */ }
             return false;
         }
         // Extract hidden deps backup if found
         if (na.id === '__DEPS__') {
-            try { depsBackup = JSON.parse(na.notes); } catch (e) { }
+            try { depsBackup = JSON.parse(na.notes); } catch { /* ignore */ }
             return false;
         }
         return true;

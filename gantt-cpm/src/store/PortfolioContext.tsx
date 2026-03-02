@@ -26,6 +26,7 @@ function getStorageKey(): string {
 
 const PROJECT_PREFIX = 'gantt-cpm-project-';
 
+
 // ─── Helpers ────────────────────────────────────────────────────
 function uid(): string {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -33,6 +34,48 @@ function uid(): string {
 
 function nowISO(): string {
     return new Date().toISOString();
+}
+
+/** Ensures siblings under the same parent have distinct, sequential order values (0, 1, 2 …).
+ *  Call this before swapping order values in MOVE_EPS_UP / MOVE_EPS_DOWN. */
+function normalizeOrder(eps: EPSNode[], parentId: string | null): EPSNode[] {
+    const siblings = eps
+        .filter(e => e.parentId === parentId)
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name));
+    // Assign 0,1,2… so all values are distinct
+    let changed = false;
+    const updates = new Map<string, number>(siblings.map((e, i) => { if ((e.order ?? -1) !== i) changed = true; return [e.id, i]; }));
+    if (!changed) return eps;
+    return eps.map(e => updates.has(e.id) ? { ...e, order: updates.get(e.id)! } : e);
+}
+
+/** Auto-generates hierarchical EPS codes like EPS-001, EPS-001.1, EPS-001.1.2 …
+ *  Only overwrites codes that still follow the auto pattern (e.g. "EPS-001", "EPS-001.2")
+ *  so user-customized codes are preserved.
+ *  Returns a new epsNodes array with updated epsCode values. */
+function autoNumberEps(eps: EPSNode[]): EPSNode[] {
+    const AUTO_PREFIX = 'EPS-';
+    const isAutoCode = (code: string | undefined) => !code || /^EPS-[\d.]+$/.test(code);
+
+    const codes = new Map<string, string>(); // id → new code
+
+    function walk(parentId: string | null, parentCode: string | null) {
+        const siblings = eps
+            .filter(e => e.parentId === parentId)
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name));
+        siblings.forEach((e, i) => {
+            const num = i + 1;
+            const newCode = parentCode
+                ? `${parentCode}.${num}`
+                : `${AUTO_PREFIX}${String(num).padStart(3, '0')}`;
+            // Preserve custom codes (non-auto codes)
+            codes.set(e.id, isAutoCode(e.epsCode) ? newCode : e.epsCode!);
+            walk(e.id, isAutoCode(e.epsCode) ? newCode : e.epsCode!);
+        });
+    }
+    walk(null, null);
+
+    return eps.map(e => codes.has(e.id) ? { ...e, epsCode: codes.get(e.id)! } : e);
 }
 
 // ─── Build flat list of TreeNodes for rendering ─────────────────
@@ -102,6 +145,8 @@ type PortfolioAction =
     | { type: 'OUTDENT'; id: string }
     | { type: 'MOVE_EPS_UP'; id: string }
     | { type: 'MOVE_EPS_DOWN'; id: string }
+    | { type: 'MOVE_EPS_UP_MULTI'; ids: string[] }
+    | { type: 'MOVE_EPS_DOWN_MULTI'; ids: string[] }
     | { type: 'SYNC_FROM_SUPABASE'; supabaseProjects: { id: string; projName: string; projStart: string | null; statusDate: string | null; defCal: number; empresaId?: string | null }[] }
     | { type: 'REFRESH_SUMMARIES'; summaries: Record<string, Partial<ProjectMeta>> };
 
@@ -166,19 +211,20 @@ function portfolioReducer(state: PortfolioState, action: PortfolioAction): Portf
         }
 
         case 'ADD_EPS': {
-            const epsCount = state.epsNodes.length + 1;
-            const maxOrder = state.epsNodes.filter(e => e.parentId === action.parentId).reduce((m, e) => Math.max(m, e.order ?? 0), -1);
+            const siblings = state.epsNodes.filter(e => e.parentId === action.parentId);
+            const maxOrder = siblings.reduce((m, e) => Math.max(m, e.order ?? 0), -1);
             const node: EPSNode = {
                 id: 'eps_' + uid(),
                 name: action.name,
-                epsCode: action.epsCode || ('EPS-' + String(epsCount).padStart(3, '0')),
+                epsCode: action.epsCode || '', // '' is recognized as auto-code → replaced by autoNumberEps
                 parentId: action.parentId,
                 type: 'eps',
                 order: maxOrder + 1,
             };
             const expanded = new Set(state.expandedIds);
             if (action.parentId) expanded.add(action.parentId);
-            return { ...state, epsNodes: [...state.epsNodes, node], expandedIds: expanded, selectedId: node.id };
+            const newEps = autoNumberEps([...state.epsNodes, node]);
+            return { ...state, epsNodes: newEps, expandedIds: expanded, selectedId: node.id };
         }
 
         case 'RENAME_EPS': {
@@ -207,9 +253,10 @@ function portfolioReducer(state: PortfolioState, action: PortfolioAction): Portf
             const updatedProjects = state.projects.map(p =>
                 p.epsId && toDelete.has(p.epsId) ? { ...p, epsId: null } : p
             );
+            const remaining = state.epsNodes.filter(e => !toDelete.has(e.id));
             return {
                 ...state,
-                epsNodes: state.epsNodes.filter(e => !toDelete.has(e.id)),
+                epsNodes: autoNumberEps(remaining),
                 projects: updatedProjects,
                 selectedId: state.selectedId && toDelete.has(state.selectedId) ? null : state.selectedId,
             };
@@ -394,7 +441,8 @@ function portfolioReducer(state: PortfolioState, action: PortfolioAction): Portf
             const expanded = new Set(state.expandedIds);
             expanded.add(targetEps);
             if (isEps) {
-                return { ...state, epsNodes: state.epsNodes.map(e => e.id === action.id ? { ...e, parentId: targetEps } : e), expandedIds: expanded };
+                const newEps = autoNumberEps(state.epsNodes.map(e => e.id === action.id ? { ...e, parentId: targetEps } : e));
+                return { ...state, epsNodes: newEps, expandedIds: expanded };
             } else {
                 return { ...state, projects: state.projects.map(p => p.id === action.id ? { ...p, epsId: targetEps } : p), expandedIds: expanded };
             }
@@ -406,7 +454,8 @@ function portfolioReducer(state: PortfolioState, action: PortfolioAction): Portf
                 const node = state.epsNodes.find(e => e.id === action.id);
                 if (!node || !node.parentId) return state;
                 const parent = state.epsNodes.find(e => e.id === node.parentId);
-                return { ...state, epsNodes: state.epsNodes.map(e => e.id === action.id ? { ...e, parentId: parent?.parentId || null } : e) };
+                const newEps = autoNumberEps(state.epsNodes.map(e => e.id === action.id ? { ...e, parentId: parent?.parentId || null } : e));
+                return { ...state, epsNodes: newEps };
             } else {
                 const proj = state.projects.find(p => p.id === action.id);
                 if (!proj || !proj.epsId) return state;
@@ -418,22 +467,111 @@ function portfolioReducer(state: PortfolioState, action: PortfolioAction): Portf
         case 'MOVE_EPS_UP': {
             const node = state.epsNodes.find(e => e.id === action.id);
             if (!node) return state;
-            const siblings = state.epsNodes.filter(e => e.parentId === node.parentId).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-            const idx = siblings.findIndex(e => e.id === node.id);
+            // Normalize first so all siblings have unique sequential orders
+            const normalized = normalizeOrder(state.epsNodes, node.parentId);
+            const sortedSibs = normalized.filter(e => e.parentId === node.parentId).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+            const idx = sortedSibs.findIndex(e => e.id === node.id);
             if (idx <= 0) return state;
-            const prev = siblings[idx - 1];
-            return { ...state, epsNodes: state.epsNodes.map(e => e.id === node.id ? { ...e, order: prev.order ?? 0 } : e.id === prev.id ? { ...e, order: node.order ?? 0 } : e) };
+            const prev = sortedSibs[idx - 1];
+            // Swap order values
+            const swapped = normalized.map(e =>
+                e.id === node.id ? { ...e, order: prev.order! } :
+                    e.id === prev.id ? { ...e, order: sortedSibs[idx].order! } : e
+            );
+            return { ...state, epsNodes: swapped };
         }
 
         case 'MOVE_EPS_DOWN': {
             const node = state.epsNodes.find(e => e.id === action.id);
             if (!node) return state;
-            const siblings = state.epsNodes.filter(e => e.parentId === node.parentId).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-            const idx = siblings.findIndex(e => e.id === node.id);
-            if (idx < 0 || idx >= siblings.length - 1) return state;
-            const next = siblings[idx + 1];
-            return { ...state, epsNodes: state.epsNodes.map(e => e.id === node.id ? { ...e, order: next.order ?? 0 } : e.id === next.id ? { ...e, order: node.order ?? 0 } : e) };
+            // Normalize first so all siblings have unique sequential orders
+            const normalized = normalizeOrder(state.epsNodes, node.parentId);
+            const sortedSibs = normalized.filter(e => e.parentId === node.parentId).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+            const idx = sortedSibs.findIndex(e => e.id === node.id);
+            if (idx < 0 || idx >= sortedSibs.length - 1) return state;
+            const next = sortedSibs[idx + 1];
+            // Swap order values
+            const swapped = normalized.map(e =>
+                e.id === node.id ? { ...e, order: next.order! } :
+                    e.id === next.id ? { ...e, order: sortedSibs[idx].order! } : e
+            );
+            return { ...state, epsNodes: swapped };
         }
+
+        case 'MOVE_EPS_UP_MULTI': {
+            // Move a block of selected EPS up together (one step per parentId group)
+            const selectedSet = new Set(action.ids);
+            let eps = state.epsNodes;
+
+            const parentIds = Array.from(new Set(
+                action.ids.map(id => eps.find(e => e.id === id)?.parentId ?? null)
+            ));
+
+            for (const parentId of parentIds) {
+                eps = normalizeOrder(eps, parentId);
+                const sorted = eps
+                    .filter(e => e.parentId === parentId)
+                    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+                const selectedInGroup = sorted.filter(e => selectedSet.has(e.id));
+                if (!selectedInGroup.length) continue;
+
+                const topmostIdx = sorted.findIndex(e => e.id === selectedInGroup[0].id);
+                if (topmostIdx <= 0) continue; // already at top
+
+                const swapTarget = sorted[topmostIdx - 1];
+                const bottommost = selectedInGroup[selectedInGroup.length - 1];
+                const bottommostIdx = sorted.findIndex(e => e.id === bottommost.id);
+
+                const newOrder = new Map<string, number>(sorted.map(e => [e.id, e.order ?? 0]));
+                const firstOrder = sorted[topmostIdx - 1].order ?? 0;
+                const lastSelectedOrder = sorted[bottommostIdx].order ?? 0;
+                // Move swapTarget to after the block
+                newOrder.set(swapTarget.id, lastSelectedOrder);
+                // Shift selected group up
+                selectedInGroup.forEach((e, i) => newOrder.set(e.id, firstOrder + i));
+                eps = eps.map(e => newOrder.has(e.id) ? { ...e, order: newOrder.get(e.id)! } : e);
+            }
+            return { ...state, epsNodes: autoNumberEps(eps) };
+        }
+
+        case 'MOVE_EPS_DOWN_MULTI': {
+            // Move a block of selected EPS down together (one step per parentId group)
+            const selectedSet = new Set(action.ids);
+            let eps = state.epsNodes;
+
+            const parentIds = Array.from(new Set(
+                action.ids.map(id => eps.find(e => e.id === id)?.parentId ?? null)
+            ));
+
+            for (const parentId of parentIds) {
+                eps = normalizeOrder(eps, parentId);
+                const sorted = eps
+                    .filter(e => e.parentId === parentId)
+                    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+                const selectedInGroup = sorted.filter(e => selectedSet.has(e.id));
+                if (!selectedInGroup.length) continue;
+
+                const bottommost = selectedInGroup[selectedInGroup.length - 1];
+                const bottommostIdx = sorted.findIndex(e => e.id === bottommost.id);
+                if (bottommostIdx >= sorted.length - 1) continue;
+
+                const swapTarget = sorted[bottommostIdx + 1];
+                const topmost = selectedInGroup[0];
+                const topmostIdx = sorted.findIndex(e => e.id === topmost.id);
+
+                const newOrder = new Map<string, number>(sorted.map(e => [e.id, e.order ?? 0]));
+                const firstSelectedOrder = sorted[topmostIdx].order ?? 0;
+                // swapTarget moves to the top of the selected block
+                newOrder.set(swapTarget.id, firstSelectedOrder);
+                // selected group shifts down by 1
+                selectedInGroup.forEach((e, i) => newOrder.set(e.id, firstSelectedOrder + 1 + i));
+                eps = eps.map(e => newOrder.has(e.id) ? { ...e, order: newOrder.get(e.id)! } : e);
+            }
+            return { ...state, epsNodes: eps };
+        }
+
 
         case 'SYNC_FROM_SUPABASE': {
             // Full bidirectional sync with Supabase:
@@ -783,3 +921,4 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         </PortfolioContext.Provider>
     );
 }
+

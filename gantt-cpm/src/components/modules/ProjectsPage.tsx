@@ -116,6 +116,7 @@ export default function ProjectsPage({ onOpenProject }: Props) {
 
     const [searchTerm, setSearchTerm] = useState('');
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [editingField, setEditingField] = useState<'name' | 'code'>('name'); // which field to edit inline
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string; kind: 'eps' | 'project' } | null>(null);
 
     // Supabase modal
@@ -371,6 +372,11 @@ export default function ProjectsPage({ onOpenProject }: Props) {
         else pDispatch({ type: 'UPDATE_PROJECT', id, updates: { name: v } });
         setEditingId(null);
     }, [pState.epsNodes, pDispatch]);
+    const handleRenameCode = useCallback((id: string, v: string) => {
+        // Update the EPS code (epsCode). Bypass autoNumber for custom codes by using UPDATE_EPS directly.
+        pDispatch({ type: 'UPDATE_EPS', id, updates: { epsCode: v.trim() || 'EPS-???' } });
+        setEditingId(null);
+    }, [pDispatch]);
     const handleContextMenu = useCallback((e: React.MouseEvent, nodeId: string, kind: 'eps' | 'project') => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, nodeId, kind }); }, []);
 
     const handleCut = useCallback(() => { if (selectedProject) pDispatch({ type: 'CUT_PROJECT', id: selectedProject.id }); }, [selectedProject, pDispatch]);
@@ -381,15 +387,22 @@ export default function ProjectsPage({ onOpenProject }: Props) {
     const handleIndent = useCallback(() => { if (pState.selectedId) pDispatch({ type: 'INDENT', id: pState.selectedId }); }, [pState.selectedId, pDispatch]);
     const handleOutdent = useCallback(() => { if (pState.selectedId) pDispatch({ type: 'OUTDENT', id: pState.selectedId }); }, [pState.selectedId, pDispatch]);
 
-    // Move Up / Down in flat order
+    // Move Up / Down in flat order — supports multi-EPS selection
     const handleMoveUp = useCallback(() => {
-        if (!pState.selectedId) return;
-        const isEps = pState.epsNodes.some(e => e.id === pState.selectedId);
-        if (isEps) {
-            pDispatch({ type: 'MOVE_EPS_UP', id: pState.selectedId });
-        } else {
-            const proj = pState.projects.find(p => p.id === pState.selectedId);
-            if (proj) {
+        const selectedEpsIds = Array.from(pState.selectedIds).filter(id => pState.epsNodes.some(e => e.id === id));
+        const selectedProjIds = Array.from(pState.selectedIds).filter(id => pState.projects.some(p => p.id === id));
+
+        if (selectedEpsIds.length > 1) {
+            // Multiple EPS selected — move as a block
+            pDispatch({ type: 'MOVE_EPS_UP_MULTI', ids: selectedEpsIds });
+        } else if (selectedEpsIds.length === 1) {
+            pDispatch({ type: 'MOVE_EPS_UP', id: selectedEpsIds[0] });
+        } else if (selectedProjIds.length > 0) {
+            // Move projects (single or multi — each individually, sorted by priority asc)
+            const sorted = pState.projects
+                .filter(p => selectedProjIds.includes(p.id))
+                .sort((a, b) => a.priority - b.priority);
+            for (const proj of sorted) {
                 const siblings = pState.projects.filter(p => p.epsId === proj.epsId).sort((a, b) => a.priority - b.priority);
                 const idx = siblings.findIndex(p => p.id === proj.id);
                 if (idx > 0) {
@@ -399,16 +412,22 @@ export default function ProjectsPage({ onOpenProject }: Props) {
                 }
             }
         }
-    }, [pState.selectedId, pState.epsNodes, pState.projects, pDispatch]);
+    }, [pState.selectedIds, pState.epsNodes, pState.projects, pDispatch]);
 
     const handleMoveDown = useCallback(() => {
-        if (!pState.selectedId) return;
-        const isEps = pState.epsNodes.some(e => e.id === pState.selectedId);
-        if (isEps) {
-            pDispatch({ type: 'MOVE_EPS_DOWN', id: pState.selectedId });
-        } else {
-            const proj = pState.projects.find(p => p.id === pState.selectedId);
-            if (proj) {
+        const selectedEpsIds = Array.from(pState.selectedIds).filter(id => pState.epsNodes.some(e => e.id === id));
+        const selectedProjIds = Array.from(pState.selectedIds).filter(id => pState.projects.some(p => p.id === id));
+
+        if (selectedEpsIds.length > 1) {
+            pDispatch({ type: 'MOVE_EPS_DOWN_MULTI', ids: selectedEpsIds });
+        } else if (selectedEpsIds.length === 1) {
+            pDispatch({ type: 'MOVE_EPS_DOWN', id: selectedEpsIds[0] });
+        } else if (selectedProjIds.length > 0) {
+            // Move projects — process from bottom to top to avoid conflicts
+            const sorted = pState.projects
+                .filter(p => selectedProjIds.includes(p.id))
+                .sort((a, b) => b.priority - a.priority);
+            for (const proj of sorted) {
                 const siblings = pState.projects.filter(p => p.epsId === proj.epsId).sort((a, b) => a.priority - b.priority);
                 const idx = siblings.findIndex(p => p.id === proj.id);
                 if (idx < siblings.length - 1) {
@@ -418,7 +437,8 @@ export default function ProjectsPage({ onOpenProject }: Props) {
                 }
             }
         }
-    }, [pState.selectedId, pState.epsNodes, pState.projects, pDispatch]);
+    }, [pState.selectedIds, pState.epsNodes, pState.projects, pDispatch]);
+
 
     // ── Supabase
     const handleLoadFromSupabase = useCallback(async () => {
@@ -607,18 +627,32 @@ export default function ProjectsPage({ onOpenProject }: Props) {
                     }
 
                     if (col.key === 'id') {
-                        return <div key={col.key} style={{ ...cellStyle, paddingLeft: 4 + node.depth * 14 }}>
+                        // EPS code cell: click to select, double-click to edit code inline
+                        if (isEps && editingId === nodeId && editingField === 'code') {
+                            return <div key={col.key} style={{ ...cellStyle, paddingLeft: 4 + node.depth * 14 }}>
+                                <FolderOpen size={13} style={{ color: (node.data as EPSNode).color || '#f59e0b', marginRight: 4, flexShrink: 0 }} />
+                                <InlineEdit value={(node.data as EPSNode).epsCode || ''} onSave={v => handleRenameCode(nodeId, v)} onCancel={() => setEditingId(null)} />
+                            </div>;
+                        }
+                        return <div key={col.key} style={{ ...cellStyle, paddingLeft: 4 + node.depth * 14 }}
+                            onDoubleClick={isEps ? (e) => { e.stopPropagation(); setEditingField('code'); setEditingId(nodeId); } : undefined}>
                             {isEps
                                 ? <FolderOpen size={13} style={{ color: (node.data as EPSNode).color || '#f59e0b', marginRight: 4, flexShrink: 0 }} />
                                 : <Briefcase size={12} style={{ color: isActive ? '#6366f1' : '#64748b', marginRight: 4, flexShrink: 0 }} />}
-                            <span style={{ color: isEps ? '#f59e0b' : '#6366f1', fontWeight: 600, fontSize: 10 }}>{data.id}</span>
+                            <span style={{
+                                color: isEps ? '#f59e0b' : '#6366f1', fontWeight: 600, fontSize: 10,
+                                cursor: isEps ? 'text' : 'default',
+                                borderBottom: isEps ? '1px dashed rgba(245,158,11,0.4)' : 'none',
+                                title: isEps ? 'Doble clic para editar código' : ''
+                            } as any}>{data.id}</span>
                             {isActive && <span style={{ fontSize: 8, color: '#fff', background: '#6366f1', padding: '0 3px', borderRadius: 2, marginLeft: 4, fontWeight: 700 }}>●</span>}
                         </div>;
                     }
 
                     if (col.key === 'name') {
-                        return <div key={col.key} style={cellStyle}>
-                            {editingId === nodeId
+                        return <div key={col.key} style={cellStyle}
+                            onDoubleClick={isEps ? (e) => { e.stopPropagation(); setEditingField('name'); setEditingId(nodeId); } : undefined}>
+                            {editingId === nodeId && editingField === 'name'
                                 ? <InlineEdit value={data.name} onSave={v => handleRename(nodeId, v)} onCancel={() => setEditingId(null)} />
                                 : <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{data.name}</span>}
                         </div>;
@@ -997,13 +1031,33 @@ export default function ProjectsPage({ onOpenProject }: Props) {
                         pDispatch({ type: 'SELECT', id: contextMenu.nodeId });
                         const isEps = pState.epsNodes.some(e => e.id === contextMenu.nodeId);
                         if (isEps) pDispatch({ type: 'MOVE_EPS_UP', id: contextMenu.nodeId });
-                        else { const pr = pState.projects.find(p => p.id === contextMenu.nodeId); if (pr) { const sibs = pState.projects.filter(p => p.epsId === pr.epsId); const idx = sibs.findIndex(p => p.id === pr.id); if (idx > 0) { pDispatch({ type: 'UPDATE_PROJECT', id: pr.id, updates: { priority: sibs[idx - 1].priority } }); pDispatch({ type: 'UPDATE_PROJECT', id: sibs[idx - 1].id, updates: { priority: pr.priority } }); } } }
+                        else {
+                            const pr = pState.projects.find(p => p.id === contextMenu.nodeId);
+                            if (pr) {
+                                const sibs = pState.projects.filter(p => p.epsId === pr.epsId).sort((a, b) => a.priority - b.priority);
+                                const idx = sibs.findIndex(p => p.id === pr.id);
+                                if (idx > 0) {
+                                    pDispatch({ type: 'UPDATE_PROJECT', id: pr.id, updates: { priority: sibs[idx - 1].priority } });
+                                    pDispatch({ type: 'UPDATE_PROJECT', id: sibs[idx - 1].id, updates: { priority: pr.priority } });
+                                }
+                            }
+                        }
                     }} />
                     <CtxItem icon={<ArrowDown size={12} />} label="Bajar" onClick={() => {
                         pDispatch({ type: 'SELECT', id: contextMenu.nodeId });
                         const isEps = pState.epsNodes.some(e => e.id === contextMenu.nodeId);
                         if (isEps) pDispatch({ type: 'MOVE_EPS_DOWN', id: contextMenu.nodeId });
-                        else { const pr = pState.projects.find(p => p.id === contextMenu.nodeId); if (pr) { const sibs = pState.projects.filter(p => p.epsId === pr.epsId); const idx = sibs.findIndex(p => p.id === pr.id); if (idx >= 0 && idx < sibs.length - 1) { pDispatch({ type: 'UPDATE_PROJECT', id: pr.id, updates: { priority: sibs[idx + 1].priority } }); pDispatch({ type: 'UPDATE_PROJECT', id: sibs[idx + 1].id, updates: { priority: pr.priority } }); } } }
+                        else {
+                            const pr = pState.projects.find(p => p.id === contextMenu.nodeId);
+                            if (pr) {
+                                const sibs = pState.projects.filter(p => p.epsId === pr.epsId).sort((a, b) => a.priority - b.priority);
+                                const idx = sibs.findIndex(p => p.id === pr.id);
+                                if (idx >= 0 && idx < sibs.length - 1) {
+                                    pDispatch({ type: 'UPDATE_PROJECT', id: pr.id, updates: { priority: sibs[idx + 1].priority } });
+                                    pDispatch({ type: 'UPDATE_PROJECT', id: sibs[idx + 1].id, updates: { priority: pr.priority } });
+                                }
+                            }
+                        }
                     }} />
                     <div style={{ height: 1, background: 'var(--border-primary)', margin: '3px 0' }} />
                     <CtxItem icon={<Columns3 size={12} />} label="Columnas..." onClick={() => setColPickerOpen(true)} />
