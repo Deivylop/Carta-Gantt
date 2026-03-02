@@ -5,7 +5,7 @@
 import React, { useMemo } from 'react';
 import { Home, CalendarRange, BarChart3, Settings, GanttChart, GitBranch, Building2, Briefcase, Dice5 } from 'lucide-react';
 
-export type ModuleId = 'inicio' | 'projects' | 'gantt' | 'lookAhead' | 'dashboard' | 'whatIf' | 'risk' | 'config';
+export type ModuleId = 'inicio' | 'projects' | 'gantt' | 'lookAhead' | 'dashboard' | 'whatIf' | 'risk' | 'config' | 'superadmin';
 
 interface Tab {
   id: ModuleId;
@@ -15,12 +15,14 @@ interface Tab {
 }
 
 const TABS: Tab[] = [
-  { id: 'inicio',     label: 'Inicio',          icon: <Home size={16} /> },
-  { id: 'projects',   label: 'Proyectos',       icon: <Building2 size={16} /> },
-  { id: 'gantt',      label: 'Carta Gantt',     icon: <GanttChart size={16} />,     requiresProject: true },
-  { id: 'lookAhead',  label: 'Look Ahead',      icon: <CalendarRange size={16} />,  requiresProject: true },
-  { id: 'whatIf',     label: 'What-If',         icon: <GitBranch size={16} />,      requiresProject: true },  { id: 'risk',        label: 'Riesgos',         icon: <Dice5 size={16} />,          requiresProject: true },  { id: 'dashboard',  label: 'Dashboard',       icon: <BarChart3 size={16} />,      requiresProject: true },
-  { id: 'config',     label: 'Configuración',   icon: <Settings size={16} />,       requiresProject: true },
+  { id: 'inicio', label: 'Inicio', icon: <Home size={16} /> },
+  { id: 'projects', label: 'Proyectos', icon: <Building2 size={16} /> },
+  { id: 'gantt', label: 'Carta Gantt', icon: <GanttChart size={16} />, requiresProject: true },
+  { id: 'lookAhead', label: 'Look Ahead', icon: <CalendarRange size={16} />, requiresProject: true },
+  { id: 'whatIf', label: 'What-If', icon: <GitBranch size={16} />, requiresProject: true },
+  { id: 'risk', label: 'Riesgos', icon: <Dice5 size={16} />, requiresProject: true },
+  { id: 'dashboard', label: 'Dashboard', icon: <BarChart3 size={16} />, requiresProject: true },
+  { id: 'config', label: 'Configuración', icon: <Settings size={16} />, requiresProject: true },
 ];
 
 interface Props {
@@ -30,7 +32,11 @@ interface Props {
   hasActiveProject?: boolean;
 }
 
+import { useAuth } from '../store/AuthContext';
+
 export default function ModuleTabs({ active, onChange, activeProjectName, hasActiveProject }: Props) {
+  const { role } = useAuth();
+
   const visibleTabs = useMemo(() => {
     return TABS.filter(t => !t.requiresProject || hasActiveProject);
   }, [hasActiveProject]);
@@ -51,6 +57,7 @@ export default function ModuleTabs({ active, onChange, activeProjectName, hasAct
     >
       {visibleTabs.map((t) => {
         const isActive = active === t.id;
+        const displayLabel = t.id === 'superadmin' && role !== 'superadmin' ? 'Gestión de Perfiles' : t.label;
         return (
           <button
             key={t.id}
@@ -80,7 +87,7 @@ export default function ModuleTabs({ active, onChange, activeProjectName, hasAct
             }}
           >
             {t.icon}
-            {t.label}
+            {displayLabel}
           </button>
         );
       })}

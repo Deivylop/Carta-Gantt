@@ -33,9 +33,12 @@ import WhatIfPage from './components/modules/WhatIfPage';
 import RiskAnalysisPage from './components/modules/RiskAnalysisPage';
 import ProjectsPage from './components/modules/ProjectsPage';
 import { PortfolioProvider, usePortfolio } from './store/PortfolioContext';
+import { AuthProvider, useAuth } from './store/AuthContext';
+import LoginPage from './components/modules/LoginPage';
 import { newActivity } from './utils/cpm';
 import { autoId } from './utils/helpers';
 import { saveToSupabase, loadFromSupabase, createSupabaseProject } from './utils/supabaseSync';
+import { supabase } from './lib/supabase';
 
 /** Restore ISO-string dates back to Date objects in a saved project snapshot */
 function restoreDatesFromSaved(saved: any): any {
@@ -122,6 +125,10 @@ function AppInner() {
     return saved && valid.includes(saved as ModuleId) ? saved as ModuleId : 'projects';
   });
 
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+  const [newRecoveryPassword, setNewRecoveryPassword] = useState('');
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
+
   const hasActiveProject = !!pState.activeProjectId;
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -131,6 +138,34 @@ function AppInner() {
     if (state.lightMode) html.classList.add('light');
     else html.classList.remove('light');
   }, [state.lightMode]);
+
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string, _session: any) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setShowRecoveryModal(true);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newRecoveryPassword || newRecoveryPassword.length < 6) {
+      alert("La contraseña debe tener al menos 6 caracteres.");
+      return;
+    }
+    setRecoveryLoading(true);
+    const { error } = await supabase.auth.updateUser({ password: newRecoveryPassword });
+    setRecoveryLoading(false);
+
+    if (error) {
+      alert('Error al actualizar la contraseña: ' + error.message);
+    } else {
+      alert('Contraseña actualizada exitosamente.');
+      setShowRecoveryModal(false);
+      setNewRecoveryPassword('');
+    }
+  };
 
   const loadDemoData = useCallback(() => {
     const d = state.defCal;
@@ -246,7 +281,7 @@ function AppInner() {
           try {
             const snapshot = serializeGanttState(state);
             saveProjectState(pState.activeProjectId, snapshot);
-          } catch {}
+          } catch { }
         }
       }
     }, 800);
@@ -578,123 +613,123 @@ function AppInner() {
       <ModuleTabs active={activeModule} onChange={handleModuleChange} activeProjectName={pState.activeProjectId ? (pState.projects.find(p => p.id === pState.activeProjectId)?.name || null) : null} hasActiveProject={hasActiveProject} />
 
       {/* ── Module: Inicio ── */}
-      {activeModule === 'inicio' && <div style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0, overflow:'hidden' }}><InicioPage onNavigate={handleModuleChange} /></div>}
+      {activeModule === 'inicio' && <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}><InicioPage onNavigate={handleModuleChange} /></div>}
 
       {/* ── Module: Proyectos (Portfolio) ── */}
-      {activeModule === 'projects' && <div style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0, overflow:'hidden' }}><ProjectsPage onNavigate={handleModuleChange} onOpenProject={handleOpenProject} /></div>}
+      {activeModule === 'projects' && <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}><ProjectsPage onNavigate={handleModuleChange} onOpenProject={handleOpenProject} /></div>}
 
       {/* ── Module: Look Ahead ── */}
-      {activeModule === 'lookAhead' && <div style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0, overflow:'hidden' }}><LookAheadPage /></div>}
+      {activeModule === 'lookAhead' && <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}><LookAheadPage /></div>}
 
       {/* ── Module: Dashboard ── */}
-      {activeModule === 'dashboard' && <div style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0, overflow:'hidden' }}><DashboardPage /></div>}
+      {activeModule === 'dashboard' && <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}><DashboardPage /></div>}
 
       {/* ── Module: Configuración ── */}
-      {activeModule === 'config' && <div style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0, overflow:'hidden' }}><ConfigPage /></div>}
+      {activeModule === 'config' && <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}><ConfigPage /></div>}
 
       {/* ── Module: What-If Scenarios ── */}
-      {activeModule === 'whatIf' && <div style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0, overflow:'hidden' }}><WhatIfPage /></div>}
+      {activeModule === 'whatIf' && <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}><WhatIfPage /></div>}
 
       {/* ── Module: Risk Analysis / Monte Carlo ── */}
-      {activeModule === 'risk' && <div style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0, overflow:'hidden' }}><RiskAnalysisPage /></div>}
+      {activeModule === 'risk' && <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}><RiskAnalysisPage /></div>}
 
       {/* ── Module: Carta Gantt (existing) ── */}
       {activeModule === 'gantt' && (<>
-      <Ribbon />
+        <Ribbon />
 
-      {state.currentView === 'resources' ? (
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-          <ResourceSheet />
-        </div>
-      ) : state.currentView === 'scurve' ? (
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-          <SCurveChart />
-        </div>
-      ) : state.currentView === 'usage' ? (
-        <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-          {/* Usage Area (Table | Resize | Grid) */}
-          <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
-            {/* Table */}
-            <div style={{ width: state.tableW, flexShrink: 0, overflow: 'hidden' }}>
-              <GanttTable />
+        {state.currentView === 'resources' ? (
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            <ResourceSheet />
+          </div>
+        ) : state.currentView === 'scurve' ? (
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            <SCurveChart />
+          </div>
+        ) : state.currentView === 'usage' ? (
+          <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+            {/* Usage Area (Table | Resize | Grid) */}
+            <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+              {/* Table */}
+              <div style={{ width: state.tableW, flexShrink: 0, overflow: 'hidden' }}>
+                <GanttTable />
+              </div>
+
+              {/* Vertical Resize Handle */}
+              <div className={`v-resize ${resizing === 'v' ? 'rsz' : ''}`}
+                onMouseDown={() => setResizing('v')} />
+
+              {/* Usage Grid */}
+              <div style={{ flex: 1, overflow: 'hidden' }}>
+                <TaskUsageGrid />
+              </div>
             </div>
 
-            {/* Vertical Resize Handle */}
-            <div className={`v-resize ${resizing === 'v' ? 'rsz' : ''}`}
-              onMouseDown={() => setResizing('v')} />
+            {/* Horizontal Resize Handle */}
+            <div className={`h-resize ${resizing === 'h' ? 'rsz' : ''}`}
+              onMouseDown={() => setResizing('h')} />
 
-            {/* Usage Grid */}
-            <div style={{ flex: 1, overflow: 'hidden' }}>
-              <TaskUsageGrid />
+            {/* Form Panel */}
+            <div style={{ height: formH, flexShrink: 0, overflow: 'hidden' }}>
+              <TaskForm />
             </div>
           </div>
+        ) : state.currentView === 'resUsage' ? (
+          <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+            {/* Resource Usage Area (Table | Resize | Grid) */}
+            <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+              {/* Table */}
+              <div style={{ width: state.tableW, flexShrink: 0, overflow: 'hidden' }}>
+                <ResourceUsageTable />
+              </div>
 
-          {/* Horizontal Resize Handle */}
-          <div className={`h-resize ${resizing === 'h' ? 'rsz' : ''}`}
-            onMouseDown={() => setResizing('h')} />
+              {/* Vertical Resize Handle */}
+              <div className={`v-resize ${resizing === 'v' ? 'rsz' : ''}`}
+                onMouseDown={() => setResizing('v')} />
 
-          {/* Form Panel */}
-          <div style={{ height: formH, flexShrink: 0, overflow: 'hidden' }}>
-            <TaskForm />
-          </div>
-        </div>
-      ) : state.currentView === 'resUsage' ? (
-        <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-          {/* Resource Usage Area (Table | Resize | Grid) */}
-          <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
-            {/* Table */}
-            <div style={{ width: state.tableW, flexShrink: 0, overflow: 'hidden' }}>
-              <ResourceUsageTable />
+              {/* Usage Grid */}
+              <div style={{ flex: 1, overflow: 'hidden' }}>
+                <ResourceUsageGrid />
+              </div>
             </div>
 
-            {/* Vertical Resize Handle */}
-            <div className={`v-resize ${resizing === 'v' ? 'rsz' : ''}`}
-              onMouseDown={() => setResizing('v')} />
+            {/* Horizontal Resize Handle */}
+            <div className={`h-resize ${resizing === 'h' ? 'rsz' : ''}`}
+              onMouseDown={() => setResizing('h')} />
 
-            {/* Usage Grid */}
-            <div style={{ flex: 1, overflow: 'hidden' }}>
-              <ResourceUsageGrid />
+            {/* Form Panel */}
+            <div style={{ height: formH, flexShrink: 0, overflow: 'hidden' }}>
+              <ResourceForm />
             </div>
           </div>
+        ) : (
+          <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+            {/* Gantt Area (Table | Resize | Timeline) */}
+            <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+              {/* Table */}
+              <div style={{ width: state.tableW, flexShrink: 0, overflow: 'hidden' }}>
+                <GanttTable />
+              </div>
 
-          {/* Horizontal Resize Handle */}
-          <div className={`h-resize ${resizing === 'h' ? 'rsz' : ''}`}
-            onMouseDown={() => setResizing('h')} />
+              {/* Vertical Resize Handle */}
+              <div className={`v-resize ${resizing === 'v' ? 'rsz' : ''}`}
+                onMouseDown={() => setResizing('v')} />
 
-          {/* Form Panel */}
-          <div style={{ height: formH, flexShrink: 0, overflow: 'hidden' }}>
-            <ResourceForm />
-          </div>
-        </div>
-      ) : (
-        <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-          {/* Gantt Area (Table | Resize | Timeline) */}
-          <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
-            {/* Table */}
-            <div style={{ width: state.tableW, flexShrink: 0, overflow: 'hidden' }}>
-              <GanttTable />
+              {/* Timeline */}
+              <div style={{ flex: 1, overflow: 'hidden' }}>
+                <GanttTimeline />
+              </div>
             </div>
 
-            {/* Vertical Resize Handle */}
-            <div className={`v-resize ${resizing === 'v' ? 'rsz' : ''}`}
-              onMouseDown={() => setResizing('v')} />
+            {/* Horizontal Resize Handle */}
+            <div className={`h-resize ${resizing === 'h' ? 'rsz' : ''}`}
+              onMouseDown={() => setResizing('h')} />
 
-            {/* Timeline */}
-            <div style={{ flex: 1, overflow: 'hidden' }}>
-              <GanttTimeline />
+            {/* Form Panel */}
+            <div style={{ height: formH, flexShrink: 0, overflow: 'hidden' }}>
+              <ActivityDetailPanel />
             </div>
           </div>
-
-          {/* Horizontal Resize Handle */}
-          <div className={`h-resize ${resizing === 'h' ? 'rsz' : ''}`}
-            onMouseDown={() => setResizing('h')} />
-
-          {/* Form Panel */}
-          <div style={{ height: formH, flexShrink: 0, overflow: 'hidden' }}>
-            <ActivityDetailPanel />
-          </div>
-        </div>
-      )}
+        )}
       </>)}
 
       {/* Modals */}
@@ -708,16 +743,76 @@ function AppInner() {
       <CalendarModal />
       <CheckThresholdsModal />
       <FilterModal />
+
+      {/* PASSWORD RECOVERY MODAL */}
+      {showRecoveryModal && (
+        <div className="modal-overlay" style={{ zIndex: 9999 }}>
+          <div className="modal-content" style={{ maxWidth: 400, padding: '2rem' }}>
+            <h3 style={{ marginBottom: '1rem', color: 'var(--text-color)' }}>Restablecer Contraseña</h3>
+            <p style={{ marginBottom: '1rem', color: 'var(--text-muted)' }}>Introduce tu nueva contraseña para acceder a tu cuenta.</p>
+            <form onSubmit={handleUpdatePassword} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <input
+                type="password"
+                placeholder="Nueva contraseña"
+                value={newRecoveryPassword}
+                onChange={e => setNewRecoveryPassword(e.target.value)}
+                required
+                style={{ padding: '0.8rem', border: '1px solid var(--border-color)', borderRadius: '4px', backgroundColor: 'var(--bg-color)', color: 'var(--text-color)' }}
+              />
+              <button type="submit" disabled={recoveryLoading} style={{ padding: '0.8rem', backgroundColor: '#0078d4', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}>
+                {recoveryLoading ? 'Actualizando...' : 'Actualizar Contraseña'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+function AppRoot() {
+  const { session, loading, error, signOut } = useAuth();
 
-export default function App() {
+  if (error) {
+    return (
+      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-color)', backgroundColor: 'var(--bg-color)', padding: '2rem', textAlign: 'center' }}>
+        <h2 style={{ color: '#ff4d4f', marginBottom: '1rem' }}>Error de Sesión</h2>
+        <p style={{ marginBottom: '2rem' }}>{error}</p>
+        <button
+          onClick={async () => {
+            try { await signOut(); } catch (e) { }
+            localStorage.clear();
+            sessionStorage.clear();
+            window.location.reload();
+          }}
+          style={{ padding: '0.5rem 1rem', background: '#0078d4', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+        >
+          Forzar Cierre de Sesión
+        </button>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-color)', backgroundColor: 'var(--bg-color)' }}>Cargando sesión...</div>;
+  }
+
+  if (!session) {
+    return <LoginPage />;
+  }
+
   return (
     <PortfolioProvider>
       <GanttProvider>
         <AppInner />
       </GanttProvider>
     </PortfolioProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppRoot />
+    </AuthProvider>
   );
 }

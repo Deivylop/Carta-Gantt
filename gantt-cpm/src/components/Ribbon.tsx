@@ -3,11 +3,12 @@
 // ═══════════════════════════════════════════════════════════════════
 import React, { useState, useRef } from 'react';
 import { useGantt } from '../store/GanttContext';
+import { supabase } from '../lib/supabase';
 import { newActivity, isoDate, parseDate } from '../utils/cpm';
 import { autoId, exportJSON, exportCSV, importJSONData, importCSVData } from '../utils/helpers';
 import {
     Plus, Trash2, ArrowRight, ClipboardPaste, Scissors, Settings, Calculator, BarChart3, Sun, Moon, Clock,
-    TrendingUp, LineChart, FileText, Diamond, ArrowLeft, ArrowUp, ArrowDown, Info, Undo2, Cloud, Database, Upload, Download, LayoutTemplate, Users, CalendarDays, Filter, ArrowLeftRight, Zap
+    TrendingUp, LineChart, FileText, Diamond, ArrowLeft, ArrowUp, ArrowDown, Info, Undo2, Cloud, Database, Upload, Download, LayoutTemplate, Users, CalendarDays, Filter, ArrowLeftRight, Zap, LogOut, ShieldAlert
 } from 'lucide-react';
 import type { ZoomLevel } from '../types/gantt';
 
@@ -82,9 +83,11 @@ export default function Ribbon() {
             {/* Tabs Row */}
             <div className="ribbon-tabs">
                 <div className="ribbon-brand">📊 Carta Gantt CPM</div>
-                {['Tarea', 'Proyecto', 'Vista', 'Datos'].map(t => (
+                {['Tarea', 'Proyecto', 'Vista', 'Datos', 'Configuración'].map(t => (
                     <button key={t} className={`ribbon-tab ${tab === t.toLowerCase() ? 'active' : ''}`} onClick={() => setTab(t.toLowerCase())}>{t}</button>
                 ))}
+
+
             </div>
 
             {/* Tab Content */}
@@ -162,7 +165,7 @@ export default function Ribbon() {
                                     onChange={e => dispatch({ type: 'SET_MFP_CONFIG', config: { maxPaths: Math.max(1, parseInt(e.target.value) || 10) } })} />
                             </div>
                             {state.mfpConfig.enabled && (() => {
-                                const MFP_COLORS = ['#FF0000','#FF6600','#FFCC00','#00AA00','#0066FF','#9933FF','#FF66CC','#00CCCC','#996633','#666666'];
+                                const MFP_COLORS = ['#FF0000', '#FF6600', '#FFCC00', '#00AA00', '#0066FF', '#9933FF', '#FF66CC', '#00CCCC', '#996633', '#666666'];
                                 const paths = new Set<number>();
                                 state.activities.forEach(a => { if (a._floatPath) paths.add(a._floatPath); });
                                 const sorted = [...paths].sort((a, b) => a - b);
@@ -422,6 +425,26 @@ export default function Ribbon() {
                         <div className="sb-status" id="sb-sync-status">—</div>
                     </RG>
                 </>}
+
+                {tab === 'configuración' && <>
+                    <RG label="CUENTA Y SEGURIDAD">
+                        <RB
+                            icon={<ShieldAlert size={14} />}
+                            label="Dashboard de Administración"
+                            onClick={() => window.location.hash = '#superadmin'}
+                            title="Abrir el panel de gestión de usuarios y empresas"
+                        />
+                        <button
+                            className="rbtn"
+                            onClick={() => supabase.auth.signOut()}
+                            title="Cerrar la sesión de usuario de forma segura"
+                            style={{ color: '#ef4444' }}
+                        >
+                            <LogOut size={14} />
+                            <span>Cerrar Sesión</span>
+                        </button>
+                    </RG>
+                </>}
             </div>
         </div>
     );
@@ -436,9 +459,9 @@ function RG({ label, children }: { label: string; children: React.ReactNode }) {
     );
 }
 
-function RB({ icon, label, active, onClick }: { icon?: React.ReactNode; label?: string; active?: boolean; onClick?: () => void }) {
+function RB({ icon, label, active, onClick, title }: { icon?: React.ReactNode; label?: string; active?: boolean; onClick?: () => void; title?: string }) {
     return (
-        <button className={`rbtn ${active ? 'active' : ''}`} onClick={onClick}>
+        <button className={`rbtn ${active ? 'active' : ''}`} onClick={onClick} title={title}>
             {icon}
             {label && <span>{label}</span>}
         </button>

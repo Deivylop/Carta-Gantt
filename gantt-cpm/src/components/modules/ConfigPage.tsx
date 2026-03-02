@@ -3,21 +3,25 @@
 // ═══════════════════════════════════════════════════════════════════
 import React, { useState, useEffect, useCallback } from 'react';
 import { useGantt } from '../../store/GanttContext';
+import { useAuth } from '../../store/AuthContext';
 import { isoDate } from '../../utils/cpm';
 import { supabase } from '../../lib/supabase';
 import { saveToSupabase } from '../../utils/supabaseSync';
-import { Settings, CalendarDays, Database, Palette, Sun, Moon, Globe, Save, RotateCcw, Plus, Trash2, Upload, FolderOpen, CloudOff, Cloud, RefreshCw } from 'lucide-react';
+import { Settings, CalendarDays, Database, Palette, Sun, Moon, Globe, Save, RotateCcw, Plus, Trash2, Upload, FolderOpen, CloudOff, Cloud, RefreshCw, Users } from 'lucide-react';
 import type { CalendarType } from '../../types/gantt';
+import SuperAdminPage from './SuperAdminPage';
 
 interface SBProject { id: string; projname: string; projstart: string; created_at: string; statusdate?: string; defcal?: number; }
 
 export default function ConfigPage() {
   const { state, dispatch } = useGantt();
+  const { user, role, empresaName } = useAuth();
   const [saved, setSaved] = useState(false);
   const [projects, setProjects] = useState<SBProject[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [showUserManagement, setShowUserManagement] = useState(false);
 
   const showSaved = () => { setSaved(true); setTimeout(() => setSaved(false), 2000); };
 
@@ -287,6 +291,50 @@ export default function ConfigPage() {
           )}
         </div>
       </Section>
+
+      {/* Account and Security */}
+      <Section title="Perfil de Usuario y Seguridad" icon={<Settings size={16} style={{ color: '#ef4444' }} />}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{
+            display: 'flex', flexDirection: 'column', gap: 6,
+            padding: '12px 16px', background: 'var(--bg-input)',
+            border: '1px solid var(--border-secondary)', borderRadius: 8
+          }}>
+            <div style={{ fontSize: 13, color: 'var(--text-primary)' }}>
+              <strong>Email:</strong> {user?.email || 'Desconocido'}
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--text-primary)' }}>
+              <strong>Empresa:</strong> {empresaName || 'Ninguna'}
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--text-primary)' }}>
+              <strong>Rol:</strong> <span style={{ textTransform: 'uppercase', fontWeight: 600, color: role === 'superadmin' ? '#ef4444' : role === 'admin' ? '#f59e0b' : '#3b82f6' }}>{role || 'viewer'}</span>
+            </div>
+          </div>
+
+          {(role === 'superadmin' || role === 'admin') && (
+            <button
+              onClick={() => setShowUserManagement(!showUserManagement)}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', background: showUserManagement ? 'var(--bg-input)' : '#3b82f622', border: showUserManagement ? '1px solid var(--border-secondary)' : '1px solid #3b82f644', borderRadius: 8, color: showUserManagement ? 'var(--text-primary)' : '#3b82f6', fontSize: 13, cursor: 'pointer', fontWeight: 600, width: 'fit-content', transition: 'all 0.2s' }}>
+              <Users size={16} />
+              {showUserManagement ? 'Ocultar Gestión de Perfiles' : 'Administrar Usuarios y Rol'}
+            </button>
+          )}
+
+          <button
+            onClick={() => supabase.auth.signOut()}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: 8, color: '#ef4444', fontSize: 13, cursor: 'pointer', fontWeight: 600, width: 'fit-content' }}>
+            <CloudOff size={16} />
+            Cerrar Sesión
+          </button>
+        </div>
+      </Section>
+
+      {/* Embedded SuperAdminPage */}
+      {showUserManagement && (role === 'superadmin' || role === 'admin') && (
+        <div style={{ marginTop: 24, borderTop: '2px dashed var(--border-secondary)', paddingTop: 24 }}>
+          <SuperAdminPage />
+        </div>
+      )}
 
       {/* Info */}
       <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', marginTop: 24 }}>
