@@ -54,7 +54,7 @@ interface DragPreview {
 
 export default function GanttTimeline() {
     const { state, dispatch } = useGantt();
-    const { visRows, zoom, totalDays, timelineStart: projStart, statusDate, _cpmStatusDate, selIdx, selIndices, lightMode, activities, defCal, pxPerDay, showProjRow: _showProjRow, showTodayLine, showStatusLine, showDependencies, mfpConfig, chainIds, chainTrace, spotlightEnabled, spotlightEnd, leanRestrictions, _scenarioMode, _masterActivities } = state;
+    const { visRows, zoom, totalDays, timelineStart: projStart, statusDate, _cpmStatusDate, selIdx, selIndices, lightMode, activities, defCal, pxPerDay, showTodayLine, showStatusLine, showDependencies, mfpConfig, chainIds, chainTrace, spotlightEnabled, spotlightEnd, leanRestrictions, _scenarioMode, _masterActivities } = state;
     // For bar rendering, use the statusDate from last CPM calc (not the live one from the picker)
     const barStatusDate = _cpmStatusDate || statusDate;
     const PX = pxPerDay;
@@ -76,7 +76,7 @@ export default function GanttTimeline() {
     const bodyRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const connLinesRef = useRef<any[]>([]);
-    const t = th(lightMode);
+    const t = useMemo(() => th(lightMode), [lightMode]);
     const [containerSize, setContainerSize] = useState({ w: 800, h: 600 });
 
     // Drag state refs (for mousedown/mousemove/mouseup)
@@ -398,7 +398,7 @@ export default function GanttTimeline() {
             if (dimmed) ctx.globalAlpha = 0.18;
             const color = (() => {
                 if (mfpConfig.enabled && r._floatPath != null) {
-                    const MFP_COLORS = ['#FF0000','#FF6600','#FFCC00','#00AA00','#0066FF','#9933FF','#FF66CC','#00CCCC','#996633','#666666'];
+                    const MFP_COLORS = ['#FF0000', '#FF6600', '#FFCC00', '#00AA00', '#0066FF', '#9933FF', '#FF66CC', '#00CCCC', '#996633', '#666666'];
                     return MFP_COLORS[(r._floatPath - 1) % MFP_COLORS.length];
                 }
                 return r.crit ? '#ef4444' : (r.lv <= 1 ? '#6366f1' : '#3b82f6');

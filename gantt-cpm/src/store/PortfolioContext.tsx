@@ -3,11 +3,27 @@
 // Persists to localStorage under 'gantt-cpm-portfolio'
 // Individual project states under 'gantt-cpm-project-{id}'
 // ═══════════════════════════════════════════════════════════════════
-import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef, useState } from 'react';
 import type { EPSNode, ProjectMeta, PortfolioState, TreeNode } from '../types/portfolio';
 import { listSupabaseProjects, savePortfolioToSupabase, loadPortfolioFromSupabase, createSupabaseProject, fetchProjectSummaries, deleteProjectFromSupabase } from '../utils/supabaseSync';
 
-const STORAGE_KEY = 'gantt-cpm-portfolio';
+/** Returns a localStorage key scoped to the current authenticated user.
+ *  Different users on the same machine/browser get completely separate caches. */
+function getStorageKey(): string {
+    // supabase.auth.getSession() is async, but the session is cached in memory synchronously.
+    // We access the internal session via the local storage key Supabase itself uses.
+    try {
+        // Try to get user id from supabase's own cached session in localStorage
+        const sbSessionKey = Object.keys(localStorage).find(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
+        if (sbSessionKey) {
+            const session = JSON.parse(localStorage.getItem(sbSessionKey) || '{}');
+            const uid = session?.user?.id || session?.session?.user?.id;
+            if (uid) return `gantt-cpm-portfolio-${uid}`;
+        }
+    } catch { /* ignore */ }
+    return 'gantt-cpm-portfolio'; // fallback (unauthenticated)
+}
+
 const PROJECT_PREFIX = 'gantt-cpm-project-';
 
 // ─── Helpers ────────────────────────────────────────────────────
@@ -86,7 +102,7 @@ type PortfolioAction =
     | { type: 'OUTDENT'; id: string }
     | { type: 'MOVE_EPS_UP'; id: string }
     | { type: 'MOVE_EPS_DOWN'; id: string }
-    | { type: 'SYNC_FROM_SUPABASE'; supabaseProjects: { id: string; projName: string; projStart: string | null; statusDate: string | null; defCal: number }[] }
+    | { type: 'SYNC_FROM_SUPABASE'; supabaseProjects: { id: string; projName: string; projStart: string | null; statusDate: string | null; defCal: number; empresaId?: string | null }[] }
     | { type: 'REFRESH_SUMMARIES'; summaries: Record<string, Partial<ProjectMeta>> };
 
 // ─── Initial State ──────────────────────────────────────────────
@@ -100,10 +116,12 @@ const initialState: PortfolioState = {
     clipboard: null,
 };
 
-/** Read portfolio from localStorage synchronously (used as lazy initializer) */
+/** Read portfolio from localStorage synchronously (per-user cache).
+ *  Acts as an optimistic skeleton while Supabase loads the real data. */
 function loadInitialState(): PortfolioState {
     try {
-        const raw = localStorage.getItem(STORAGE_KEY);
+        const key = getStorageKey();
+        const raw = localStorage.getItem(key);
         if (raw) {
             const data = JSON.parse(raw);
             const epsNodes = (data.epsNodes || []).map((e: any, i: number) => ({
@@ -117,7 +135,8 @@ function loadInitialState(): PortfolioState {
                 expandedIds: new Set(data.expandedIds || []),
                 selectedId: null,
                 selectedIds: new Set<string>(),
-                activeProjectId: data.activeProjectId || null,
+                // Never restore activeProjectId from localStorage — it is session-specific
+                activeProjectId: null,
                 clipboard: null,
             };
         }
@@ -421,7 +440,7 @@ function portfolioReducer(state: PortfolioState, action: PortfolioAction): Portf
             // 1. Remove local projects whose supabaseId no longer exists in Supabase
             // 2. Add Supabase projects not yet in the local portfolio
             const supabaseIds = new Set(action.supabaseProjects.map(sp => sp.id));
-            const existingSupaIds = new Set(state.projects.map(p => p.supabaseId).filter(Boolean));
+
 
             // Prune: remove projects whose supabaseId was deleted from Supabase
             let projects = state.projects.filter(p => {
@@ -527,6 +546,7 @@ interface PortfolioContextValue {
     state: PortfolioState;
     dispatch: React.Dispatch<PortfolioAction>;
     treeNodes: TreeNode[];
+    isLoadingPortfolio: boolean;
     savePortfolio: () => void;
     saveProjectState: (projectId: string, ganttState: any) => void;
     loadProjectState: (projectId: string) => any | null;
@@ -565,13 +585,15 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         try {
             _lastWriteStamp = Date.now();
-            localStorage.setItem(STORAGE_KEY, serializePortfolio(state));
+            // Use per-user key so different users on the same machine don't share cache
+            localStorage.setItem(getStorageKey(), serializePortfolio(state));
         } catch (e) {
             console.error('Failed to save portfolio', e);
         }
     }, [state.epsNodes, state.projects, state.expandedIds, state.activeProjectId]);
 
-    // ── Load portfolio from Supabase on mount (source of truth) ──
+    // ── Load portfolio from Supabase on mount (Supabase is the single source of truth) ──
+    const [isLoadingPortfolio, setIsLoadingPortfolio] = useState(true);
     useEffect(() => {
         let cancelled = false;
         (async () => {
@@ -581,43 +603,62 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
                 if (cancelled) return;
 
                 if (sbPortfolio && (sbPortfolio.epsNodes.length > 0 || sbPortfolio.projects.length > 0)) {
-                    // Supabase has portfolio data → load it (source of truth)
+                    // Supabase has portfolio data → it is the primary source of truth for EPS structure.
+                    // LOAD replaces local state completely (EPS + projects + expanded).
                     dispatch({
                         type: 'LOAD',
                         state: {
                             epsNodes: sbPortfolio.epsNodes,
                             projects: sbPortfolio.projects,
                             expandedIds: sbPortfolio.expandedIds,
-                            activeProjectId: sbPortfolio.activeProjectId,
+                            activeProjectId: null, // never inherit active project across sessions
                         },
                     });
-                }
-                // 2. Always sync with gantt_projects to pick up any newly created ones
-                const sbProjects = await listSupabaseProjects();
-                if (cancelled || sbProjects.length === 0) return;
-                dispatch({ type: 'SYNC_FROM_SUPABASE', supabaseProjects: sbProjects });
 
-                // 3. Fetch activity-level summaries (duration, work, % avance, etc.)
-                const projectIds = sbProjects.map(p => p.id);
-                const summaries = await fetchProjectSummaries(projectIds);
-                if (cancelled) return;
-                if (Object.keys(summaries).length > 0) {
-                    dispatch({ type: 'REFRESH_SUMMARIES', summaries });
+                    // 2. Always reconcile: fetch real gantt_projects (filtered by empresa) and
+                    //    run SYNC to prune stale portfolio entries + add any new projects.
+                    //    This handles the case where portfolio_state is out of sync with gantt_projects.
+                    const sbProjects = await listSupabaseProjects();
+                    if (!cancelled) {
+                        dispatch({ type: 'SYNC_FROM_SUPABASE', supabaseProjects: sbProjects });
+                    }
+
+                    // 3. Refresh activity-level summaries (duration, work, % avance, etc.)
+                    if (!cancelled && sbProjects.length > 0) {
+                        const summaries = await fetchProjectSummaries(sbProjects.map(p => p.id));
+                        if (!cancelled && Object.keys(summaries).length > 0) {
+                            dispatch({ type: 'REFRESH_SUMMARIES', summaries });
+                        }
+                    }
+                } else {
+                    // 3. No portfolio in Supabase yet — fallback: sync raw gantt_projects list.
+                    //    This handles first-time users who created projects before the portfolio was saved.
+                    const sbProjects = await listSupabaseProjects();
+                    if (cancelled || sbProjects.length === 0) return;
+                    dispatch({ type: 'SYNC_FROM_SUPABASE', supabaseProjects: sbProjects });
+
+                    // 4. Fetch activity-level summaries
+                    const projectIds = sbProjects.map(p => p.id);
+                    const summaries = await fetchProjectSummaries(projectIds);
+                    if (!cancelled && Object.keys(summaries).length > 0) {
+                        dispatch({ type: 'REFRESH_SUMMARIES', summaries });
+                    }
                 }
             } catch (e) {
                 console.warn('Could not load portfolio from Supabase:', e);
-                // Fallback: try syncing just the project list + summaries
+                // Last-resort fallback: sync just the project list
                 try {
                     const sbProjects = await listSupabaseProjects();
                     if (cancelled || sbProjects.length === 0) return;
                     dispatch({ type: 'SYNC_FROM_SUPABASE', supabaseProjects: sbProjects });
                     const projectIds = sbProjects.map(p => p.id);
                     const summaries = await fetchProjectSummaries(projectIds);
-                    if (cancelled) return;
-                    if (Object.keys(summaries).length > 0) {
+                    if (!cancelled && Object.keys(summaries).length > 0) {
                         dispatch({ type: 'REFRESH_SUMMARIES', summaries });
                     }
                 } catch { /* ignore */ }
+            } finally {
+                if (!cancelled) setIsLoadingPortfolio(false);
             }
         })();
         return () => { cancelled = true; };
@@ -669,7 +710,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     // Fires ONLY when a DIFFERENT tab writes to our localStorage key.
     useEffect(() => {
         const handleStorage = (e: StorageEvent) => {
-            if (e.key !== STORAGE_KEY || !e.newValue) return;
+            if (e.key !== getStorageKey() || !e.newValue) return;
             // Ignore our own writes (within last 500ms)
             if (Date.now() - _lastWriteStamp < 500) return;
             try {
@@ -693,7 +734,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         const handleBeforeUnload = () => {
             try {
-                localStorage.setItem(STORAGE_KEY, serializePortfolio(state));
+                localStorage.setItem(getStorageKey(), serializePortfolio(state));
             } catch { /* ignore */ }
         };
         window.addEventListener('beforeunload', handleBeforeUnload);
@@ -704,7 +745,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     const savePortfolio = useCallback(() => {
         try {
             _lastWriteStamp = Date.now();
-            localStorage.setItem(STORAGE_KEY, serializePortfolio(state));
+            localStorage.setItem(getStorageKey(), serializePortfolio(state));
         } catch (e) {
             console.error('Failed to save portfolio', e);
         }
@@ -737,7 +778,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     );
 
     return (
-        <PortfolioContext.Provider value={{ state, dispatch, treeNodes, savePortfolio, saveProjectState, loadProjectState }}>
+        <PortfolioContext.Provider value={{ state, dispatch, treeNodes, isLoadingPortfolio, savePortfolio, saveProjectState, loadProjectState }}>
             {children}
         </PortfolioContext.Provider>
     );

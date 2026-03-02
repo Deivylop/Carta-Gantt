@@ -22,7 +22,7 @@ const TABS: Tab[] = [
   { id: 'whatIf', label: 'What-If', icon: <GitBranch size={16} />, requiresProject: true },
   { id: 'risk', label: 'Riesgos', icon: <Dice5 size={16} />, requiresProject: true },
   { id: 'dashboard', label: 'Dashboard', icon: <BarChart3 size={16} />, requiresProject: true },
-  { id: 'config', label: 'Configuración', icon: <Settings size={16} />, requiresProject: true },
+  { id: 'config', label: 'Configuración', icon: <Settings size={16} /> },
 ];
 
 interface Props {

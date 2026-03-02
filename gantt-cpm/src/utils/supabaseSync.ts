@@ -4,7 +4,7 @@ import { BUILTIN_FILTERS } from '../store/GanttContext';
 import { newActivity, isoDate, parseDate } from './cpm';
 import { deriveResString } from './helpers';
 import type { RiskAnalysisState, RiskScoringConfig, SimulationResult, DurationDistribution, RiskEvent, RiskTaskImpact, SimulationParams } from '../types/risk';
-import { DEFAULT_RISK_STATE } from '../types/risk';
+
 
 // Maps Calendar factors directly as in original HTML
 let isSaving = false;
@@ -1045,12 +1045,38 @@ export async function deleteProjectFromSupabase(supabaseId: string): Promise<voi
     if (error) throw error;
 }
 
-/** List all projects from Supabase (lightweight — only project metadata) */
-export async function listSupabaseProjects(): Promise<{ id: string; projName: string; projStart: string | null; statusDate: string | null; defCal: number }[]> {
-    const { data, error } = await supabase
+/** List projects from Supabase respecting the user's role:
+ *  - superadmin: returns ALL projects from all companies (with empresaId for filtering)
+ *  - others: returns only projects from their own empresa */
+export async function listSupabaseProjects(): Promise<{
+    id: string; projName: string; projStart: string | null;
+    statusDate: string | null; defCal: number; empresaId: string | null;
+}[]> {
+    // Fetch role and empresa_id in parallel
+    const [{ data: role }, { data: empresaId }] = await Promise.all([
+        supabase.rpc('get_auth_user_role'),
+        supabase.rpc('get_user_empresa_id'),
+    ]);
+
+    const isSuperAdmin = role === 'superadmin';
+
+    // Superadmin: no empresa filter — sees everything
+    // Others: must have an empresa_id, filter to own empresa only
+    if (!isSuperAdmin && !empresaId) {
+        return []; // user has no empresa, show nothing
+    }
+
+    let query = supabase
         .from('gantt_projects')
-        .select('id, projname, projstart, statusdate, defcal')
+        .select('id, projname, projstart, statusdate, defcal, empresa_id')
         .order('created_at', { ascending: true });
+
+    if (!isSuperAdmin) {
+        query = query.eq('empresa_id', empresaId);
+    }
+    // superadmin: no .eq filter → returns all
+
+    const { data, error } = await query;
     if (error) throw error;
     return (data || []).map((r: any) => ({
         id: r.id,
@@ -1058,44 +1084,73 @@ export async function listSupabaseProjects(): Promise<{ id: string; projName: st
         projStart: r.projstart || null,
         statusDate: r.statusdate || null,
         defCal: r.defcal || 6,
+        empresaId: r.empresa_id || null,
     }));
 }
 
-/** Save portfolio state (EPS tree + project metadata) to Supabase */
+/** Save portfolio state (EPS tree + project metadata) to Supabase.
+ *  Uses empresa_id as the row key so each company has its own portfolio.
+ *  This is required for the RLS policies (rbac_update_portfolio & user_actualizar_portfolio)
+ *  which check empresa_id = get_user_empresa_id(). Without empresa_id the upsert fails silently. */
 export async function savePortfolioToSupabase(portfolio: {
     epsNodes: any[];
     projects: any[];
     expandedIds: string[];
     activeProjectId: string | null;
 }): Promise<void> {
+    // 1. Get the company ID for the current authenticated user
+    const { data: empresaId, error: rpcError } = await supabase.rpc('get_user_empresa_id');
+    if (rpcError || !empresaId) {
+        // No empresa means we can't pass RLS — bail out silently
+        console.warn('[portfolio] Could not get empresa_id, skipping save:', rpcError?.message);
+        return;
+    }
+
+    // 2. Upsert using empresa_id as the row's id AND as the empresa_id column.
+    //    RLS policies require empresa_id = get_user_empresa_id() on INSERT/UPDATE.
+    //    NOTE: activeProjectId is NOT persisted — it is a per-session preference.
     const { error } = await supabase
         .from('portfolio_state')
         .upsert({
-            id: 'default',
+            id: empresaId,               // row key = empresa (one row per company)
+            empresa_id: empresaId,        // required by RLS policies
             eps_nodes: portfolio.epsNodes,
             projects: portfolio.projects,
             expanded_ids: portfolio.expandedIds,
-            active_project_id: portfolio.activeProjectId,
             updated_at: new Date().toISOString(),
         }, { onConflict: 'id' });
     if (error) throw error;
 }
 
-/** Load portfolio state from Supabase (returns null if table doesn't exist or no data) */
+/** Load portfolio state from Supabase.
+ *  Searches by empresa_id (not id='default') so each company loads its own portfolio.
+ *  Returns null if no portfolio is found or user has no empresa. */
 export async function loadPortfolioFromSupabase(): Promise<{
     epsNodes: any[];
     projects: any[];
     expandedIds: string[];
     activeProjectId: string | null;
 } | null> {
+    // 1. Get current user's empresa_id
+    const { data: empresaId, error: rpcError } = await supabase.rpc('get_user_empresa_id');
+    if (rpcError || !empresaId) {
+        // If user has no empresa, fall back to id='default' for backward compat
+        console.warn('[portfolio] No empresa_id, trying id=default fallback:', rpcError?.message);
+    }
+
+    // 2. Query: prefer empresa_id match, fallback to id='default'
+    const rowId = empresaId || 'default';
     const { data, error } = await supabase
         .from('portfolio_state')
         .select('*')
-        .eq('id', 'default')
+        .eq('id', rowId)
         .maybeSingle();
+
     if (error) {
         // Table may not exist yet — gracefully return null
         if (error.code === '42P01' || error.message?.includes('does not exist')) return null;
+        // RLS policy blocked the read (no empresa match) — return null
+        if (error.code === 'PGRST116' || error.message?.includes('row-level security')) return null;
         throw error;
     }
     if (!data) return null;
@@ -1103,7 +1158,8 @@ export async function loadPortfolioFromSupabase(): Promise<{
         epsNodes: data.eps_nodes || [],
         projects: data.projects || [],
         expandedIds: data.expanded_ids || [],
-        activeProjectId: data.active_project_id || null,
+        // activeProjectId is intentionally NOT loaded from Supabase — it is a per-session preference.
+        activeProjectId: null,
     };
 }
 

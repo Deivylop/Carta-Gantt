@@ -33,33 +33,33 @@ const COL_STORAGE_KEY = 'gantt-cpm-portfolio-columns';
 // ─── All possible Column Definitions ─────────────────────────────
 interface ColDef { key: string; label: string; w: number; align: 'left' | 'center' | 'right' }
 const ALL_COLUMNS: ColDef[] = [
-    { key: 'i',        label: '#',              w: 28,  align: 'center' },
-    { key: 'id',       label: 'ID',             w: 90,  align: 'left' },
-    { key: 'name',     label: 'Nombre de tarea', w: 220, align: 'left' },
-    { key: 'dur',      label: 'Duración',       w: 70,  align: 'right' },
-    { key: 'remDur',   label: 'Dur. Resta',     w: 70,  align: 'right' },
-    { key: 'start',    label: 'Comienzo',       w: 85,  align: 'center' },
-    { key: 'end',      label: 'Fin',            w: 85,  align: 'center' },
-    { key: 'pctAvance',label: '% Avance',       w: 65,  align: 'right' },
-    { key: 'pctProg',  label: '% Prog.',        w: 65,  align: 'right' },
-    { key: 'work',     label: 'Trabajo',        w: 80,  align: 'right' },
-    { key: 'actual',   label: 'Valor Ganado',   w: 95,  align: 'right' },
-    { key: 'remaining',label: 'Trab. Restante', w: 95,  align: 'right' },
-    { key: 'weight',   label: 'Peso %',         w: 55,  align: 'right' },
-    { key: 'res',      label: 'Recursos',       w: 100, align: 'left' },
-    { key: 'act',      label: 'ACT.',           w: 40,  align: 'center' },
-    { key: 'status',   label: 'Estado',         w: 85,  align: 'center' },
-    { key: 'statusDt', label: 'F. Corte',       w: 85,  align: 'center' },
+    { key: 'i', label: '#', w: 28, align: 'center' },
+    { key: 'id', label: 'ID', w: 90, align: 'left' },
+    { key: 'name', label: 'Nombre de tarea', w: 220, align: 'left' },
+    { key: 'dur', label: 'Duración', w: 70, align: 'right' },
+    { key: 'remDur', label: 'Dur. Resta', w: 70, align: 'right' },
+    { key: 'start', label: 'Comienzo', w: 85, align: 'center' },
+    { key: 'end', label: 'Fin', w: 85, align: 'center' },
+    { key: 'pctAvance', label: '% Avance', w: 65, align: 'right' },
+    { key: 'pctProg', label: '% Prog.', w: 65, align: 'right' },
+    { key: 'work', label: 'Trabajo', w: 80, align: 'right' },
+    { key: 'actual', label: 'Valor Ganado', w: 95, align: 'right' },
+    { key: 'remaining', label: 'Trab. Restante', w: 95, align: 'right' },
+    { key: 'weight', label: 'Peso %', w: 55, align: 'right' },
+    { key: 'res', label: 'Recursos', w: 100, align: 'left' },
+    { key: 'act', label: 'ACT.', w: 40, align: 'center' },
+    { key: 'status', label: 'Estado', w: 85, align: 'center' },
+    { key: 'statusDt', label: 'F. Corte', w: 85, align: 'center' },
 ];
 const DEFAULT_VISIBLE = ['i', 'id', 'name', 'dur', 'remDur', 'statusDt', 'start', 'end', 'pctAvance', 'pctProg', 'work', 'actual', 'remaining', 'res', 'act'];
 const PORTFOLIO_COL_GROUPS = [
-    { group: 'General',   keys: ['i', 'id', 'name', 'status', 'statusDt'] },
+    { group: 'General', keys: ['i', 'id', 'name', 'status', 'statusDt'] },
     { group: 'Duraciones', keys: ['dur', 'remDur'] },
-    { group: 'Fechas',     keys: ['start', 'end'] },
-    { group: 'Avance',     keys: ['pctAvance', 'pctProg'] },
-    { group: 'Trabajo',    keys: ['work', 'actual', 'remaining', 'weight'] },
-    { group: 'Recursos',   keys: ['res'] },
-    { group: 'Resumen',    keys: ['act'] },
+    { group: 'Fechas', keys: ['start', 'end'] },
+    { group: 'Avance', keys: ['pctAvance', 'pctProg'] },
+    { group: 'Trabajo', keys: ['work', 'actual', 'remaining', 'weight'] },
+    { group: 'Recursos', keys: ['res'] },
+    { group: 'Resumen', keys: ['act'] },
 ];
 
 function loadSavedCols(): string[] {
@@ -111,7 +111,7 @@ interface Props { onNavigate: (id: ModuleId) => void; onOpenProject: (projectId:
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════
 export default function ProjectsPage({ onOpenProject }: Props) {
-    const { state: pState, dispatch: pDispatch, treeNodes } = usePortfolio();
+    const { state: pState, dispatch: pDispatch, treeNodes, isLoadingPortfolio } = usePortfolio();
     const { state: ganttState } = useGantt();
 
     const [searchTerm, setSearchTerm] = useState('');
@@ -711,7 +711,15 @@ export default function ProjectsPage({ onOpenProject }: Props) {
     // RENDER
     // ══════════════════════════════════════════════════════════════
     return (
-        <div ref={mainContainerRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-app)' }}>
+        <div ref={mainContainerRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-app)', position: 'relative' }}>
+            {/* Loading overlay while Supabase portfolio fetches */}
+            {isLoadingPortfolio && (
+                <div style={{ position: 'absolute', inset: 0, zIndex: 100, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, background: 'var(--bg-app)', color: 'var(--text-muted)' }}>
+                    <div style={{ width: 32, height: 32, border: '3px solid var(--border-primary)', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                    <span style={{ fontSize: 13 }}>Cargando portfolio desde la nube…</span>
+                    <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+                </div>
+            )}
 
             {/* ── Toolbar ── */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '5px 12px', borderBottom: '1px solid var(--border-primary)', background: 'var(--bg-ribbon)', flexShrink: 0, flexWrap: 'wrap' }}>
@@ -933,10 +941,10 @@ export default function ProjectsPage({ onOpenProject }: Props) {
                                     {filteredNodes.map((node, i) => {
                                         const tlSelected = pState.selectedIds.has(node.data.id);
                                         return (
-                                        <div key={node.data.id + '-tl'} style={{ position: 'absolute', left: 0, right: 0, top: i * ROW_H, height: ROW_H, borderBottom: '1px solid var(--border-primary)', background: tlSelected ? 'rgba(99,102,241,.10)' : 'transparent' }}
-                                            onClick={(e) => pDispatch({ type: 'SELECT', id: node.data.id, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey, flatIds: flatNodeIds })}>
-                                            {renderTimelineBar(node)}
-                                        </div>
+                                            <div key={node.data.id + '-tl'} style={{ position: 'absolute', left: 0, right: 0, top: i * ROW_H, height: ROW_H, borderBottom: '1px solid var(--border-primary)', background: tlSelected ? 'rgba(99,102,241,.10)' : 'transparent' }}
+                                                onClick={(e) => pDispatch({ type: 'SELECT', id: node.data.id, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey, flatIds: flatNodeIds })}>
+                                                {renderTimelineBar(node)}
+                                            </div>
                                         );
                                     })}
                                 </div>
