@@ -917,12 +917,9 @@ function reducer(state: GanttState, action: Action): GanttState {
                     }
                     a.remDur = newRemDur;
                 }
-                // Si se cambió dur (bidireccional), recalcular CPM
+                // Siempre recalcular CPM para que la fecha fin se actualice al instante
                 acts[action.index] = a;
-                if ((a.pct || 0) > 0) {
-                    return recalc({ ...state, activities: acts });
-                }
-                return refreshVisRows({ ...state, activities: acts });
+                return recalc({ ...state, activities: acts });
             }
             else if (key === 'predStr') {
                 a.preds = strToPreds(val);
