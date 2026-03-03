@@ -272,7 +272,10 @@ export function calcCPM(
             if (as_) { es = new Date(as_); forced = true; }
         }
 
-        if (!forced && (a.manual || a.constraint === 'MSO') && a.constraintDate) {
+        // Sanidad: si manual=true pero no hay constraint real, limpiar para no anclar
+        if (a.manual && !a.constraint) { a.manual = false; a.constraintDate = ''; }
+
+        if (!forced && a.constraint === 'MSO' && a.constraintDate) {
             const cd = parseDate(a.constraintDate);
             if (cd) { es = new Date(cd); forced = true; }
         } else if (!forced && a.constraint === 'SNET') {

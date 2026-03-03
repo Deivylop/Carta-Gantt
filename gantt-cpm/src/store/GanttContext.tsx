@@ -928,13 +928,12 @@ function reducer(state: GanttState, action: Action): GanttState {
             else if (key === 'startDate') {
                 const d = parseDate(val);
                 if (d) {
-                    // No asignar MSO automáticamente; solo fijar fecha manualmente.
-                    // Si el usuario ya tenía un constraint explícito, conservarlo.
-                    a.constraintDate = isoDate(d); a.manual = true;
+                    // Fijar MSO para anclar la actividad a esta fecha
+                    a.constraint = 'MSO'; a.constraintDate = isoDate(d); a.manual = true;
                     // Si tiene avance, actualizar también el Actual Start
                     if ((a.pct || 0) > 0) a.actualStart = isoDate(d);
                 }
-                else { a.constraintDate = ''; a.manual = false; }
+                else { a.constraint = ''; a.constraintDate = ''; a.manual = false; }
             }
             else if (key === 'endDate') {
                 const d = parseDate(val);
