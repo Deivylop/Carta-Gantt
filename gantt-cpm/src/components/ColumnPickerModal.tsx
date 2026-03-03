@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useGantt } from '../store/GanttContext';
+import { useGantt, type SavedView } from '../store/GanttContext';
 import type { ColumnDef } from '../types/gantt';
 import { useResizable } from '../hooks/useResizable';
 
@@ -35,7 +35,7 @@ const COLUMN_GROUPS: { group: string; keys: string[] }[] = [
     },
     {
         group: 'Línea Base',
-        keys: ['blDur', 'blStart', 'blEnd'],
+        keys: ['blDur', 'blStart', 'blEnd', 'blWork', 'varStart', 'varEnd', 'varDur', 'varWork'],
     },
     {
         group: 'Holguras',
@@ -57,26 +57,6 @@ const COLUMN_GROUPS: { group: string; keys: string[] }[] = [
 
 /* Hidden internal columns that never show in picker */
 const INTERNAL_KEYS = new Set(['_num', '_info', '_mode']);
-
-/* ── Saved views persistence ── */
-const VIEWS_STORAGE_KEY = 'gantt-cpm-column-views';
-
-interface SavedView {
-    name: string;
-    columns: string[];   // ordered keys
-    savedAt: string;     // ISO date
-}
-
-function loadViews(): SavedView[] {
-    try {
-        const raw = localStorage.getItem(VIEWS_STORAGE_KEY);
-        return raw ? JSON.parse(raw) : [];
-    } catch { return []; }
-}
-
-function saveViews(views: SavedView[]) {
-    localStorage.setItem(VIEWS_STORAGE_KEY, JSON.stringify(views));
-}
 
 /* ── Exported for reuse (e.g. Look Ahead) ── */
 export { COLUMN_GROUPS };
@@ -120,7 +100,7 @@ export default function ColumnPickerModal({ onClose, externalColumns, externalSe
     const [lastAvailClick, setLastAvailClick] = useState<string | null>(null);
 
     /* ── Views state ── */
-    const [views, setViews] = useState<SavedView[]>(loadViews);
+    const views = state.columnViews;
     const [newViewName, setNewViewName] = useState('');
 
     /* Column lookup – initialise synchronously so first render has labels */
@@ -345,26 +325,20 @@ export default function ColumnPickerModal({ onClose, externalColumns, externalSe
             columns: [...selected],
             savedAt: new Date().toISOString(),
         };
-        const updated = existing
-            ? views.map(v => v.name === name ? newView : v)
-            : [...views, newView];
-        setViews(updated);
-        saveViews(updated);
+        dispatch({ type: 'SAVE_COLUMN_VIEW', view: newView });
         setNewViewName('');
     };
 
-    const handleLoadView = (view: SavedView) => {
+    const handleLoadView = (view: any) => {
         // Only load keys that actually exist in colMap
-        const validKeys = view.columns.filter(k => colMap.current.has(k));
+        const validKeys = view.columns.filter((k: string) => colMap.current.has(k));
         setSelected(validKeys);
         setActiveTab('columns');
     };
 
     const handleDeleteView = (name: string) => {
         if (!confirm(`¿Eliminar la vista "${name}"?`)) return;
-        const updated = views.filter(v => v.name !== name);
-        setViews(updated);
-        saveViews(updated);
+        dispatch({ type: 'DELETE_COLUMN_VIEW', name });
     };
 
     /* Escape to close */

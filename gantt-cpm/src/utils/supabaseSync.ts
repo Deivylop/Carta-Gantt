@@ -141,6 +141,16 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
                 lv: -1,
             } as any);
         }
+        // Inject Column Views as a hidden activity
+        if (state.columnViews && state.columnViews.length > 0) {
+            acts.push({
+                ...newActivity('__VIEWS__', defCal),
+                name: '__COLUMN_VIEWS__',
+                type: 'milestone',
+                notes: JSON.stringify(state.columnViews),
+                lv: -1,
+            } as any);
+        }
         // Inject What-If scenarios as a hidden activity
         if (state.scenarios && state.scenarios.length > 0) {
             // Serialize scenarios – strip Date objects, keep ISO strings
@@ -605,6 +615,7 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
     let leanRestrictions: any[] = [];
     let depsBackup: Record<string, { id: string; type: string; lag: number }[]> = {};
     let scenarios: any[] = [];
+    let columnViews: any[] = [];
 
     // Build activities
     const activities = (actData as any[]).map(a => {
@@ -641,13 +652,16 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
         if (rawTxt5.startsWith('__BL__')) {
             try {
                 const blArr = JSON.parse(rawTxt5.slice(6));
-                na.baselines = (blArr as any[]).map((bl: any) => bl ? { dur: bl.d, ES: bl.s ? new Date(bl.s) : null, EF: bl.e ? new Date(bl.e) : null, cal: bl.c, savedAt: bl.t || '', name: bl.n || '', description: bl.desc || '', pct: bl.p || 0, work: bl.w || 0, weight: bl.wt != null ? bl.wt : null, statusDate: bl.sd || '' } : null);
+                na.baselines = (blArr as any[]).map((bl: any) => bl ? { dur: bl.d, ES: bl.s ? new Date(bl.s) : null, EF: bl.e ? new Date(bl.e) : null, cal: bl.c, savedAt: bl.t || '', name: bl.n || '', description: bl.desc || '', pct: bl.p || 0, work: bl.w || 0, weight: bl.wt != null ? bl.wt : null, statusDate: bl.sd || '' } : null) as any;
             } catch { na.baselines = []; }
             na.txt5 = '';
         } else {
             na.txt5 = rawTxt5;
             na.baselines = [];
         }
+        // Restore blWork from active baseline (index 0 by default)
+        const activeBl0 = (na.baselines || [])[0];
+        na.blWork = activeBl0 ? (activeBl0.work ?? null) : null;
         na.preds = depMap[a.local_id] || [];
         const actRes = arMap[a.id] || [];
         actRes.forEach(ar => { const pr = getPoolResource(ar.rid); if (pr) ar.name = pr.name; });
@@ -686,6 +700,11 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
             try { leanRestrictions = JSON.parse(na.notes); } catch { /* ignore */ }
             return false;
         }
+        // Extract hidden Column Views if found
+        if (na.id === '__VIEWS__') {
+            try { columnViews = JSON.parse(na.notes); } catch { /* ignore */ }
+            return false;
+        }
         // Extract hidden What-If scenarios if found
         if (na.id === '__SCENARIOS__') {
             try {
@@ -722,7 +741,7 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
         console.warn('[Supabase] Dependencies table empty — restoring from backup');
         activities.forEach(a => {
             if ((!a.preds || a.preds.length === 0) && depsBackup[a.id]) {
-                a.preds = depsBackup[a.id];
+                a.preds = depsBackup[a.id] as any;
             }
         });
     }
@@ -740,7 +759,8 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
         ppcHistory,
         leanRestrictions,
         scenarios,
-        riskState: await loadRiskStateFromSupabase(projectId),
+        columnViews,
+        riskState: (await loadRiskStateFromSupabase(projectId)) as RiskAnalysisState,
     };
 }
 

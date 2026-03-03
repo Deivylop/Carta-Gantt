@@ -5,24 +5,31 @@
 import React, { createContext, useContext, useReducer, type ReactNode } from 'react';
 import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, VisibleRow, ProgressHistoryEntry, BaselineEntry, CustomCalendar, CustomFilter, MFPConfig, LeanRestriction, PPCWeekRecord, CNCEntry, WhatIfScenario } from '../types/gantt';
 import type { DurationDistribution, RiskEvent, SimulationParams, SimulationResult, RiskAnalysisState, RiskScoringConfig } from '../types/risk';
-import { DEFAULT_RISK_STATE, DEFAULT_SIM_PARAMS } from '../types/risk';
+import { DEFAULT_RISK_STATE } from '../types/risk';
+
 import { createScenario, deepCloneActivities, rebaseScenario, recalcScenarioCPM, recordChange } from '../utils/whatIfEngine';
 import { calcCPM, calcMultipleFloatPaths, traceChain, newActivity, isoDate, parseDate, addDays, calWorkDays, fmtDate } from '../utils/cpm';
 import { autoId, computeOutlineNumbers, syncResFromString, deriveResString, distributeWork, strToPreds, predsToStr, newPoolResource } from '../utils/helpers';
 
+export interface SavedView {
+    name: string;
+    columns: string[];   // ordered keys
+    savedAt: string;     // ISO date
+}
+
 // ─── Built-in (read-only) Filters ─────────────────────────────────────────
 export const BUILTIN_FILTERS: import('../types/gantt').CustomFilter[] = [
-    { id: '_bf_critico',       name: 'Crítico',                          builtin: true, active: false, matchAll: true,  conditions: [{ id: 'c1', field: 'crit',       operator: 'equals',   value: 'Sí' }] },
-    { id: '_bf_no_critico',    name: 'No crítico',                       builtin: true, active: false, matchAll: true,  conditions: [{ id: 'c1', field: 'crit',       operator: 'equals',   value: 'No' }] },
-    { id: '_bf_en_curso',      name: 'En curso',                          builtin: true, active: false, matchAll: true,  conditions: [{ id: 'c1', field: 'pct',        operator: 'greater_than', value: '0' }, { id: 'c2', field: 'pct', operator: 'less_than', value: '100' }] },
-    { id: '_bf_finalizado',    name: 'Finalizado',                        builtin: true, active: false, matchAll: true,  conditions: [{ id: 'c1', field: 'pct',        operator: 'equals',   value: '100' }] },
-    { id: '_bf_no_iniciado',   name: 'No iniciado',                       builtin: true, active: false, matchAll: true,  conditions: [{ id: 'c1', field: 'pct',        operator: 'equals',   value: '0' }] },
-    { id: '_bf_hito',          name: 'Hito',                              builtin: true, active: false, matchAll: true,  conditions: [{ id: 'c1', field: 'type',       operator: 'equals',   value: 'Hito' }] },
-    { id: '_bf_normal',        name: 'Normal',                            builtin: true, active: false, matchAll: true,  conditions: [{ id: 'c1', field: 'type',       operator: 'equals',   value: 'Tarea' }] },
-    { id: '_bf_margen_neg',    name: 'Margen negativo',                   builtin: true, active: false, matchAll: true,  conditions: [{ id: 'c1', field: 'TF',         operator: 'less_than', value: '0' }] },
-    { id: '_bf_ruta_larga',    name: 'Ruta de acceso más larga',          builtin: true, active: false, matchAll: true,  conditions: [{ id: 'c1', field: 'floatPath',  operator: 'equals',   value: '1' }] },
-    { id: '_bf_rest_ini',      name: 'Tiene restricción de inicio',       builtin: true, active: false, matchAll: false, conditions: [{ id: 'c1', field: 'constraint', operator: 'equals',   value: 'MSO' }, { id: 'c2', field: 'constraint', operator: 'equals', value: 'SNET' }, { id: 'c3', field: 'constraint', operator: 'equals', value: 'SNLT' }] },
-    { id: '_bf_rest_fin',      name: 'Tiene restricción de finalización', builtin: true, active: false, matchAll: false, conditions: [{ id: 'c1', field: 'constraint', operator: 'equals',   value: 'MFO'  }, { id: 'c2', field: 'constraint', operator: 'equals', value: 'FNLT' }, { id: 'c3', field: 'constraint', operator: 'equals', value: 'FNET' }] },
+    { id: '_bf_critico', name: 'Crítico', builtin: true, active: false, matchAll: true, conditions: [{ id: 'c1', field: 'crit', operator: 'equals', value: 'Sí' }] },
+    { id: '_bf_no_critico', name: 'No crítico', builtin: true, active: false, matchAll: true, conditions: [{ id: 'c1', field: 'crit', operator: 'equals', value: 'No' }] },
+    { id: '_bf_en_curso', name: 'En curso', builtin: true, active: false, matchAll: true, conditions: [{ id: 'c1', field: 'pct', operator: 'greater_than', value: '0' }, { id: 'c2', field: 'pct', operator: 'less_than', value: '100' }] },
+    { id: '_bf_finalizado', name: 'Finalizado', builtin: true, active: false, matchAll: true, conditions: [{ id: 'c1', field: 'pct', operator: 'equals', value: '100' }] },
+    { id: '_bf_no_iniciado', name: 'No iniciado', builtin: true, active: false, matchAll: true, conditions: [{ id: 'c1', field: 'pct', operator: 'equals', value: '0' }] },
+    { id: '_bf_hito', name: 'Hito', builtin: true, active: false, matchAll: true, conditions: [{ id: 'c1', field: 'type', operator: 'equals', value: 'Hito' }] },
+    { id: '_bf_normal', name: 'Normal', builtin: true, active: false, matchAll: true, conditions: [{ id: 'c1', field: 'type', operator: 'equals', value: 'Tarea' }] },
+    { id: '_bf_margen_neg', name: 'Margen negativo', builtin: true, active: false, matchAll: true, conditions: [{ id: 'c1', field: 'TF', operator: 'less_than', value: '0' }] },
+    { id: '_bf_ruta_larga', name: 'Ruta de acceso más larga', builtin: true, active: false, matchAll: true, conditions: [{ id: 'c1', field: 'floatPath', operator: 'equals', value: '1' }] },
+    { id: '_bf_rest_ini', name: 'Tiene restricción de inicio', builtin: true, active: false, matchAll: false, conditions: [{ id: 'c1', field: 'constraint', operator: 'equals', value: 'MSO' }, { id: 'c2', field: 'constraint', operator: 'equals', value: 'SNET' }, { id: 'c3', field: 'constraint', operator: 'equals', value: 'SNLT' }] },
+    { id: '_bf_rest_fin', name: 'Tiene restricción de finalización', builtin: true, active: false, matchAll: false, conditions: [{ id: 'c1', field: 'constraint', operator: 'equals', value: 'MFO' }, { id: 'c2', field: 'constraint', operator: 'equals', value: 'FNLT' }, { id: 'c3', field: 'constraint', operator: 'equals', value: 'FNET' }] },
 ];
 
 // ─── Column Definitions ─────────────────────────────────────────
@@ -60,8 +67,13 @@ export const DEFAULT_COLS: ColumnDef[] = [
     { key: 'remStartDate', label: 'Inicio Trab. Rest.', w: 105, edit: false, cls: 'tcell-date', visible: false },
     { key: 'remEndDate', label: 'Fin Trab. Rest.', w: 105, edit: false, cls: 'tcell-date', visible: false },
     { key: 'blDur', label: 'Dur. LB', w: 60, edit: false, cls: 'tcell-dur', visible: false },
-    { key: 'blStart', label: 'Inicio LB', w: 90, edit: false, cls: 'tcell-date', visible: false },
+    { key: 'blStart', label: 'Comienzo LB', w: 90, edit: false, cls: 'tcell-date', visible: false },
     { key: 'blEnd', label: 'Fin LB', w: 90, edit: false, cls: 'tcell-date', visible: false },
+    { key: 'blWork', label: 'Trabajo LB', w: 75, edit: false, cls: 'tcell-dur', visible: false },
+    { key: 'varStart', label: 'Variación Comienzo', w: 90, edit: false, cls: 'tcell-dur', visible: false },
+    { key: 'varEnd', label: 'Variación Fin', w: 90, edit: false, cls: 'tcell-dur', visible: false },
+    { key: 'varDur', label: 'Variación Duración', w: 90, edit: false, cls: 'tcell-dur', visible: false },
+    { key: 'varWork', label: 'Variación Trabajo', w: 90, edit: false, cls: 'tcell-dur', visible: false },
     { key: 'type', label: 'Tipo', w: 70, edit: false, cls: 'tcell-num', visible: false },
     { key: 'lv', label: 'WBS/Nivel', w: 50, edit: false, cls: 'tcell-num', visible: false },
     { key: 'constraint', label: 'Restricción', w: 80, edit: false, cls: 'tcell-date', visible: false },
@@ -103,7 +115,7 @@ export interface GanttState {
     showStatusLine: boolean;
     showDependencies: boolean;
     // View state
-    currentView: 'gantt' | 'resources' | 'scurve' | 'usage' | 'resUsage';
+    currentView: 'gantt' | 'resources' | 'scurve' | 'usage' | 'resUsage' | 'wbs';
     collapsed: Set<string>;
     expResources: Set<string>;
     tableW: number;       // Global table width
@@ -144,6 +156,8 @@ export interface GanttState {
     // Lean Construction / Last Planner System
     leanRestrictions: LeanRestriction[];
     ppcHistory: PPCWeekRecord[];
+    // Saved Column Views
+    columnViews: SavedView[];
     // What-If Scenarios
     scenarios: WhatIfScenario[];
     activeScenarioId: string | null;
@@ -170,7 +184,7 @@ export type Action =
     | { type: 'TOGGLE_TODAY_LINE' }
     | { type: 'TOGGLE_STATUS_LINE' }
     | { type: 'TOGGLE_DEPENDENCIES' }
-    | { type: 'SET_VIEW'; view: 'gantt' | 'resources' | 'scurve' | 'usage' | 'resUsage' }
+    | { type: 'SET_VIEW'; view: 'gantt' | 'resources' | 'scurve' | 'usage' | 'resUsage' | 'wbs' }
     | { type: 'SET_TABLE_W', width: number }
     | { type: 'TOGGLE_USAGE_MODE'; mode: string }
     | { type: 'SET_USAGE_ZOOM'; zoom: GanttState['usageZoom'] }
@@ -187,6 +201,8 @@ export type Action =
     | { type: 'PUSH_UNDO' }
     | { type: 'SET_COLUMN_VISIBLE'; key: string; visible: boolean }
     | { type: 'SET_COLUMNS_ORDER'; columns: ColumnDef[]; colWidths: number[] }
+    | { type: 'SAVE_COLUMN_VIEW'; view: SavedView }
+    | { type: 'DELETE_COLUMN_VIEW'; name: string }
     | { type: 'SET_COL_WIDTH'; index: number; width: number }
     | { type: 'SET_SHOW_PROJ_ROW'; show: boolean }
     | { type: 'INDENT'; dir: number }
@@ -1173,6 +1189,18 @@ function reducer(state: GanttState, action: Action): GanttState {
             return { ...state, columns: action.columns, colWidths: action.colWidths };
         }
 
+        case 'SAVE_COLUMN_VIEW': {
+            const views = [...state.columnViews];
+            const idx = views.findIndex(v => v.name === action.view.name);
+            if (idx >= 0) views[idx] = action.view;
+            else views.push(action.view);
+            return { ...state, columnViews: views };
+        }
+
+        case 'DELETE_COLUMN_VIEW': {
+            return { ...state, columnViews: state.columnViews.filter(v => v.name !== action.name) };
+        }
+
         case 'SET_COL_WIDTH': {
             const cw = [...state.colWidths];
             cw[action.index] = Math.max(20, action.width);
@@ -1358,6 +1386,7 @@ function reducer(state: GanttState, action: Action): GanttState {
                         blES: active ? active.ES : null,
                         blEF: active ? active.EF : null,
                         blCal: active ? active.cal : null,
+                        blWork: active ? (active.work ?? null) : null,
                     };
                 }
                 baselines[blIdx] = {
@@ -1382,6 +1411,7 @@ function reducer(state: GanttState, action: Action): GanttState {
                     blES: active ? active.ES : null,
                     blEF: active ? active.EF : null,
                     blCal: active ? active.cal : null,
+                    blWork: active ? (active.work ?? null) : null,
                 };
             });
             return recalc({ ...state, activeBaselineIdx: newActiveIdx, activities: acts });
@@ -1397,6 +1427,7 @@ function reducer(state: GanttState, action: Action): GanttState {
                     blES: bl ? bl.ES : null,
                     blEF: bl ? bl.EF : null,
                     blCal: bl ? bl.cal : null,
+                    blWork: bl ? (bl.work ?? null) : null,
                 };
             });
             return recalc({ ...state, activeBaselineIdx: blIdx, activities: acts });
@@ -1412,7 +1443,7 @@ function reducer(state: GanttState, action: Action): GanttState {
                 return {
                     ...a,
                     baselines,
-                    ...(isActive ? { blDur: null, blES: null, blEF: null, blCal: null } : {}),
+                    ...(isActive ? { blDur: null, blES: null, blEF: null, blCal: null, blWork: null } : {}),
                 };
             });
             return { ...state, activities: acts, visRows: buildVisRows(acts, state.collapsed, state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes) };
@@ -1662,15 +1693,17 @@ function reducer(state: GanttState, action: Action): GanttState {
             return { ...state, checkModalOpen: false };
 
         case 'SET_CUSTOM_FILTERS':
-            return recalc({ ...state, customFilters: [
-                // Re-inject builtins, taking active state from action.filters if present
-                ...BUILTIN_FILTERS.map(bf => {
-                    const saved = action.filters.find(f => f.id === bf.id);
-                    return { ...bf, active: saved ? saved.active : bf.active };
-                }),
-                // Keep only user (non-builtin) filters from the action
-                ...action.filters.filter(f => !f.builtin)
-            ] });
+            return recalc({
+                ...state, customFilters: [
+                    // Re-inject builtins, taking active state from action.filters if present
+                    ...BUILTIN_FILTERS.map(bf => {
+                        const saved = action.filters.find(f => f.id === bf.id);
+                        return { ...bf, active: saved ? saved.active : bf.active };
+                    }),
+                    // Keep only user (non-builtin) filters from the action
+                    ...action.filters.filter(f => !f.builtin)
+                ]
+            });
 
         case 'SET_FILTERS_MATCH_ALL':
             return recalc({ ...state, filtersMatchAll: action.matchAll });
@@ -1995,6 +2028,7 @@ const initialState: GanttState = {
     spotlightEnd: null,
     leanRestrictions: [],
     ppcHistory: [],
+    columnViews: [],
     scenarios: [],
     activeScenarioId: null,
     riskState: { ...DEFAULT_RISK_STATE },

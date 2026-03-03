@@ -75,10 +75,10 @@ export interface BaselineEntry {
 
 /** Restriction categories (Make Ready process) */
 export type RestrictionCategory =
-  | 'Sin Restricción'
-  | 'Material' | 'Mano de Obra' | 'Equipos' | 'Información'
-  | 'Espacio' | 'Actividad Previa' | 'Permisos' | 'Diseño'
-  | 'Subcontrato' | 'Calidad' | 'Seguridad' | 'Otro';
+    | 'Sin Restricción'
+    | 'Material' | 'Mano de Obra' | 'Equipos' | 'Información'
+    | 'Espacio' | 'Actividad Previa' | 'Permisos' | 'Diseño'
+    | 'Subcontrato' | 'Calidad' | 'Seguridad' | 'Otro';
 
 /** Restriction lifecycle status */
 export type RestrictionStatus = 'Pendiente' | 'En Gestión' | 'Liberada' | 'No Liberada';
@@ -99,9 +99,9 @@ export interface LeanRestriction {
 
 /** CNC (Causas de No Cumplimiento) categories – root cause analysis */
 export type CNCCategory =
-  | 'Sin Restricción' | 'Programación' | 'Material' | 'Mano de Obra' | 'Equipos'
-  | 'Subcontrato' | 'Clima' | 'Diseño' | 'Cliente'
-  | 'Actividad Previa' | 'Calidad' | 'Seguridad' | 'Otro';
+    | 'Sin Restricción' | 'Programación' | 'Material' | 'Mano de Obra' | 'Equipos'
+    | 'Subcontrato' | 'Clima' | 'Diseño' | 'Cliente'
+    | 'Actividad Previa' | 'Calidad' | 'Seguridad' | 'Otro';
 
 /** Individual CNC entry for a non-completed commitment */
 export interface CNCEntry {
@@ -126,11 +126,11 @@ export interface PPCWeekRecord {
 
 /** Kanban column status for Look Ahead visual management */
 export type KanbanStatus =
-  | 'Inventario'          // Backlog – identified but not yet in window
-  | 'Con Restricciones'   // Has pending constraints
-  | 'Libre'               // All constraints released – ready to execute
-  | 'En Ejecución'        // Work in progress (pct > 0)
-  | 'Completada';         // Done (pct = 100)
+    | 'Inventario'          // Backlog – identified but not yet in window
+    | 'Con Restricciones'   // Has pending constraints
+    | 'Libre'               // All constraints released – ready to execute
+    | 'En Ejecución'        // Work in progress (pct > 0)
+    | 'Completada';         // Done (pct = 100)
 
 // ─── Activity ───────────────────────────────────────────────────
 export interface Activity {
@@ -169,6 +169,7 @@ export interface Activity {
     blES: Date | null;    // Baseline Early Start
     blEF: Date | null;    // Baseline Early Finish
     blCal: CalendarType | null; // Baseline Calendar
+    blWork: number | null; // Baseline Work (hours)
     baselines: BaselineEntry[]; // 0-10 baselines
 
     // ── Lean Construction / Last Planner ──

@@ -52,8 +52,6 @@ export default function EPSModal({ open, onClose }: Props) {
 
     if (!open) return null;
 
-    const selectedEps = state.epsNodes.find(e => e.id === selectedEpsId) || null;
-
     // ── Build flat EPS tree ──
     type FlatEps = { data: EPSNode; depth: number; hasChildren: boolean; expanded: boolean };
     const flatTree: FlatEps[] = [];

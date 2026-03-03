@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useGantt } from '../../store/GanttContext';
 import { useResizable } from '../../hooks/useResizable';
 import { Filter, Plus, Trash2, Copy, Check, Lock } from 'lucide-react';

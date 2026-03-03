@@ -790,14 +790,14 @@ export default function GanttTimeline() {
                 const newES = addDays(drag.origES, dayShift);
                 const bx = dayDiff(projStart, newES) * PX;
                 const cal = activities[drag.idx]?.cal || defCal;
-                const f = CAL_F[cal] || CAL_F[6];
+                const f = CAL_F[cal as keyof typeof CAL_F] || CAL_F[6];
                 const bw = Math.max(4, (drag.origDur || 1) * PX * f);
                 dragPreviewRef.current = { x: bx, y: drag.visIdx * ROW_H + 5, w: bw, h: ROW_H - 10, mode: 'move', dateLabel: fmtDate(newES) };
                 draw();
             } else if (drag.mode === 'resize') {
                 const dx = mx - drag.startMX;
                 const cal = activities[drag.idx]?.cal || defCal;
-                const f = CAL_F[cal] || CAL_F[6];
+                const f = CAL_F[cal as keyof typeof CAL_F] || CAL_F[6];
                 const origBw = Math.max(4, Math.round(drag.origDur * f) * PX);
                 const newBw = Math.max(PX, origBw + dx);
                 const newCalDays = Math.round(newBw / PX);
@@ -875,7 +875,7 @@ export default function GanttTimeline() {
         } else if (drag.mode === 'resize' && didDragRef.current) {
             const dx = mx - drag.startMX;
             const cal = activities[drag.idx]?.cal || defCal;
-            const f = CAL_F[cal] || CAL_F[6];
+            const f = CAL_F[cal as keyof typeof CAL_F] || CAL_F[6];
             const origBw = Math.max(4, Math.round(drag.origDur * f) * PX);
             const newBw = Math.max(PX, origBw + dx);
             const newCalDays = Math.round(newBw / PX);

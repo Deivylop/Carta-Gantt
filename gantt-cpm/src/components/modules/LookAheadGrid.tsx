@@ -15,10 +15,10 @@ import RowContextMenu from '../RowContextMenu';
 const WEEK_DAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 const RESTR_CATS: RestrictionCategory[] = [
   'Sin Restricción',
-  'Material','Mano de Obra','Equipos','Información','Espacio',
-  'Actividad Previa','Permisos','Diseño','Subcontrato','Calidad','Seguridad','Otro',
+  'Material', 'Mano de Obra', 'Equipos', 'Información', 'Espacio',
+  'Actividad Previa', 'Permisos', 'Diseño', 'Subcontrato', 'Calidad', 'Seguridad', 'Otro',
 ];
-const RESTR_STATUSES: RestrictionStatus[] = ['Pendiente','En Gestión','Liberada','No Liberada'];
+const RESTR_STATUSES: RestrictionStatus[] = ['Pendiente', 'En Gestión', 'Liberada', 'No Liberada'];
 const STATUS_COLORS: Record<RestrictionStatus, string> = {
   'Pendiente': '#ef4444', 'En Gestión': '#f59e0b', 'Liberada': '#22c55e', 'No Liberada': '#64748b',
 };
@@ -36,62 +36,62 @@ interface ColDef {
 }
 const COL_DEFS: ColDef[] = [
   /* ── Originales Look Ahead ── */
-  { key: 'id',        label: 'ID',          defaultWidth: 50,  minWidth: 35,  align: 'left'   },
-  { key: 'name',      label: 'Actividad',   defaultWidth: 180, minWidth: 100, align: 'left'   },
+  { key: 'id', label: 'ID', defaultWidth: 50, minWidth: 35, align: 'left' },
+  { key: 'name', label: 'Actividad', defaultWidth: 180, minWidth: 100, align: 'left' },
   /* ── Last Planner ── */
-  { key: 'encargado', label: 'Encargado',   defaultWidth: 100, minWidth: 60,  align: 'left'   },
-  { key: 'pct',       label: 'Avance',      defaultWidth: 60,  minWidth: 40,  align: 'center' },
-  { key: 'pctProgr',  label: '% Progr. LH', defaultWidth: 75,  minWidth: 50,  align: 'center' },
-  { key: 'estado',    label: 'Estado',      defaultWidth: 70,  minWidth: 50,  align: 'center' },
-  { key: 'tipoRestr', label: 'Tipo Restr.', defaultWidth: 100, minWidth: 70,  align: 'left'   },
-  { key: 'estRestr',  label: 'Est. Restr.', defaultWidth: 80,  minWidth: 55,  align: 'center' },
-  { key: 'dias',      label: 'Días',        defaultWidth: 45,  minWidth: 30,  align: 'center' },
-  { key: 'fPrevista', label: 'F. Prevista', defaultWidth: 85,  minWidth: 65,  align: 'center' },
-  { key: 'fLiberado', label: 'F. Liberado', defaultWidth: 85,  minWidth: 65,  align: 'center' },
+  { key: 'encargado', label: 'Encargado', defaultWidth: 100, minWidth: 60, align: 'left' },
+  { key: 'pct', label: 'Avance', defaultWidth: 60, minWidth: 40, align: 'center' },
+  { key: 'pctProgr', label: '% Progr. LH', defaultWidth: 75, minWidth: 50, align: 'center' },
+  { key: 'estado', label: 'Estado', defaultWidth: 70, minWidth: 50, align: 'center' },
+  { key: 'tipoRestr', label: 'Tipo Restr.', defaultWidth: 100, minWidth: 70, align: 'left' },
+  { key: 'estRestr', label: 'Est. Restr.', defaultWidth: 80, minWidth: 55, align: 'center' },
+  { key: 'dias', label: 'Días', defaultWidth: 45, minWidth: 30, align: 'center' },
+  { key: 'fPrevista', label: 'F. Prevista', defaultWidth: 85, minWidth: 65, align: 'center' },
+  { key: 'fLiberado', label: 'F. Liberado', defaultWidth: 85, minWidth: 65, align: 'center' },
   /* ── General (Carta Gantt) ── */
-  { key: 'outlineNum',label: 'EDT',         defaultWidth: 55,  minWidth: 35,  align: 'left'   },
-  { key: 'type',      label: 'Tipo',        defaultWidth: 70,  minWidth: 50,  align: 'center' },
-  { key: 'lv',        label: 'WBS/Nivel',   defaultWidth: 50,  minWidth: 30,  align: 'center' },
-  { key: 'notes',     label: 'Notas',       defaultWidth: 120, minWidth: 60,  align: 'left'   },
+  { key: 'outlineNum', label: 'EDT', defaultWidth: 55, minWidth: 35, align: 'left' },
+  { key: 'type', label: 'Tipo', defaultWidth: 70, minWidth: 50, align: 'center' },
+  { key: 'lv', label: 'WBS/Nivel', defaultWidth: 50, minWidth: 30, align: 'center' },
+  { key: 'notes', label: 'Notas', defaultWidth: 120, minWidth: 60, align: 'left' },
   /* ── Duraciones ── */
-  { key: 'dur',       label: 'Duración',    defaultWidth: 70,  minWidth: 45,  align: 'center' },
-  { key: 'remDur',    label: 'Dur. Resta',  defaultWidth: 70,  minWidth: 45,  align: 'center' },
+  { key: 'dur', label: 'Duración', defaultWidth: 70, minWidth: 45, align: 'center' },
+  { key: 'remDur', label: 'Dur. Resta', defaultWidth: 70, minWidth: 45, align: 'center' },
   /* ── Fechas ── */
-  { key: 'startDate', label: 'Comienzo',    defaultWidth: 90,  minWidth: 65,  align: 'center' },
-  { key: 'endDate',   label: 'Fin',         defaultWidth: 90,  minWidth: 65,  align: 'center' },
+  { key: 'startDate', label: 'Comienzo', defaultWidth: 90, minWidth: 65, align: 'center' },
+  { key: 'endDate', label: 'Fin', defaultWidth: 90, minWidth: 65, align: 'center' },
   { key: 'actualStart', label: 'Comienzo Real', defaultWidth: 95, minWidth: 65, align: 'center' },
-  { key: 'actualFinish',label: 'Fin Real',  defaultWidth: 95,  minWidth: 65,  align: 'center' },
-  { key: 'constraint', label: 'Restricción',defaultWidth: 80,  minWidth: 50,  align: 'center' },
+  { key: 'actualFinish', label: 'Fin Real', defaultWidth: 95, minWidth: 65, align: 'center' },
+  { key: 'constraint', label: 'Restricción', defaultWidth: 80, minWidth: 50, align: 'center' },
   { key: 'constraintDate', label: 'Fecha Restr.', defaultWidth: 90, minWidth: 65, align: 'center' },
   /* ── Relaciones ── */
-  { key: 'predStr',   label: 'Predecesoras',defaultWidth: 100, minWidth: 60,  align: 'left'   },
+  { key: 'predStr', label: 'Predecesoras', defaultWidth: 100, minWidth: 60, align: 'left' },
   /* ── Avance ── */
-  { key: 'plannedPct',label: '% Prog.',     defaultWidth: 65,  minWidth: 45,  align: 'center' },
+  { key: 'plannedPct', label: '% Prog.', defaultWidth: 65, minWidth: 45, align: 'center' },
   /* ── Recursos ── */
-  { key: 'res',       label: 'Recursos',    defaultWidth: 110, minWidth: 60,  align: 'left'   },
-  { key: 'cal',       label: 'Calendario',  defaultWidth: 60,  minWidth: 40,  align: 'center' },
+  { key: 'res', label: 'Recursos', defaultWidth: 110, minWidth: 60, align: 'left' },
+  { key: 'cal', label: 'Calendario', defaultWidth: 60, minWidth: 40, align: 'center' },
   /* ── Trabajo / EVM ── */
-  { key: 'work',      label: 'Trabajo',     defaultWidth: 70,  minWidth: 45,  align: 'center' },
-  { key: 'earnedValue',label: 'Valor Ganado',defaultWidth: 85,  minWidth: 55,  align: 'center' },
-  { key: 'remainingWork',label: 'Trab. Restante', defaultWidth: 90, minWidth: 55, align: 'center' },
-  { key: 'weight',    label: 'Peso %',      defaultWidth: 65,  minWidth: 40,  align: 'center' },
+  { key: 'work', label: 'Trabajo', defaultWidth: 70, minWidth: 45, align: 'center' },
+  { key: 'earnedValue', label: 'Valor Ganado', defaultWidth: 85, minWidth: 55, align: 'center' },
+  { key: 'remainingWork', label: 'Trab. Restante', defaultWidth: 90, minWidth: 55, align: 'center' },
+  { key: 'weight', label: 'Peso %', defaultWidth: 65, minWidth: 40, align: 'center' },
   /* ── Línea Base ── */
-  { key: 'blDur',     label: 'Dur. LB',     defaultWidth: 60,  minWidth: 40,  align: 'center' },
-  { key: 'blStart',   label: 'Inicio LB',   defaultWidth: 90,  minWidth: 65,  align: 'center' },
-  { key: 'blEnd',     label: 'Fin LB',      defaultWidth: 90,  minWidth: 65,  align: 'center' },
+  { key: 'blDur', label: 'Dur. LB', defaultWidth: 60, minWidth: 40, align: 'center' },
+  { key: 'blStart', label: 'Inicio LB', defaultWidth: 90, minWidth: 65, align: 'center' },
+  { key: 'blEnd', label: 'Fin LB', defaultWidth: 90, minWidth: 65, align: 'center' },
   /* ── Holguras ── */
-  { key: 'TF',        label: 'Holgura Total',defaultWidth: 75,  minWidth: 45,  align: 'center' },
-  { key: 'FF',        label: 'Holgura Libre',defaultWidth: 75,  minWidth: 45,  align: 'center' },
-  { key: 'floatPath', label: 'Float Path',  defaultWidth: 70,  minWidth: 45,  align: 'center' },
+  { key: 'TF', label: 'Holgura Total', defaultWidth: 75, minWidth: 45, align: 'center' },
+  { key: 'FF', label: 'Holgura Libre', defaultWidth: 75, minWidth: 45, align: 'center' },
+  { key: 'floatPath', label: 'Float Path', defaultWidth: 70, minWidth: 45, align: 'center' },
   /* ── CPM ── */
-  { key: 'crit',      label: 'Crítico',     defaultWidth: 55,  minWidth: 35,  align: 'center' },
-  { key: 'activityCount', label: 'Recuento',defaultWidth: 70,  minWidth: 45,  align: 'center' },
+  { key: 'crit', label: 'Crítico', defaultWidth: 55, minWidth: 35, align: 'center' },
+  { key: 'activityCount', label: 'Recuento', defaultWidth: 70, minWidth: 45, align: 'center' },
   /* ── Personalizado ── */
-  { key: 'txt1',      label: 'Texto 1',     defaultWidth: 100, minWidth: 60,  align: 'left'   },
-  { key: 'txt2',      label: 'Texto 2',     defaultWidth: 100, minWidth: 60,  align: 'left'   },
-  { key: 'txt3',      label: 'Texto 3',     defaultWidth: 100, minWidth: 60,  align: 'left'   },
-  { key: 'txt4',      label: 'Texto 4',     defaultWidth: 100, minWidth: 60,  align: 'left'   },
-  { key: 'txt5',      label: 'Texto 5',     defaultWidth: 100, minWidth: 60,  align: 'left'   },
+  { key: 'txt1', label: 'Texto 1', defaultWidth: 100, minWidth: 60, align: 'left' },
+  { key: 'txt2', label: 'Texto 2', defaultWidth: 100, minWidth: 60, align: 'left' },
+  { key: 'txt3', label: 'Texto 3', defaultWidth: 100, minWidth: 60, align: 'left' },
+  { key: 'txt4', label: 'Texto 4', defaultWidth: 100, minWidth: 60, align: 'left' },
+  { key: 'txt5', label: 'Texto 5', defaultWidth: 100, minWidth: 60, align: 'left' },
 ];
 const COL_MAP = Object.fromEntries(COL_DEFS.map(c => [c.key, c])) as Record<string, ColDef>;
 
@@ -476,9 +476,9 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
       case 'encargado':
         return editingEncargado === act.id
           ? <input autoFocus list="encargados-list" value={encargadoVal} onChange={e => setEncargadoVal(e.target.value)}
-              onBlur={() => commitEncargado(act.id)}
-              onKeyDown={e => { if (e.key === 'Enter') commitEncargado(act.id); if (e.key === 'Escape') setEditingEncargado(null); }}
-              style={inputS} />
+            onBlur={() => commitEncargado(act.id)}
+            onKeyDown={e => { if (e.key === 'Enter') commitEncargado(act.id); if (e.key === 'Escape') setEditingEncargado(null); }}
+            style={inputS} />
           : <span style={{ color: act.encargado ? 'var(--text-primary)' : 'var(--text-muted)' }}>{act.encargado || '—'}</span>;
 
       case 'pct':
@@ -504,8 +504,8 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
       case 'tipoRestr':
         return isEditing(act.id, 'category')
           ? <select autoFocus value={editVal} onChange={e => setEditVal(e.target.value)} onBlur={commitEdit} style={inputS}>
-              {RESTR_CATS.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+            {RESTR_CATS.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
           : pr
             ? <span style={{ padding: '1px 5px', borderRadius: 3, background: 'var(--bg-input)', color: rc?.pending ? '#f97316' : '#22c55e', whiteSpace: 'nowrap' }}>{pr.category}</span>
             : <span style={{ color: 'var(--text-muted)' }}>—</span>;
@@ -513,8 +513,8 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
       case 'estRestr':
         return isEditing(act.id, 'status')
           ? <select autoFocus value={editVal} onChange={e => setEditVal(e.target.value)} onBlur={commitEdit} style={inputS}>
-              {RESTR_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
+            {RESTR_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
           : pr
             ? <span style={{ padding: '1px 6px', borderRadius: 4, fontSize: 9, fontWeight: 600, background: STATUS_COLORS[pr.status] + '22', color: STATUS_COLORS[pr.status] }}>{pr.status}</span>
             : <span style={{ color: 'var(--text-muted)' }}>—</span>;
@@ -527,20 +527,20 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
       case 'fPrevista':
         return isEditing(act.id, 'plannedReleaseDate')
           ? <input type="date" autoFocus value={editVal} onChange={e => setEditVal(e.target.value)}
-              onBlur={commitEdit} onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditCell(null); }}
-              style={inputS} />
+            onBlur={commitEdit} onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditCell(null); }}
+            style={inputS} />
           : pr?.plannedReleaseDate ? (() => {
-              const pd = parseDate(pr.plannedReleaseDate);
-              const isOverdue = pd && pd < today && pr.status !== 'Liberada';
-              return <span style={{ color: isOverdue ? '#ef4444' : pr.status !== 'Liberada' ? '#f59e0b' : '#22c55e', fontWeight: isOverdue ? 700 : 400 }}>{pd ? fmtDate(pd) : pr.plannedReleaseDate}</span>;
-            })()
-          : <span style={{ color: 'var(--text-muted)' }}>—</span>;
+            const pd = parseDate(pr.plannedReleaseDate);
+            const isOverdue = pd && pd < today && pr.status !== 'Liberada';
+            return <span style={{ color: isOverdue ? '#ef4444' : pr.status !== 'Liberada' ? '#f59e0b' : '#22c55e', fontWeight: isOverdue ? 700 : 400 }}>{pd ? fmtDate(pd) : pr.plannedReleaseDate}</span>;
+          })()
+            : <span style={{ color: 'var(--text-muted)' }}>—</span>;
 
       case 'fLiberado':
         return isEditing(act.id, 'actualReleaseDate')
           ? <input type="date" autoFocus value={editVal} onChange={e => setEditVal(e.target.value)}
-              onBlur={commitEdit} onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditCell(null); }}
-              style={inputS} />
+            onBlur={commitEdit} onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditCell(null); }}
+            style={inputS} />
           : pr?.actualReleaseDate
             ? <span style={{ color: '#22c55e' }}>{fmtDate(parseDate(pr.actualReleaseDate))}</span>
             : <span style={{ color: 'var(--text-muted)' }}>—</span>;
@@ -622,7 +622,7 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
     switch (key) {
       case 'encargado': return () => { setEditingEncargado(act.id); setEncargadoVal(act.encargado || ''); };
       case 'tipoRestr': return () => startEdit(act.id, 'category', pr?.category || 'Sin Restricción');
-      case 'estRestr':  return () => startEdit(act.id, 'status', pr?.status || 'Liberada');
+      case 'estRestr': return () => startEdit(act.id, 'status', pr?.status || 'Liberada');
       case 'fPrevista': return () => startEdit(act.id, 'plannedReleaseDate', pr?.plannedReleaseDate || '');
       case 'fLiberado': return () => startEdit(act.id, 'actualReleaseDate', pr?.actualReleaseDate || '');
       default: return undefined;
@@ -691,9 +691,11 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
         {/* Column picker – opens full modal like Carta Gantt */}
         <div style={{ position: 'relative' }}>
           <button onClick={() => setShowColPicker(true)}
-            style={{ background: 'var(--bg-input)', border: '1px solid var(--border-secondary)', borderRadius: 4,
+            style={{
+              background: 'var(--bg-input)', border: '1px solid var(--border-secondary)', borderRadius: 4,
               padding: '3px 8px', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex',
-              alignItems: 'center', gap: 4, fontSize: 10 }}>
+              alignItems: 'center', gap: 4, fontSize: 10
+            }}>
             <Settings2 size={12} /> Columnas
           </button>
         </div>
@@ -754,8 +756,10 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
                     </div>
                     {/* resize handle */}
                     <div draggable={false}
-                      style={{ position: 'absolute', right: -2, top: 0, bottom: 0, width: 5,
-                        cursor: 'col-resize', zIndex: 1 }}
+                      style={{
+                        position: 'absolute', right: -2, top: 0, bottom: 0, width: 5,
+                        cursor: 'col-resize', zIndex: 1
+                      }}
                       onMouseDown={e => onResizeStart(colKey, e)}
                     />
                   </th>
@@ -763,10 +767,12 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
               })}
               {weekGroups.map((wg, i) => (
                 <th key={`wg-${i}`} colSpan={wg.span}
-                  style={{ background: 'var(--bg-header)', padding: '3px 0',
+                  style={{
+                    background: 'var(--bg-header)', padding: '3px 0',
                     borderBottom: '1px solid var(--border-secondary)',
                     borderRight: '1px solid var(--border-primary)',
-                    textAlign: 'center', color: 'var(--text-accent)', fontSize: 10, fontWeight: 600 }}>
+                    textAlign: 'center', color: 'var(--text-accent)', fontSize: 10, fontWeight: 600
+                  }}>
                   {wg.label}
                 </th>
               ))}
@@ -777,13 +783,15 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
                 const isTodayCol = state.showTodayLine && i === todayDayIdx;
                 const isStatusCol = state.showStatusLine && i === statusDayIdx;
                 return (
-                  <th key={i} style={{ padding: '2px 0', borderBottom: '1px solid var(--border-primary)',
+                  <th key={i} style={{
+                    padding: '2px 0', borderBottom: '1px solid var(--border-primary)',
                     borderRight: '1px solid var(--border-primary)', textAlign: 'center',
                     fontSize: dayColWidth < 32 ? 8 : 9, color: d.isWeekend ? 'var(--text-muted)' : 'var(--text-secondary)',
                     background: isTodayCol ? 'rgba(245,158,11,0.12)'
                       : isStatusCol ? 'rgba(6,182,212,0.12)'
-                      : d.isWeekend ? 'rgba(99,102,241,0.05)' : 'var(--bg-header)',
-                    overflow: 'hidden', position: 'relative' }}>
+                        : d.isWeekend ? 'rgba(99,102,241,0.05)' : 'var(--bg-header)',
+                    overflow: 'hidden', position: 'relative'
+                  }}>
                     {dayColWidth >= 28 && <div>{d.dayName}</div>}
                     <div style={{ fontWeight: 600 }}>{d.date.getDate()}</div>
                     {isTodayCol && <div style={{ position: 'absolute', top: 0, bottom: -1, right: -1, width: 2, background: '#f59e0b', zIndex: 5, pointerEvents: 'none' }} />}
@@ -816,8 +824,6 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
               const endIdx = days.findIndex(d => d.iso === isoDate(act._end));
               const barStartDay = Math.max(startIdx, 0);
               const barEndDay = endIdx >= 0 ? endIdx : days.length - 1;
-              const barLeft = barStartDay * dayColWidth + (startIdx >= 0 ? 2 : 0);
-              const barRight = (days.length - barEndDay - 1) * dayColWidth + (endIdx >= 0 ? 2 : 0);
               const barTotalW = (barEndDay - barStartDay + 1) * dayColWidth - (startIdx >= 0 ? 2 : 0) - (endIdx >= 0 ? 2 : 0);
 
               // Progress width — extends up to statusDate (like Carta Gantt)
@@ -876,11 +882,13 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
                     return (
                       <td key={colKey} data-colkey={colKey}
                         onDoubleClick={dbl ? (e) => { e.stopPropagation(); dbl(); } : undefined}
-                        style={{ padding: '2px 6px', borderRight: '1px solid var(--border-primary)',
+                        style={{
+                          padding: '2px 6px', borderRight: '1px solid var(--border-primary)',
                           width: w, minWidth: w, maxWidth: w, textAlign: def.align,
                           overflow: 'hidden', fontSize: colKey === 'name' ? 11 : 10,
                           cursor: dbl ? 'pointer' : 'default',
-                          paddingLeft: isSummaryRow && colKey === 'name' ? (2 + Math.max(0, act.lv) * 14) : undefined }}>
+                          paddingLeft: isSummaryRow && colKey === 'name' ? (2 + Math.max(0, act.lv) * 14) : undefined
+                        }}>
                         {isSummaryRow && colKey === 'name'
                           ? <span style={{ color: 'var(--text-accent)' }}>▾ {act.name}</span>
                           : renderCell(colKey, act)}
@@ -892,11 +900,13 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
                     const isTodayCol = state.showTodayLine && di === todayDayIdx;
                     const isStatusCol = state.showStatusLine && di === statusDayIdx;
                     return (
-                      <td key={di} style={{ padding: 0, borderRight: '1px solid var(--border-primary)',
+                      <td key={di} style={{
+                        padding: 0, borderRight: '1px solid var(--border-primary)',
                         background: isTodayCol ? 'rgba(245,158,11,0.08)'
                           : isStatusCol ? 'rgba(6,182,212,0.08)'
-                          : d.isWeekend ? 'rgba(99,102,241,0.04)' : 'transparent',
-                        position: 'relative', height: 28 }}>
+                            : d.isWeekend ? 'rgba(99,102,241,0.04)' : 'transparent',
+                        position: 'relative', height: 28
+                      }}>
                         {/* Today vertical line */}
                         {isTodayCol && <div style={{ position: 'absolute', top: 0, bottom: 0, right: -1, width: 2, background: '#f59e0b', zIndex: 5, pointerEvents: 'none' }} />}
                         {/* Status-date vertical line */}
@@ -1119,7 +1129,7 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
       </div>
 
       {/* ── Row right-click context menu (same as GanttTable) ── */}
-      {ctxMenu && <RowContextMenu x={ctxMenu.x} y={ctxMenu.y} onClose={() => setCtxMenu(null)} onOpenColumns={() => { setCtxMenu(null); setShowColPicker(true); }} colKey={ctxColKey} selCount={state.selIndices.size} onFillDown={() => {}} onFillUp={() => {}} />}
+      {ctxMenu && <RowContextMenu x={ctxMenu.x} y={ctxMenu.y} onClose={() => setCtxMenu(null)} onOpenColumns={() => { setCtxMenu(null); setShowColPicker(true); }} colKey={ctxColKey} selCount={state.selIndices.size} onFillDown={() => { }} onFillUp={() => { }} />}
     </div>
   );
 }

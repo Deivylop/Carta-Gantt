@@ -83,7 +83,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         // Listen to all auth events.
         // onAuthStateChange fires INITIAL_SESSION on page load if a session exists in localStorage.
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
             setSession(newSession);
             setUser(newSession?.user ?? null);
 

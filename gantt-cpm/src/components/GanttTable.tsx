@@ -4,7 +4,7 @@
 // ═══════════════════════════════════════════════════════════════════
 import React, { useCallback, useMemo, useRef, useState, useEffect } from 'react';
 import { useGantt } from '../store/GanttContext';
-import { fmtDate, addDays, isoDate, newActivity, parseDate, getExactWorkDays } from '../utils/cpm';
+import { fmtDate, addDays, isoDate, newActivity, parseDate, getExactWorkDays, calWorkDays } from '../utils/cpm';
 import { predsToStr, getWeightPct, strToPreds, autoId, syncResFromString } from '../utils/helpers';
 import ColumnPickerModal from './ColumnPickerModal';
 import RowContextMenu from './RowContextMenu';
@@ -502,6 +502,28 @@ export default function GanttTable() {
         if (c.key === 'blDur') return a.blDur != null ? a.blDur + ' días' : '';
         if (c.key === 'blStart') return a.blES ? fmtDate(a.blES) : '';
         if (c.key === 'blEnd') return a.blEF ? fmtDate(addDays(a.blEF, -1)) : '';
+        if (c.key === 'blWork') return a.blWork != null ? a.blWork + ' hrs' : '';
+        if (c.key === 'varStart') {
+            if (!a.ES || !a.blES) return '';
+            const diff = calWorkDays(a.blES, a.ES, a.cal || defCal);
+            return diff === 0 ? '0d' : (diff > 0 ? '+' + diff + 'd' : diff + 'd');
+        }
+        if (c.key === 'varEnd') {
+            if (!a.EF || !a.blEF) return '';
+            const diff = calWorkDays(a.blEF, a.EF, a.cal || defCal);
+            return diff === 0 ? '0d' : (diff > 0 ? '+' + diff + 'd' : diff + 'd');
+        }
+        if (c.key === 'varDur') {
+            if (a.blDur == null) return '';
+            const cur = (a as any)._spanDur != null ? (a as any)._spanDur : (a.dur || 0);
+            const d = cur - a.blDur;
+            return d === 0 ? '0d' : (d > 0 ? '+' + d + 'd' : d + 'd');
+        }
+        if (c.key === 'varWork') {
+            if (a.blWork == null) return '';
+            const d = Math.round(((a.work || 0) - a.blWork) * 10) / 10;
+            return d === 0 ? '0 hrs' : (d > 0 ? '+' + d + ' hrs' : d + ' hrs');
+        }
         if (c.key === 'constraint') return a.constraint || '';
         if (c.key === 'constraintDate') return (a.constraint && a.constraintDate) ? a.constraintDate : '';
         if (c.key === 'notes') return (a.notes || '').substring(0, 40);

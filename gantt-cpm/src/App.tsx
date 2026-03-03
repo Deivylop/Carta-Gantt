@@ -24,6 +24,7 @@ import TaskUsageGrid from './components/TaskUsageGrid';
 import ResourceUsageTable from './components/ResourceUsageTable';
 import ResourceUsageGrid from './components/ResourceUsageGrid';
 import ResourceForm from './components/ResourceForm';
+import WBSOrgChartView from './components/WBSOrgChartView';
 import ModuleTabs, { type ModuleId } from './components/ModuleTabs';
 import InicioPage from './components/modules/InicioPage';
 import LookAheadPage from './components/modules/LookAheadPage';
@@ -286,7 +287,7 @@ function AppInner() {
       }
     }, 800);
     return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
-  }, [state.activities, state.resourcePool, state.projName, state.projStart, state.defCal, state.statusDate, state.ppcHistory, state.leanRestrictions, state.progressHistory, state.scenarios, state.riskState.riskEvents, state.riskState.distributions, state.riskState.simulationRuns, state.riskState.riskScoring, state.riskState.params, pState.activeProjectId, saveProjectState]);
+  }, [state.activities, state.resourcePool, state.projName, state.projStart, state.defCal, state.statusDate, state.ppcHistory, state.leanRestrictions, state.progressHistory, state.scenarios, state.columnViews, state.customFilters, state.filtersMatchAll, state.riskState.riskEvents, state.riskState.distributions, state.riskState.simulationRuns, state.riskState.riskScoring, state.riskState.params, pState.activeProjectId, saveProjectState]);
 
   // 3. Listen to Supabase Events
   useEffect(() => {
@@ -640,6 +641,18 @@ function AppInner() {
         {state.currentView === 'resources' ? (
           <div style={{ flex: 1, overflow: 'hidden' }}>
             <ResourceSheet />
+          </div>
+        ) : state.currentView === 'wbs' ? (
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            <WBSOrgChartView
+              activities={state.activities}
+              selectedId={state.activities[state.selIdx]?.id ?? null}
+              onSelect={id => {
+                const idx = state.activities.findIndex(a => a.id === id);
+                if (idx >= 0) dispatch({ type: 'SET_SELECTION', index: idx });
+              }}
+              projectName={state.projName}
+            />
           </div>
         ) : state.currentView === 'scurve' ? (
           <div style={{ flex: 1, overflow: 'hidden' }}>

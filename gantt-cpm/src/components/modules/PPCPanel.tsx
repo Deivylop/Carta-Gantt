@@ -5,24 +5,22 @@
 // 1. PPC (Porcentaje de Plan Cumplido) — weekly reliability measure
 // 2. Efficiency — programmed % vs real % achieved
 // 3. CNC (Causas de No Cumplimiento) — root-cause Pareto analysis
-// ═══════════════════════════════════════════════════════════════════
-import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useGantt } from '../../store/GanttContext';
 import type { PPCWeekRecord, CNCEntry, CNCCategory, ProgressHistoryEntry, BaselineEntry } from '../../types/gantt';
 import { isoDate, fmtDate, parseDate, getExactElapsedRatio, getExactWorkDays } from '../../utils/cpm';
-import { BarChart3, PlusCircle, Trash2, CalendarDays, TrendingUp, Award, Activity, Search, CheckSquare, Square, GripVertical, Edit2, AlertTriangle } from 'lucide-react';
-
+import { BarChart3, PlusCircle, Trash2, CalendarDays, TrendingUp, Award, Activity, Search, CheckSquare, Square, Edit2, AlertTriangle } from 'lucide-react';
 /** Get the planned % at a specific date (0-100) using two-segment baseline interpolation
  *  (matches LookAheadGrid logic: if baseline had progress at save-time, interpolates in two segments) */
 function getPlannedPctAt(
-  a: { blES: Date|null; blEF: Date|null; ES: Date|null; EF: Date|null; cal: any; baselines?: BaselineEntry[] },
+  a: { blES: Date | null; blEF: Date | null; ES: Date | null; EF: Date | null; cal: any; baselines?: BaselineEntry[] },
   target: Date, defCal: any, activeBlIdx: number
 ): number {
   const start = a.blES || a.ES;
   const end = a.blEF || a.EF;
   if (!start || !end) return 0;
-  const stObj = new Date(start); stObj.setHours(0,0,0,0);
-  const endObj = new Date(end); endObj.setHours(0,0,0,0);
+  const stObj = new Date(start); stObj.setHours(0, 0, 0, 0);
+  const endObj = new Date(end); endObj.setHours(0, 0, 0, 0);
   if (target <= stObj) return 0;
   if (target >= endObj) return 100;
   const cal = a.cal || defCal;
@@ -30,7 +28,7 @@ function getPlannedPctAt(
   if (activeBl && activeBl.pct != null && activeBl.statusDate) {
     const blPct = activeBl.pct;
     if (blPct === 0) return getExactElapsedRatio(start, end, target, cal) * 100;
-    const blStatusEnd = new Date(activeBl.statusDate); blStatusEnd.setHours(0,0,0,0);
+    const blStatusEnd = new Date(activeBl.statusDate); blStatusEnd.setHours(0, 0, 0, 0);
     blStatusEnd.setDate(blStatusEnd.getDate() + 1);
     if (target <= blStatusEnd) {
       const totalWdSeg1 = getExactWorkDays(stObj, blStatusEnd, cal);
@@ -537,7 +535,7 @@ export default function PPCPanel({ windowStart, windowEnd }: Props) {
     const wsDate = parseDate(weekStart);
     if (!wsDate) return {} as Record<string, { planned: number; real: number }>;
     // Week boundaries: selected date is END of period (fecha de corte)
-    const periodEnd = new Date(wsDate); periodEnd.setHours(0,0,0,0);
+    const periodEnd = new Date(wsDate); periodEnd.setHours(0, 0, 0, 0);
     const periodStart = new Date(periodEnd); periodStart.setDate(periodStart.getDate() - 7);
     const defCal = state.defCal || 5;
     const periodStartISO = isoDate(periodStart);
@@ -576,7 +574,7 @@ export default function PPCPanel({ windowStart, windowEnd }: Props) {
       const wsDate = parseDate(w.weekStart);
       if (!wsDate) return { ...w, _totalProg: 0, _totalReal: 0 };
       // weekStart stores the cut-off date (end of period)
-      const periodEnd = new Date(wsDate); periodEnd.setHours(0,0,0,0);
+      const periodEnd = new Date(wsDate); periodEnd.setHours(0, 0, 0, 0);
       const periodStart = new Date(periodEnd); periodStart.setDate(periodStart.getDate() - 7);
       const periodStartISO = isoDate(periodStart);
       const periodEndISO = isoDate(periodEnd);
@@ -939,7 +937,7 @@ export default function PPCPanel({ windowStart, windowEnd }: Props) {
                                   <select value={cncActId} onChange={e => setCncActId(e.target.value)}
                                     style={{ background: 'var(--bg-input)', border: '1px solid var(--border-secondary)', borderRadius: 3, padding: '3px 6px', color: 'var(--text-primary)', fontSize: 10, maxWidth: 140 }}>
                                     <option value="">...</option>
-                                    {notCompleted.map(id => <option key={id} value={id}>{id} – {actName(id)}</option>)}
+                                    {notCompleted.map((id: string) => <option key={id} value={id}>{id} – {actName(id)}</option>)}
                                   </select>
                                 </div>
                                 <div>
@@ -1143,8 +1141,8 @@ export default function PPCPanel({ windowStart, windowEnd }: Props) {
           </div>
           {/* Totals row */}
           {activitiesInWindow.length > 0 && (() => {
-            const totProg = activitiesInWindow.reduce((s, a) => s + (activityMetrics[a.id]?.planned || 0), 0);
-            const totReal = activitiesInWindow.reduce((s, a) => s + (activityMetrics[a.id]?.real || 0), 0);
+            const totProg = activitiesInWindow.reduce((s: number, a: any) => s + (activityMetrics[a.id]?.planned || 0), 0);
+            const totReal = activitiesInWindow.reduce((s: number, a: any) => s + (activityMetrics[a.id]?.real || 0), 0);
             const totEff = totProg > 0 ? Math.round((totReal / totProg) * 100) : 0;
             return (
               <div style={{ display: 'flex', gap: 12, padding: '6px 8px', fontSize: 10, fontWeight: 700, color: 'var(--text-heading)', borderTop: '2px solid var(--border-primary)' }}>

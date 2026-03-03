@@ -4,8 +4,6 @@
 // ═══════════════════════════════════════════════════════════════════
 import type { Activity, CalendarType, ProgressHistoryEntry, CustomCalendar, PredecessorLink } from '../types/gantt';
 
-/** Calendar conversion factors: work days → calendar days */
-const CAL_F: Record<number, number> = { 5: 7 / 5, 6: 7 / 6, 7: 1 };
 
 /** Registry for custom calendars – set before calcCPM via setCalendarRegistry */
 let _calRegistry: CustomCalendar[] = [];
@@ -35,15 +33,7 @@ function isWorkDayForCal(d: Date, cal: CalendarType): boolean {
     return true; // 7-day
 }
 
-/** Get the CAL_F factor for any calendar */
-function calFactor(cal: CalendarType): number {
-    const cc = findCustomCal(cal);
-    if (cc) {
-        const workCount = cc.workDays.filter(Boolean).length || 1;
-        return 7 / workCount;
-    }
-    return CAL_F[cal as number] || CAL_F[6];
-}
+
 
 // ─── Date Utilities ─────────────────────────────────────────────
 
@@ -193,7 +183,7 @@ export function newActivity(id?: string, defCal: CalendarType = 6): Activity {
         resumeDate: null,
         ES: null, EF: null, LS: null, LF: null, TF: null,
         crit: false,
-        blDur: null, blES: null, blEF: null, blCal: null,
+        blDur: null, blES: null, blEF: null, blCal: null, blWork: null,
         baselines: [],
         encargado: '',
         txt1: '', txt2: '', txt3: '', txt4: '', txt5: '',

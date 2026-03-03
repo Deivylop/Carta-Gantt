@@ -58,6 +58,7 @@ export default function Ribbon() {
                         projStart: data.projStart, projName: data.projName, defCal: data.defCal,
                         statusDate: data.statusDate, activities: data.activities, resourcePool: data.resourcePool,
                         selIdx: data.activities.length ? 0 : -1,
+                        columnViews: data.columnViews,
                         ...(data.mfpConfig ? { mfpConfig: data.mfpConfig } : {}),
                     }
                 });
@@ -282,6 +283,7 @@ export default function Ribbon() {
                 {tab === 'vista' && <>
                     <RG label="VISTAS">
                         <RB icon={<BarChart3 size={16} />} label="Diagrama de Gantt" active={state.currentView === 'gantt'} onClick={() => dispatch({ type: 'SET_VIEW', view: 'gantt' })} />
+                        <RB label="EDT / WBS" active={state.currentView === 'wbs'} onClick={() => dispatch({ type: 'SET_VIEW', view: 'wbs' })} />
                         <RB label="Hoja de Recursos" active={state.currentView === 'resources'} onClick={() => dispatch({ type: 'SET_VIEW', view: 'resources' })} />
                         <RB icon={<LineChart size={16} />} label="Curva S" active={state.currentView === 'scurve'} onClick={() => dispatch({ type: 'SET_VIEW', view: 'scurve' })} />
                         <RB icon={<LayoutTemplate size={16} />} label="Uso de Tareas" active={state.currentView === 'usage'} onClick={() => dispatch({ type: 'SET_VIEW', view: 'usage' })} />
@@ -410,7 +412,7 @@ export default function Ribbon() {
 
                 {tab === 'datos' && <>
                     <RG label="EXPORTAR">
-                        <RB icon={<Download size={14} />} label="JSON" onClick={() => exportJSON(state.activities, state.projStart, state.projName, state.defCal, state.statusDate, state.resourcePool, state.customFilters, state.filtersMatchAll, state.mfpConfig)} />
+                        <RB icon={<Download size={14} />} label="JSON" onClick={() => exportJSON(state.activities, state.projStart, state.projName, state.defCal, state.statusDate, state.resourcePool, state.customFilters, state.filtersMatchAll, state.mfpConfig, state.columnViews)} />
                         <RB icon={<Download size={14} />} label="CSV" onClick={() => exportCSV(state.activities, state.projName, state.defCal)} />
                     </RG>
                     <RG label="IMPORTAR">

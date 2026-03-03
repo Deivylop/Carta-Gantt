@@ -21,8 +21,9 @@ import {
     ArrowRightLeft, Cloud, Settings, ChevronsRight, ChevronsLeft,
     ArrowRight, ArrowLeft, Network, PanelBottomOpen, PanelBottomClose,
     ArrowUp, ArrowDown, Columns3, ZoomIn, ZoomOut, CalendarDays,
-    GripVertical,
+    GripVertical, GitFork, List,
 } from 'lucide-react';
+import OrgChartView from './OrgChartView';
 
 // ─── Constants ──────────────────────────────────────────────────
 const ROW_H = 28;
@@ -164,6 +165,9 @@ export default function ProjectsPage({ onOpenProject }: Props) {
     // Column drag reorder
     const [dragColKey, setDragColKey] = useState<string | null>(null);
     const [dragOverColKey, setDragOverColKey] = useState<string | null>(null);
+
+    // View mode: list (table+timeline) or orgchart
+    const [viewMode, setViewMode] = useState<'list' | 'orgchart'>('list');
 
     // Timeline zoom
     const [zoom, setZoom] = useState<ZoomLevel>('month');
@@ -791,6 +795,8 @@ export default function ProjectsPage({ onOpenProject }: Props) {
 
                 {/* VISTA */}
                 <BtnGroup label="VISTA">
+                    <Btn icon={<List size={13} />} text="Lista" onClick={() => setViewMode('list')} color={viewMode === 'list' ? '#6366f1' : undefined} />
+                    <Btn icon={<GitFork size={13} style={{ transform: 'rotate(180deg)' }} />} text="Org-Chart" onClick={() => setViewMode('orgchart')} color={viewMode === 'orgchart' ? '#f59e0b' : undefined} />
                     <Btn icon={<Columns3 size={13} />} text="Columnas" onClick={() => setColPickerOpen(true)} />
                     <Btn icon={<CalendarDays size={13} />} text={zoom === 'day' ? 'Día' : zoom === 'week' ? 'Sem' : 'Mes'} onClick={() => setZoom(z => z === 'month' ? 'week' : z === 'week' ? 'day' : 'month')} />
                     <Btn icon={<ZoomIn size={13} />} onClick={() => setZoom(z => z === 'month' ? 'week' : 'day')} disabled={zoom === 'day'} />
@@ -820,7 +826,19 @@ export default function ProjectsPage({ onOpenProject }: Props) {
 
             {/* ── Main Content ── */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
+
+                {/* ── Org-Chart View ── */}
+                {viewMode === 'orgchart' && (
+                    <div style={{ flex: 1, overflow: 'hidden' }}>
+                        <OrgChartView
+                            epsNodes={pState.epsNodes}
+                            selectedId={pState.selectedId}
+                            onSelect={id => pDispatch({ type: 'SELECT', id, shift: false, ctrl: false, flatIds: [] })}
+                        />
+                    </div>
+                )}
+
+                {viewMode === 'list' && <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
 
                     {/* Left: Table */}
                     <div style={{ width: tableW ?? TOTAL_W, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -990,7 +1008,7 @@ export default function ProjectsPage({ onOpenProject }: Props) {
                             )}
                         </div>
                     </div>
-                </div>
+                </div>}
 
                 {/* ── Bottom: Detail Panel (resizable) ── */}
                 {detailPanelOpen && selectedProject && (
