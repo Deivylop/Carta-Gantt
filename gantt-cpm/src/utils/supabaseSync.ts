@@ -28,6 +28,10 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
         const defCal = state.defCal || 6;
         let currentId = projectId;
 
+        // Get User ID from Supabase
+        const { data: { session } } = await supabase.auth.getSession();
+        const userId = session?.user?.id || 'anonymous';
+
         // 1. Upsert Project
         if (currentId) {
             const { data, error } = await supabase.from('gantt_projects').update({
@@ -144,12 +148,17 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
         // Inject Column Views as a hidden activity
         if (state.columnViews && state.columnViews.length > 0) {
             acts.push({
-                ...newActivity('__VIEWS__', defCal),
+                ...newActivity(`__VIEWS__${userId}`, defCal),
                 name: '__COLUMN_VIEWS__',
                 type: 'milestone',
                 notes: JSON.stringify(state.columnViews),
                 lv: -1,
             } as any);
+        }
+
+        // Restore other users' views and hidden data that we shouldn't overwrite
+        if (state._hiddenOtherData && state._hiddenOtherData.length > 0) {
+            acts.push(...state._hiddenOtherData);
         }
         // Inject What-If scenarios as a hidden activity
         if (state.scenarios && state.scenarios.length > 0) {
@@ -565,6 +574,10 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
     const defCal = proj.defcal || 6;
     const statusDate = proj.statusdate ? (parseDate(proj.statusdate) || new Date()) : new Date();
 
+    // Get User ID from Supabase
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id || 'anonymous';
+
     // Resources
     const { data: resData, error: re } = await supabase.from('gantt_resources').select('*').eq('project_id', projectId).order('rid');
     if (re) throw re;
@@ -616,6 +629,7 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
     let depsBackup: Record<string, { id: string; type: string; lag: number }[]> = {};
     let scenarios: any[] = [];
     let columnViews: any[] = [];
+    let hiddenOtherData: any[] = [];
 
     // Build activities
     const activities = (actData as any[]).map(a => {
@@ -700,9 +714,19 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
             try { leanRestrictions = JSON.parse(na.notes); } catch { /* ignore */ }
             return false;
         }
-        // Extract hidden Column Views if found
-        if (na.id === '__VIEWS__') {
-            try { columnViews = JSON.parse(na.notes); } catch { /* ignore */ }
+        // Extract hidden Column Views if found (handle both old format and new user-specific format)
+        if (na.id.startsWith('__VIEWS__')) {
+            const isOldFormat = na.id === '__VIEWS__';
+            const isMyView = na.id === `__VIEWS__${userId}`;
+
+            if (isMyView || (isOldFormat && columnViews.length === 0)) {
+                try { columnViews = JSON.parse(na.notes); } catch { /* ignore */ }
+            }
+
+            // If it's a view belonging to another user, preserve it!
+            if (!isMyView && !isOldFormat) {
+                hiddenOtherData.push(na);
+            }
             return false;
         }
         // Extract hidden What-If scenarios if found
@@ -760,6 +784,7 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
         leanRestrictions,
         scenarios,
         columnViews,
+        _hiddenOtherData: hiddenOtherData,
         riskState: (await loadRiskStateFromSupabase(projectId)) as RiskAnalysisState,
     };
 }

@@ -168,6 +168,7 @@ export interface GanttState {
     _masterActivities?: Activity[];
     _scenarioChangedFields?: Map<string, Set<string>>; // actId → changed column keys
     _scenarioDiffs?: Map<string, Record<string, { master: string; scenario: string }>>; // actId → field → values
+    _hiddenOtherData?: any[]; // For preserving other users' hidden activities from Supabase
 }
 
 // ─── Actions ────────────────────────────────────────────────────
@@ -194,7 +195,7 @@ export type Action =
     | { type: 'EXPAND_ALL' }
     | { type: 'COLLAPSE_TO_LEVEL'; level: number }
     | { type: 'SET_GROUP'; group: string }
-    | { type: 'SET_PROJECT_CONFIG'; config: Partial<{ projName: string; projStart: Date; defCal: CalendarType; statusDate: Date; customFilters: CustomFilter[]; filtersMatchAll: boolean }> }
+    | { type: 'SET_PROJECT_CONFIG'; config: Partial<{ projName: string; projStart: Date; defCal: CalendarType; statusDate: Date; customFilters: CustomFilter[]; filtersMatchAll: boolean; _hiddenOtherData?: any[] }> }
     | { type: 'RECALC_CPM' }
     | { type: 'SET_RESOURCES'; resources: PoolResource[] }
     | { type: 'UNDO' }
