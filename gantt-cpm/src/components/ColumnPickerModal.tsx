@@ -308,7 +308,7 @@ export default function ColumnPickerModal({ onClose, externalColumns, externalSe
 
     /* ── Default (reset) ── */
     const handleDefault = () => {
-        const defaultVisible = ['outlineNum', 'id', 'name', 'dur', 'remDur', 'startDate', 'endDate', 'predStr', 'pct', 'plannedPct', 'res', 'work', 'earnedValue', 'remainingWork', 'weight', 'cal', 'TF'];
+        const defaultVisible = ['outlineNum', 'id', 'name', 'dur', 'remDur', 'startDate', 'endDate', 'pct', 'plannedPct', 'work'];
         setSelected(defaultVisible);
     };
 

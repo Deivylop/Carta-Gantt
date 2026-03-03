@@ -44,22 +44,22 @@ export const DEFAULT_COLS: ColumnDef[] = [
     { key: 'remDur', label: 'Dur. Resta', w: 70, edit: true, cls: 'tcell-dur', visible: true },
     { key: 'startDate', label: 'Comienzo', w: 90, edit: true, cls: 'tcell-date', visible: true },
     { key: 'endDate', label: 'Fin', w: 90, edit: true, cls: 'tcell-date', visible: true },
-    { key: 'predStr', label: 'Predecesoras', w: 100, edit: true, cls: 'tcell-pred', visible: true },
+    { key: 'predStr', label: 'Predecesoras', w: 100, edit: true, cls: 'tcell-pred', visible: false },
     { key: 'pct', label: '% Avance', w: 60, edit: true, cls: 'tcell-pct', visible: true },
     { key: 'plannedPct', label: '% Prog.', w: 65, edit: false, cls: 'tcell-pct', visible: true },
     { key: 'simRealPct', label: 'Avance Sim. Real', w: 90, edit: false, cls: 'tcell-pct', visible: false },
     { key: 'simProgPct', label: 'Avance Sim. Prog.', w: 90, edit: false, cls: 'tcell-pct', visible: false },
-    { key: 'res', label: 'Recursos', w: 110, edit: true, cls: 'tcell-res', visible: true },
+    { key: 'res', label: 'Recursos', w: 110, edit: true, cls: 'tcell-res', visible: false },
     { key: 'work', label: 'Trabajo', w: 70, edit: true, cls: 'tcell-dur', visible: true },
-    { key: 'earnedValue', label: 'Valor Ganado', w: 85, edit: false, cls: 'tcell-dur', visible: true },
-    { key: 'remainingWork', label: 'Trab. Restante', w: 90, edit: false, cls: 'tcell-dur', visible: true },
-    { key: 'weight', label: 'Peso %', w: 65, edit: true, cls: 'tcell-pct', visible: true },
-    { key: 'cal', label: 'Calendario', w: 60, edit: 'select', cls: 'tcell-cal', visible: true },
-    { key: 'TF', label: 'Holgura Total', w: 75, edit: false, cls: 'tcell-dur', visible: true },
+    { key: 'earnedValue', label: 'Valor Ganado', w: 85, edit: false, cls: 'tcell-dur', visible: false },
+    { key: 'remainingWork', label: 'Trab. Restante', w: 90, edit: false, cls: 'tcell-dur', visible: false },
+    { key: 'weight', label: 'Peso %', w: 65, edit: true, cls: 'tcell-pct', visible: false },
+    { key: 'cal', label: 'Calendario', w: 60, edit: 'select', cls: 'tcell-cal', visible: false },
+    { key: 'TF', label: 'Holgura Total', w: 75, edit: false, cls: 'tcell-dur', visible: false },
     { key: 'FF', label: 'Holgura Libre', w: 75, edit: false, cls: 'tcell-dur', visible: false },
     { key: 'floatPath', label: 'Float Path', w: 70, edit: false, cls: 'tcell-num', visible: false },
-    { key: 'crit', label: 'Crítico', w: 55, edit: false, cls: 'tcell-num', visible: true },
-    { key: 'activityCount', label: 'Recuento de actividades', w: 95, edit: false, cls: 'tcell-num', visible: true },
+    { key: 'crit', label: 'Crítico', w: 55, edit: false, cls: 'tcell-num', visible: false },
+    { key: 'activityCount', label: 'Recuento de actividades', w: 95, edit: false, cls: 'tcell-num', visible: false },
     { key: 'actualStart', label: 'Comienzo Real', w: 95, edit: false, cls: 'tcell-date', visible: false },
     { key: 'actualFinish', label: 'Fin Real', w: 95, edit: false, cls: 'tcell-date', visible: false },
     { key: 'suspendDate', label: 'Fecha Suspensión', w: 105, edit: false, cls: 'tcell-date', visible: false },
@@ -119,6 +119,7 @@ export interface GanttState {
     collapsed: Set<string>;
     expResources: Set<string>;
     tableW: number;       // Global table width
+    showDetailPanel: boolean; // Toggle detail panel visibility
     activeGroup: string;
     columns: ColumnDef[];
     colWidths: number[];
@@ -185,6 +186,7 @@ export type Action =
     | { type: 'TOGGLE_TODAY_LINE' }
     | { type: 'TOGGLE_STATUS_LINE' }
     | { type: 'TOGGLE_DEPENDENCIES' }
+    | { type: 'TOGGLE_DETAIL_PANEL' }
     | { type: 'SET_VIEW'; view: 'gantt' | 'resources' | 'scurve' | 'usage' | 'resUsage' | 'wbs' }
     | { type: 'SET_TABLE_W', width: number }
     | { type: 'TOGGLE_USAGE_MODE'; mode: string }
@@ -1189,7 +1191,8 @@ function reducer(state: GanttState, action: Action): GanttState {
         }
 
         case 'SET_COLUMNS_ORDER': {
-            return { ...state, columns: action.columns, colWidths: action.colWidths };
+            const newTableW = action.columns.reduce((s, c, i) => c.visible ? s + action.colWidths[i] : s, 0);
+            return { ...state, columns: action.columns, colWidths: action.colWidths, tableW: newTableW };
         }
 
         case 'SET_COLUMN_VIEWS': {
@@ -1467,6 +1470,7 @@ function reducer(state: GanttState, action: Action): GanttState {
         case 'CLOSE_SB_MODAL': return { ...state, sbModalOpen: false };
 
         case 'SET_TABLE_W': return { ...state, tableW: action.width };
+        case 'TOGGLE_DETAIL_PANEL': return { ...state, showDetailPanel: !state.showDetailPanel };
 
         case 'OPEN_PROGRESS_MODAL': return { ...state, progressModalOpen: true, actModalOpen: false, projModalOpen: false, linkModalOpen: false, sbModalOpen: false };
         case 'CLOSE_PROGRESS_MODAL': return { ...state, progressModalOpen: false };
@@ -2002,7 +2006,8 @@ const initialState: GanttState = {
     expResources: new Set(),
     selIdx: -1,
     selIndices: new Set<number>(),
-    tableW: 400,
+    tableW: DEFAULT_COLS.reduce((s, c) => c.visible ? s + c.w : s, 0),
+    showDetailPanel: true,
     activeGroup: 'none',
     columns: DEFAULT_COLS,
     colWidths: DEFAULT_COLS.map(c => c.w),
