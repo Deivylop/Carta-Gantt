@@ -41,6 +41,7 @@ import { autoId } from './utils/helpers';
 import { saveToSupabase, loadFromSupabase, createSupabaseProject } from './utils/supabaseSync';
 import { supabase } from './lib/supabase';
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /** Restore ISO-string dates back to Date objects in a saved project snapshot */
 function restoreDatesFromSaved(saved: any): any {
   if (saved.projStart && typeof saved.projStart === 'string') saved.projStart = new Date(saved.projStart);
@@ -116,6 +117,7 @@ function serializeGanttState(state: any): any {
     _hiddenOtherData: state._hiddenOtherData,
   };
 }
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 function AppInner() {
   const { state, dispatch } = useGantt();
@@ -143,7 +145,7 @@ function AppInner() {
   }, [state.lightMode]);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string, _session: any) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string) => {
       if (event === 'PASSWORD_RECOVERY') {
         setShowRecoveryModal(true);
       }
@@ -222,7 +224,9 @@ function AppInner() {
             if (data.progressHistory) dispatch({ type: 'SET_PROGRESS_HISTORY', history: data.progressHistory });
             if (data.ppcHistory && data.ppcHistory.length) dispatch({ type: 'SET_PPC_HISTORY', history: data.ppcHistory });
             if (data.leanRestrictions && data.leanRestrictions.length) dispatch({ type: 'SET_LEAN_RESTRICTIONS', restrictions: data.leanRestrictions });
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             if ((data as any).scenarios && (data as any).scenarios.length) dispatch({ type: 'SET_SCENARIOS', scenarios: (data as any).scenarios });
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             if ((data as any).riskState) dispatch({ type: 'LOAD_RISK_STATE', riskState: (data as any).riskState });
             if (data.columnViews && data.columnViews.length) dispatch({ type: 'SET_COLUMN_VIEWS', views: data.columnViews });
             if (!pid) localStorage.setItem('sb_current_project_id', sbPid);
@@ -285,7 +289,7 @@ function AppInner() {
           try {
             const snapshot = serializeGanttState(state);
             saveProjectState(pState.activeProjectId, snapshot);
-          } catch { }
+          } catch { /* empty */ }
         }
       }
     }, 800);
@@ -294,8 +298,9 @@ function AppInner() {
 
   // 3. Listen to Supabase Events
   useEffect(() => {
-    const handleLoad = async (e: any) => {
-      const pid = e.detail?.projectId;
+    const handleLoad = async (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const pid = customEvent.detail?.projectId;
       if (!pid) return;
       try {
         const data = await loadFromSupabase(pid);
@@ -305,18 +310,21 @@ function AppInner() {
         dispatch({ type: 'SET_PROGRESS_HISTORY', history: data.progressHistory || [] });
         if (data.ppcHistory && data.ppcHistory.length) dispatch({ type: 'SET_PPC_HISTORY', history: data.ppcHistory });
         if (data.leanRestrictions && data.leanRestrictions.length) dispatch({ type: 'SET_LEAN_RESTRICTIONS', restrictions: data.leanRestrictions });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if ((data as any).scenarios && (data as any).scenarios.length) dispatch({ type: 'SET_SCENARIOS', scenarios: (data as any).scenarios });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if ((data as any).riskState) dispatch({ type: 'LOAD_RISK_STATE', riskState: (data as any).riskState });
         if (data.columnViews && data.columnViews.length) dispatch({ type: 'SET_COLUMN_VIEWS', views: data.columnViews });
         localStorage.setItem('sb_current_project_id', pid);
         alert('Proyecto cargado exitosamente');
-      } catch (err: any) {
-        alert('Error al cargar proyecto: ' + err.message);
+      } catch (err: unknown) {
+        alert('Error al cargar proyecto: ' + (err instanceof Error ? err.message : String(err)));
       }
     };
-    const handleForceSave = async (e?: any) => {
+    const handleForceSave = async (e?: Event) => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-      const silent = e?.detail?.silent === true;
+      const customEvent = e as CustomEvent | undefined;
+      const silent = customEvent?.detail?.silent === true;
       const pid = localStorage.getItem('sb_current_project_id');
       if (!pid) {
         if (!silent) alert('No hay proyecto conectado. Cree o cargue un proyecto primero desde Configuración.');
@@ -327,16 +335,16 @@ function AppInner() {
         if (newId && newId !== pid) localStorage.setItem('sb_current_project_id', newId);
         if (!silent) alert('Proyecto guardado exitosamente');
         else console.log('Silent save to Supabase completed');
-      } catch (err: any) {
-        if (!silent) alert('Error al guardar: ' + err.message);
+      } catch (err: unknown) {
+        if (!silent) alert('Error al guardar: ' + (err instanceof Error ? err.message : String(err)));
         else console.error('Silent save error:', err);
       }
     };
-    window.addEventListener('sb-load-project', handleLoad as any);
-    window.addEventListener('sb-force-save', handleForceSave as any);
+    window.addEventListener('sb-load-project', handleLoad as EventListener);
+    window.addEventListener('sb-force-save', handleForceSave as EventListener);
     return () => {
-      window.removeEventListener('sb-load-project', handleLoad as any);
-      window.removeEventListener('sb-force-save', handleForceSave as any);
+      window.removeEventListener('sb-load-project', handleLoad as EventListener);
+      window.removeEventListener('sb-force-save', handleForceSave as EventListener);
     };
   }, [state, dispatch]);
 
@@ -424,7 +432,7 @@ function AppInner() {
     const handleBeforeUnload = () => {
       if (pState.activeProjectId && state.activities.length > 0) {
         const snapshot = serializeGanttState(state);
-        try { localStorage.setItem('gantt-cpm-project-' + pState.activeProjectId, JSON.stringify(snapshot)); } catch { }
+        try { localStorage.setItem('gantt-cpm-project-' + pState.activeProjectId, JSON.stringify(snapshot)); } catch { /* empty */ }
         // Update project metadata
         const tasks = state.activities.filter(a => (a.type === 'task' || a.type === 'milestone') && !a._isProjRow);
         const projRow = state.activities.find(a => a._isProjRow);
@@ -467,7 +475,7 @@ function AppInner() {
             activeProjectId: pState.activeProjectId,
           };
           localStorage.setItem('gantt-cpm-portfolio', JSON.stringify(portfolioData));
-        } catch { }
+        } catch { /* empty */ }
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
@@ -557,6 +565,7 @@ function AppInner() {
       const freshActs = [
         { ...newActivity('PROY', state.defCal), name: freshName, type: 'summary' as const, lv: -1, _isProjRow: true },
       ];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: freshName, projStart: new Date(), defCal: 6 as any, statusDate: new Date() } });
       dispatch({ type: 'SET_ACTIVITIES', activities: freshActs });
       dispatch({ type: 'SET_RESOURCES', resources: [] });
@@ -573,7 +582,9 @@ function AppInner() {
         if (data.progressHistory && data.progressHistory.length) dispatch({ type: 'SET_PROGRESS_HISTORY', history: data.progressHistory });
         if (data.ppcHistory && data.ppcHistory.length) dispatch({ type: 'SET_PPC_HISTORY', history: data.ppcHistory });
         if (data.leanRestrictions && data.leanRestrictions.length) dispatch({ type: 'SET_LEAN_RESTRICTIONS', restrictions: data.leanRestrictions });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if ((data as any).scenarios && (data as any).scenarios.length) dispatch({ type: 'SET_SCENARIOS', scenarios: (data as any).scenarios });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if ((data as any).riskState) dispatch({ type: 'LOAD_RISK_STATE', riskState: (data as any).riskState });
         console.log('Loaded project from Supabase:', proj.supabaseId);
       } catch (err) {
@@ -585,6 +596,7 @@ function AppInner() {
       const freshActs = [
         { ...newActivity('PROY', state.defCal), name: proj?.name || 'Nuevo Proyecto', type: 'summary' as const, lv: -1, _isProjRow: true },
       ];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: proj?.name || 'Nuevo Proyecto', projStart: new Date(), defCal: 6 as any, statusDate: new Date() } });
       dispatch({ type: 'SET_ACTIVITIES', activities: freshActs });
       dispatch({ type: 'SET_RESOURCES', resources: [] });
@@ -796,7 +808,7 @@ function AppRoot() {
         <p style={{ marginBottom: '2rem' }}>{error}</p>
         <button
           onClick={async () => {
-            try { await signOut(); } catch (e) { }
+            try { await signOut(); } catch { /* empty */ }
             localStorage.clear();
             sessionStorage.clear();
             window.location.reload();

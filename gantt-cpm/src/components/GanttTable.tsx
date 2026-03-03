@@ -14,10 +14,11 @@ import ScenarioAlertModal, {
     validateOutOfSequence,
 } from './modules/ScenarioAlertModal';
 
-const EditableNumberCell = ({ rawValue, displayValue, onUpdate, onFocus, isRowSelected, step, min, max }: { rawValue: string, displayValue: string, onUpdate: (val: string) => void, onFocus: () => void, isRowSelected: boolean, step?: number, min?: number, max?: number }) => {
+const EditableNumberCell = ({ rawValue, displayValue, onUpdate, onFocus, isRowSelected, step, min, max, onEditStart, onLiveChange }: { rawValue: string, displayValue: string, onUpdate: (val: string) => void, onFocus: () => void, isRowSelected: boolean, step?: number, min?: number, max?: number, onEditStart?: () => void, onLiveChange?: (val: string) => void }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [val, setVal] = useState(rawValue);
     const wasSelectedRef = useRef(false);
+    const liveDispatchedRef = useRef(false);
     const selectOnMount = useCallback((el: HTMLInputElement | null) => { if (el) el.select(); }, []);
 
     useEffect(() => { setVal(rawValue); }, [rawValue]);
@@ -25,11 +26,17 @@ const EditableNumberCell = ({ rawValue, displayValue, onUpdate, onFocus, isRowSe
 
     // Exit edit mode when row is deselected
     useEffect(() => {
-        if (!isRowSelected && isEditing) { setIsEditing(false); onUpdate(val); }
+        if (!isRowSelected && isEditing) {
+            setIsEditing(false);
+            if (!onLiveChange) onUpdate(val);
+            liveDispatchedRef.current = false;
+        }
     }, [isRowSelected]);
 
     const enterEdit = (e: React.MouseEvent) => {
         e.preventDefault(); e.stopPropagation();
+        if (onEditStart) onEditStart();
+        liveDispatchedRef.current = false;
         setIsEditing(true); onFocus();
     };
 
@@ -45,8 +52,20 @@ const EditableNumberCell = ({ rawValue, displayValue, onUpdate, onFocus, isRowSe
                     autoFocus
                     ref={selectOnMount}
                     value={val}
-                    onChange={e => setVal(e.target.value)}
-                    onBlur={() => { setIsEditing(false); onUpdate(val); }}
+                    onChange={e => {
+                        const v = e.target.value;
+                        setVal(v);
+                        if (onLiveChange) {
+                            liveDispatchedRef.current = true;
+                            onLiveChange(v);
+                        }
+                    }}
+                    onBlur={() => {
+                        setIsEditing(false);
+                        if (onLiveChange) { if (!liveDispatchedRef.current) onLiveChange(val); }
+                        else onUpdate(val);
+                        liveDispatchedRef.current = false;
+                    }}
                     onKeyDown={e => {
                         if (e.key === 'Enter') e.currentTarget.blur();
                         if (e.key === 'Escape') setIsEditing(false);
@@ -866,6 +885,7 @@ export default function GanttTable() {
                                         }
 
                                         if (['dur', 'remDur', 'pct', 'work', 'weight'].includes(c.key)) {
+                                            const isLive = c.key === 'dur' || c.key === 'remDur';
                                             return (
                                                 <div key={c.key} data-colkey={c.key} className={`tcell ${c.cls}`} style={style}>
                                                     <EditableNumberCell
@@ -877,6 +897,8 @@ export default function GanttTable() {
                                                         step={c.key === 'pct' ? 5 : c.key === 'work' ? 100 : undefined}
                                                         min={c.key === 'pct' || c.key === 'work' ? 0 : undefined}
                                                         max={c.key === 'pct' ? 100 : undefined}
+                                                        onEditStart={isLive ? () => dispatch({ type: 'PUSH_UNDO' }) : undefined}
+                                                        onLiveChange={isLive ? (newVal) => dispatch({ type: 'COMMIT_EDIT', index: vr._idx, key: c.key, value: newVal }) : undefined}
                                                     />
                                                 </div>
                                             );

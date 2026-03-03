@@ -4,7 +4,7 @@
 // ═══════════════════════════════════════════════════════════════════
 import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { useGantt } from '../store/GanttContext';
-import { dayDiff, addDays, fmtDate, isoDate } from '../utils/cpm';
+import { dayDiff, addDays, fmtDate, isoDate, normDate } from '../utils/cpm';
 import type { ThemeColors, LeanRestriction } from '../types/gantt';
 
 const ROW_H = 26;
@@ -571,14 +571,17 @@ export default function GanttTimeline() {
             // Restriction indicator is now rendered as yellow border on the bar itself (see bar stroke code above)
             // Active baseline only (no ghost bars for non-active baselines)
             // Active baseline (prominent)
-            if (r.blES && r.blEF && r.type !== 'milestone' && r.type !== 'summary') {
-                const blBx = Math.max(0, dayDiff(projStart, r.blES) * PX);
-                const blEx = dayDiff(projStart, r.blEF) * PX;
+            // Normalize baseline dates to local midnight to prevent timezone-drift offset
+            const nBlES = normDate(r.blES);
+            const nBlEF = normDate(r.blEF);
+            if (nBlES && nBlEF && r.type !== 'milestone' && r.type !== 'summary') {
+                const blBx = Math.max(0, dayDiff(projStart, nBlES) * PX);
+                const blEx = dayDiff(projStart, nBlEF) * PX;
                 const blBw = Math.max(2, blEx - blBx);
                 const blBy = y + ROW_H - 6, blBh = 4;
                 ctx.fillStyle = t.blBar; rrect(ctx, blBx, blBy, blBw, blBh, 2); ctx.fill();
-            } else if (r.blES && r.type === 'milestone') {
-                const bmx = dayDiff(projStart, r.blES) * PX, bmy = y + ROW_H - 4;
+            } else if (nBlES && r.type === 'milestone') {
+                const bmx = dayDiff(projStart, nBlES) * PX, bmy = y + ROW_H - 4;
                 ctx.save(); ctx.translate(bmx, bmy); ctx.rotate(Math.PI / 4);
                 ctx.strokeStyle = t.blDiamond; ctx.lineWidth = 1;
                 ctx.beginPath(); ctx.rect(-3, -3, 6, 6); ctx.stroke(); ctx.restore();

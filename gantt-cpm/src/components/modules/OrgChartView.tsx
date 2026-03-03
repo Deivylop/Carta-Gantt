@@ -155,7 +155,7 @@ export default function OrgChartView({ epsNodes, selectedId, onSelect }: Props) 
 
     const toggleCollapse = useCallback((id: string, e: React.MouseEvent) => {
         e.stopPropagation();
-        setCollapsed(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+        setCollapsed(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
     }, []);
 
     // Pan
@@ -323,8 +323,6 @@ export default function OrgChartView({ epsNodes, selectedId, onSelect }: Props) 
                                 {/* Name */}
                                 <foreignObject x={10} y={26} width={BOX_W - 20} height={36}>
                                     <div
-                                        // @ts-ignore
-                                        xmlns="http://www.w3.org/1999/xhtml"
                                         style={{
                                             fontSize: 11,
                                             color: isSel ? '#f8fafc' : '#cbd5e1',

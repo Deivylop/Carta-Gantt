@@ -8,7 +8,7 @@ import type { DurationDistribution, RiskEvent, SimulationParams, SimulationResul
 import { DEFAULT_RISK_STATE } from '../types/risk';
 
 import { createScenario, deepCloneActivities, rebaseScenario, recalcScenarioCPM, recordChange } from '../utils/whatIfEngine';
-import { calcCPM, calcMultipleFloatPaths, traceChain, newActivity, isoDate, parseDate, addDays, calWorkDays, fmtDate } from '../utils/cpm';
+import { calcCPM, calcMultipleFloatPaths, traceChain, newActivity, isoDate, parseDate, addDays, calWorkDays, fmtDate, normDate } from '../utils/cpm';
 import { autoId, computeOutlineNumbers, syncResFromString, deriveResString, distributeWork, strToPreds, predsToStr, newPoolResource } from '../utils/helpers';
 
 export interface SavedView {
@@ -731,14 +731,16 @@ function recalcInternal(state: GanttState, statusDate: Date | null, autoFit = fa
     return { ...state, activities: result.activities, totalDays: result.totalDays, visRows, pxPerDay, timelineStart, _cpmStatusDate: statusDate };
 }
 
-/** Recalc básico: forward/backward pass SIN retained logic. Usado en ediciones automáticas. */
+/** Recalc automático: forward/backward pass + retained logic con statusDate actual.
+ *  Usar statusDate (no _cpmStatusDate) para que ediciones inline produzcan los
+ *  mismos resultados que el botón "Calcular CPM" — evita fecha de fin estática. */
 function recalc(state: GanttState): GanttState {
-    return recalcInternal(state, state._cpmStatusDate, false);
+    return recalcInternal(state, state.statusDate, false);
 }
 
 /** Recalc con auto-fit de zoom. Solo para carga inicial (SET_ACTIVITIES, LOAD_STATE). */
 function recalcAutoFit(state: GanttState): GanttState {
-    return recalcInternal(state, state._cpmStatusDate, true);
+    return recalcInternal(state, state.statusDate, true);
 }
 
 /** Recalc completo: forward/backward pass CON retained logic. Solo para botón "Calcular CPM". */
@@ -1176,7 +1178,7 @@ function reducer(state: GanttState, action: Action): GanttState {
             const acts = JSON.parse(last).map((a: any) => {
                 const na = { ...newActivity(), ...a };
                 if (a.ES) na.ES = new Date(a.ES); if (a.EF) na.EF = new Date(a.EF);
-                if (a.blES) na.blES = new Date(a.blES); if (a.blEF) na.blEF = new Date(a.blEF);
+                na.blES = normDate(a.blES); na.blEF = normDate(a.blEF);
                 return na;
             }) as Activity[];
             return recalc({ ...state, activities: acts, undoStack: stack });
@@ -1397,8 +1399,8 @@ function reducer(state: GanttState, action: Action): GanttState {
                 }
                 baselines[blIdx] = {
                     dur: a.dur,
-                    ES: a.ES ? new Date(a.ES) : null,
-                    EF: a.EF ? new Date(a.EF) : null,
+                    ES: normDate(a.ES),
+                    EF: normDate(a.EF),
                     cal: a.cal,
                     savedAt: now,
                     name: blName,
@@ -1849,7 +1851,7 @@ function reducer(state: GanttState, action: Action): GanttState {
                     const d = new Date(v);
                     return isNaN(d.getTime()) ? null : d;
                 };
-                return { ...a, ES: toDate(a.ES), EF: toDate(a.EF), LS: toDate(a.LS), LF: toDate(a.LF), blES: toDate(a.blES), blEF: toDate(a.blEF) };
+                return { ...a, ES: toDate(a.ES), EF: toDate(a.EF), LS: toDate(a.LS), LF: toDate(a.LF), blES: normDate(a.blES), blEF: normDate(a.blEF) };
             });
             const newState = {
                 ...state,
@@ -1909,8 +1911,8 @@ function reducer(state: GanttState, action: Action): GanttState {
                     EF: hydrateDate(a.EF),
                     LS: hydrateDate(a.LS),
                     LF: hydrateDate(a.LF),
-                    blES: hydrateDate(a.blES),
-                    blEF: hydrateDate(a.blEF),
+                    blES: normDate(a.blES),
+                    blEF: normDate(a.blEF),
                     preds: a.preds || [],
                     resources: a.resources || [],
                     baselines: a.baselines || [],

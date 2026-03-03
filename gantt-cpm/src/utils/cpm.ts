@@ -139,21 +139,51 @@ export function fmtDate(d: Date | null): string {
 
 export function isoDate(d: Date | null): string {
     if (!d) return '';
-    return d.toISOString().slice(0, 10);
+    // Use local date components — avoids UTC shift from toISOString()
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dy = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dy}`;
 }
 
 export function parseDate(s: string | null | undefined): Date | null {
     if (!s) return null;
+    const str = String(s).trim();
     // dd-mm-yy format
-    const m = String(s).match(/^(\d{1,2})-(\d{1,2})-(\d{2})$/);
-    if (m) {
-        const yr = parseInt(m[3]) + (parseInt(m[3]) > 50 ? 1900 : 2000);
-        const d = new Date(yr, parseInt(m[2]) - 1, parseInt(m[1]));
+    const mDmy = str.match(/^(\d{1,2})-(\d{1,2})-(\d{2})$/);
+    if (mDmy) {
+        const yr = parseInt(mDmy[3]) + (parseInt(mDmy[3]) > 50 ? 1900 : 2000);
+        const d = new Date(yr, parseInt(mDmy[2]) - 1, parseInt(mDmy[1]));
         return isNaN(d.getTime()) ? null : d;
     }
-    // ISO yyyy-mm-dd
-    const d = new Date(s + 'T00:00:00');
+    // Extract YYYY-MM-DD from any ISO-like string (ignores time/timezone)
+    const mIso = str.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (mIso) {
+        const d = new Date(parseInt(mIso[1]), parseInt(mIso[2]) - 1, parseInt(mIso[3]));
+        return isNaN(d.getTime()) ? null : d;
+    }
+    // Fallback: try native parse at local midnight
+    const d = new Date(str + 'T00:00:00');
     return isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * Normalize a Date (or date-like string) to local midnight.
+ * Fixes timezone-drift caused by timestamp columns (no tz) in Supabase:
+ * each save/load cycle can shift hours, accumulating into a full-day offset.
+ * For strings, extracts YYYY-MM-DD directly to avoid UTC parsing issues
+ * (e.g. Supabase returning "2026-02-28T00:00:00+00" which shifts -1 day in Chile).
+ */
+export function normDate(d: Date | string | null | undefined): Date | null {
+    if (!d) return null;
+    if (typeof d === 'string') {
+        // Extract date components directly from the string — ignores any timezone suffix
+        const m = d.match(/(\d{4})-(\d{2})-(\d{2})/);
+        if (m) return new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]));
+        return null;
+    }
+    if (isNaN(d.getTime())) return null;
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
 // ─── New Activity Factory ───────────────────────────────────────

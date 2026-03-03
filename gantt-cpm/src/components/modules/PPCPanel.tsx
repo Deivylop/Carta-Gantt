@@ -13,7 +13,9 @@ import { BarChart3, PlusCircle, Trash2, CalendarDays, TrendingUp, Award, Activit
 /** Get the planned % at a specific date (0-100) using two-segment baseline interpolation
  *  (matches LookAheadGrid logic: if baseline had progress at save-time, interpolates in two segments) */
 function getPlannedPctAt(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   a: { blES: Date | null; blEF: Date | null; ES: Date | null; EF: Date | null; cal: any; baselines?: BaselineEntry[] },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   target: Date, defCal: any, activeBlIdx: number
 ): number {
   const start = a.blES || a.ES;
@@ -419,7 +421,7 @@ function CNCParetoChart({ data, total }: { data: { cat: CNCCategory; count: numb
     // Cumulative line
     if (cumPoints.length > 0) {
       ctx.beginPath();
-      cumPoints.forEach((p, i) => { i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y); });
+      cumPoints.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
       ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 2; ctx.stroke();
       cumPoints.forEach(p => {
         ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
@@ -597,8 +599,11 @@ export default function PPCPanel({ windowStart, windowEnd }: Props) {
 
   // Aggregate CNC for Pareto
   const cncAgg = useMemo(() => {
-    const counts: Record<CNCCategory, number> = {} as any;
-    CNC_CATEGORIES.forEach(c => counts[c] = 0);
+    const counts: Record<CNCCategory, number> = {
+      'Sin Restricción': 0, 'Programación': 0, 'Material': 0, 'Mano de Obra': 0, 'Equipos': 0,
+      'Subcontrato': 0, 'Clima': 0, 'Diseño': 0, 'Cliente': 0,
+      'Actividad Previa': 0, 'Calidad': 0, 'Seguridad': 0, 'Otro': 0
+    };
     state.ppcHistory.forEach(w => {
       w.cncEntries.forEach(e => counts[e.category]++);
     });
@@ -1141,8 +1146,8 @@ export default function PPCPanel({ windowStart, windowEnd }: Props) {
           </div>
           {/* Totals row */}
           {activitiesInWindow.length > 0 && (() => {
-            const totProg = activitiesInWindow.reduce((s: number, a: any) => s + (activityMetrics[a.id]?.planned || 0), 0);
-            const totReal = activitiesInWindow.reduce((s: number, a: any) => s + (activityMetrics[a.id]?.real || 0), 0);
+            const totProg = activitiesInWindow.reduce((s: number, a: { id: string }) => s + (activityMetrics[a.id]?.planned || 0), 0);
+            const totReal = activitiesInWindow.reduce((s: number, a: { id: string }) => s + (activityMetrics[a.id]?.real || 0), 0);
             const totEff = totProg > 0 ? Math.round((totReal / totProg) * 100) : 0;
             return (
               <div style={{ display: 'flex', gap: 12, padding: '6px 8px', fontSize: 10, fontWeight: 700, color: 'var(--text-heading)', borderTop: '2px solid var(--border-primary)' }}>
