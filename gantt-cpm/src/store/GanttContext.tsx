@@ -201,6 +201,7 @@ export type Action =
     | { type: 'PUSH_UNDO' }
     | { type: 'SET_COLUMN_VISIBLE'; key: string; visible: boolean }
     | { type: 'SET_COLUMNS_ORDER'; columns: ColumnDef[]; colWidths: number[] }
+    | { type: 'SET_COLUMN_VIEWS'; views: SavedView[] }
     | { type: 'SAVE_COLUMN_VIEW'; view: SavedView }
     | { type: 'DELETE_COLUMN_VIEW'; name: string }
     | { type: 'SET_COL_WIDTH'; index: number; width: number }
@@ -1187,6 +1188,10 @@ function reducer(state: GanttState, action: Action): GanttState {
 
         case 'SET_COLUMNS_ORDER': {
             return { ...state, columns: action.columns, colWidths: action.colWidths };
+        }
+
+        case 'SET_COLUMN_VIEWS': {
+            return { ...state, columnViews: action.views };
         }
 
         case 'SAVE_COLUMN_VIEW': {

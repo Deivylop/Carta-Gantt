@@ -222,6 +222,7 @@ function AppInner() {
             if (data.leanRestrictions && data.leanRestrictions.length) dispatch({ type: 'SET_LEAN_RESTRICTIONS', restrictions: data.leanRestrictions });
             if ((data as any).scenarios && (data as any).scenarios.length) dispatch({ type: 'SET_SCENARIOS', scenarios: (data as any).scenarios });
             if ((data as any).riskState) dispatch({ type: 'LOAD_RISK_STATE', riskState: (data as any).riskState });
+            if (data.columnViews && data.columnViews.length) dispatch({ type: 'SET_COLUMN_VIEWS', views: data.columnViews });
             if (!pid) localStorage.setItem('sb_current_project_id', sbPid);
             console.log('[initApp] Loaded from Supabase:', sbPid);
             initialLoadingRef.current = false;
@@ -304,6 +305,7 @@ function AppInner() {
         if (data.leanRestrictions && data.leanRestrictions.length) dispatch({ type: 'SET_LEAN_RESTRICTIONS', restrictions: data.leanRestrictions });
         if ((data as any).scenarios && (data as any).scenarios.length) dispatch({ type: 'SET_SCENARIOS', scenarios: (data as any).scenarios });
         if ((data as any).riskState) dispatch({ type: 'LOAD_RISK_STATE', riskState: (data as any).riskState });
+        if (data.columnViews && data.columnViews.length) dispatch({ type: 'SET_COLUMN_VIEWS', views: data.columnViews });
         localStorage.setItem('sb_current_project_id', pid);
         alert('Proyecto cargado exitosamente');
       } catch (err: any) {
