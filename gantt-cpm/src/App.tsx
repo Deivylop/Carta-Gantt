@@ -693,12 +693,12 @@ function AppInner() {
               </div>
             </div>
 
-            {/* Horizontal Resize Handle */}
-            <div className={`h-resize ${resizing === 'h' ? 'rsz' : ''}`}
-              onMouseDown={() => setResizing('h')} />
+            {state.showDetailPanel && <div className={`h-resize ${resizing === 'h' ? 'rsz' : ''}`}
+                onMouseDown={() => setResizing('h')} />}
+
 
             {/* Form Panel */}
-            <div style={{ height: formH, flexShrink: 0, overflow: 'hidden' }}>
+            <div style={{ height: state.showDetailPanel ? formH : 0, flexShrink: 0, overflow: 'hidden', transition: 'height 0.15s ease' }}>
               <TaskForm />
             </div>
           </div>
@@ -721,12 +721,12 @@ function AppInner() {
               </div>
             </div>
 
-            {/* Horizontal Resize Handle */}
-            <div className={`h-resize ${resizing === 'h' ? 'rsz' : ''}`}
-              onMouseDown={() => setResizing('h')} />
+            {state.showDetailPanel && <div className={`h-resize ${resizing === 'h' ? 'rsz' : ''}`}
+                onMouseDown={() => setResizing('h')} />}
+
 
             {/* Form Panel */}
-            <div style={{ height: formH, flexShrink: 0, overflow: 'hidden' }}>
+            <div style={{ height: state.showDetailPanel ? formH : 0, flexShrink: 0, overflow: 'hidden', transition: 'height 0.15s ease' }}>
               <ResourceForm />
             </div>
           </div>
@@ -749,12 +749,12 @@ function AppInner() {
               </div>
             </div>
 
-            {/* Horizontal Resize Handle */}
-            <div className={`h-resize ${resizing === 'h' ? 'rsz' : ''}`}
-              onMouseDown={() => setResizing('h')} />
+            {state.showDetailPanel && <div className={`h-resize ${resizing === 'h' ? 'rsz' : ''}`}
+                onMouseDown={() => setResizing('h')} />}
+
 
             {/* Form Panel */}
-            <div style={{ height: formH, flexShrink: 0, overflow: 'hidden' }}>
+            <div style={{ height: state.showDetailPanel ? formH : 0, flexShrink: 0, overflow: 'hidden', transition: 'height 0.15s ease' }}>
               <ActivityDetailPanel />
             </div>
           </div>
