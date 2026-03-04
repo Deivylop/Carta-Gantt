@@ -8,7 +8,7 @@ import { newActivity, isoDate, parseDate } from '../utils/cpm';
 import { autoId, exportJSON, exportCSV, importJSONData, importCSVData } from '../utils/helpers';
 import {
     Plus, Trash2, ArrowRight, ClipboardPaste, Scissors, Settings, Calculator, BarChart3, Sun, Moon, Clock,
-    TrendingUp, LineChart, FileText, Diamond, ArrowLeft, ArrowUp, ArrowDown, Info, Undo2, Cloud, Database, Upload, Download, LayoutTemplate, Users, CalendarDays, Filter, ArrowLeftRight, Zap, LogOut, ShieldAlert, PanelBottomClose
+    TrendingUp, LineChart, FileText, Diamond, ArrowLeft, ArrowUp, ArrowDown, Info, Undo2, Cloud, Database, Upload, Download, LayoutTemplate, Users, CalendarDays, Filter, ArrowLeftRight, Zap, LogOut, ShieldAlert, PanelBottomClose, Wand2
 } from 'lucide-react';
 import type { ZoomLevel } from '../types/gantt';
 
@@ -277,6 +277,14 @@ export default function Ribbon() {
                     </RG>
                     <RG label="CALENDARIOS">
                         <RB icon={<CalendarDays size={16} />} label="Calendarios" onClick={() => dispatch({ type: 'OPEN_CAL_MODAL' })} />
+                    </RG>
+                    <RG label="CAMBIO GLOBAL">
+                        <RB
+                            icon={<Wand2 size={16} />}
+                            label="Global Change"
+                            onClick={() => dispatch({ type: 'OPEN_GLOBAL_CHANGE_MODAL' })}
+                            title="Motor de cambio masivo – emulación Primavera P6 (IF / THEN / ELSE)"
+                        />
                     </RG>
                 </>}
 

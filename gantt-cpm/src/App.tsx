@@ -19,6 +19,7 @@ import BaselineModal from './components/modals/BaselineModal';
 import CalendarModal from './components/modals/CalendarModal';
 import CheckThresholdsModal from './components/modals/CheckThresholdsModal';
 import FilterModal from './components/modals/FilterModal';
+import GlobalChangeModal from './components/modals/GlobalChangeModal';
 import SCurveChart from './components/SCurveChart';
 import TaskUsageGrid from './components/TaskUsageGrid';
 import ResourceUsageTable from './components/ResourceUsageTable';
@@ -40,6 +41,7 @@ import { newActivity } from './utils/cpm';
 import { autoId } from './utils/helpers';
 import { saveToSupabase, loadFromSupabase, createSupabaseProject } from './utils/supabaseSync';
 import { supabase } from './lib/supabase';
+import React from 'react';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /** Restore ISO-string dates back to Date objects in a saved project snapshot */
@@ -694,7 +696,7 @@ function AppInner() {
             </div>
 
             {state.showDetailPanel && <div className={`h-resize ${resizing === 'h' ? 'rsz' : ''}`}
-                onMouseDown={() => setResizing('h')} />}
+              onMouseDown={() => setResizing('h')} />}
 
 
             {/* Form Panel */}
@@ -722,7 +724,7 @@ function AppInner() {
             </div>
 
             {state.showDetailPanel && <div className={`h-resize ${resizing === 'h' ? 'rsz' : ''}`}
-                onMouseDown={() => setResizing('h')} />}
+              onMouseDown={() => setResizing('h')} />}
 
 
             {/* Form Panel */}
@@ -750,7 +752,7 @@ function AppInner() {
             </div>
 
             {state.showDetailPanel && <div className={`h-resize ${resizing === 'h' ? 'rsz' : ''}`}
-                onMouseDown={() => setResizing('h')} />}
+              onMouseDown={() => setResizing('h')} />}
 
 
             {/* Form Panel */}
@@ -772,6 +774,7 @@ function AppInner() {
       <CalendarModal />
       <CheckThresholdsModal />
       <FilterModal />
+      <GlobalChangeModal />
 
       {/* PASSWORD RECOVERY MODAL */}
       {showRecoveryModal && (

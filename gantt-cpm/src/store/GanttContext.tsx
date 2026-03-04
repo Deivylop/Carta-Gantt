@@ -146,6 +146,7 @@ export interface GanttState {
     customFilters: CustomFilter[];
     filtersMatchAll: boolean; // true = AND all selected, false = OR any selected
     filtersModalOpen: boolean;
+    globalChangeModalOpen: boolean;
     // Multiple Float Paths
     mfpConfig: MFPConfig;
     // Chain Trace (Trace Logic)
@@ -298,7 +299,11 @@ export type Action =
     | { type: 'SET_RISK_ACTIVE_RUN'; runId: string | null }
     | { type: 'DELETE_RISK_RUN'; runId: string }
     | { type: 'SET_RISK_SCORING'; scoring: RiskScoringConfig }
-    | { type: 'LOAD_RISK_STATE'; riskState: Partial<RiskAnalysisState> };
+    | { type: 'LOAD_RISK_STATE'; riskState: Partial<RiskAnalysisState> }
+    // Global Change actions
+    | { type: 'OPEN_GLOBAL_CHANGE_MODAL' }
+    | { type: 'CLOSE_GLOBAL_CHANGE_MODAL' }
+    | { type: 'APPLY_GLOBAL_CHANGE'; changes: Array<{ index: number; updates: Partial<Activity> }> };
 
 // Module-level restriction cache (set synchronously in reducer before buildVisRows)
 let _moduleRestrictions: LeanRestriction[] = [];
@@ -1722,6 +1727,22 @@ function reducer(state: GanttState, action: Action): GanttState {
         case 'CLOSE_FILTERS_MODAL':
             return { ...state, filtersModalOpen: false };
 
+        case 'OPEN_GLOBAL_CHANGE_MODAL':
+            return { ...state, globalChangeModalOpen: true };
+
+        case 'CLOSE_GLOBAL_CHANGE_MODAL':
+            return { ...state, globalChangeModalOpen: false };
+
+        case 'APPLY_GLOBAL_CHANGE': {
+            const acts = [...state.activities];
+            for (const { index, updates } of action.changes) {
+                if (index >= 0 && index < acts.length) {
+                    acts[index] = { ...acts[index], ...updates };
+                }
+            }
+            return recalc({ ...state, activities: acts, globalChangeModalOpen: false });
+        }
+
         case 'SET_MFP_CONFIG': {
             const newMfp = { ...state.mfpConfig, ...action.config };
             return recalc({ ...state, mfpConfig: newMfp });
@@ -2030,6 +2051,7 @@ const initialState: GanttState = {
     customFilters: BUILTIN_FILTERS.map(f => ({ ...f })),
     filtersMatchAll: true,
     filtersModalOpen: false,
+    globalChangeModalOpen: false,
     mfpConfig: { enabled: false, endActivityId: null, mode: 'totalFloat', maxPaths: 10 },
     chainTrace: null,
     chainIds: new Set<string>(),
