@@ -188,12 +188,11 @@ export default function ProjectDetailPanel({ projectId, customCalendars = [] }: 
                 </div>
                 <div style={fieldStyle}>
                     <div style={labelStyle}>Calendario</div>
-                    <select style={valStyle} value={project.defaultCalendar || 'Estándar'}
+                    <select style={valStyle} value={project.defaultCalendar === 'Estándar' ? '6' : (project.defaultCalendar || '6')}
                         onChange={e => update({ defaultCalendar: e.target.value })}>
-                        <option>Estándar</option>
-                        <option>5 días</option>
-                        <option>6 días</option>
-                        <option>7 días</option>
+                        <option value="5">5 días - Lunes a Viernes</option>
+                        <option value="6">6 días - Lunes a Sábado</option>
+                        <option value="7">7 días - Continuo</option>
                         {customCalendars.map(c => (
                             <option key={c.name} value={c.name}>{c.name}</option>
                         ))}

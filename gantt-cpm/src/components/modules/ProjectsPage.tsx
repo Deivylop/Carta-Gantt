@@ -350,10 +350,10 @@ export default function ProjectsPage({ onOpenProject }: Props) {
         startDate: string; statusDate: string; calendar: string; description: string;
     }) => {
         if (configProject) {
-            pDispatch({ type: 'UPDATE_PROJECT', id: configProject.id, updates: { name: data.name, code: data.code, priority: data.priority, status: data.status, startDate: data.startDate || null, statusDate: data.statusDate || null, description: data.description } });
+            pDispatch({ type: 'UPDATE_PROJECT', id: configProject.id, updates: { name: data.name, code: data.code, priority: data.priority, status: data.status, startDate: data.startDate || null, statusDate: data.statusDate || null, description: data.description, defaultCalendar: data.calendar || '7' } });
         } else {
             const code = data.code || nextProjectCode;
-            pDispatch({ type: 'ADD_PROJECT', epsId: configEpsId, name: data.name || 'Nuevo Proyecto', code, initialData: { startDate: data.startDate || null, statusDate: data.statusDate || null, description: data.description || '', status: data.status || 'Planificación' } });
+            pDispatch({ type: 'ADD_PROJECT', epsId: configEpsId, name: data.name || 'Nuevo Proyecto', code, initialData: { startDate: data.startDate || null, statusDate: data.statusDate || null, description: data.description || '', status: data.status || 'Planificación', defaultCalendar: data.calendar || '7' } });
         }
         setConfigModalOpen(false);
     }, [configProject, configEpsId, nextProjectCode, pDispatch]);
@@ -1136,7 +1136,7 @@ export default function ProjectsPage({ onOpenProject }: Props) {
                 </div>
             )}
 
-            <ProjectConfigModal open={configModalOpen} project={configProject} epsId={configEpsId} nextCode={nextProjectCode} existingCodes={existingCodes} onSave={handleConfigSave} onClose={() => setConfigModalOpen(false)} customCalendars={ganttState.customCalendars || []} />
+            <ProjectConfigModal open={configModalOpen} project={configProject} epsId={configEpsId} nextCode={nextProjectCode} existingCodes={existingCodes} onSave={handleConfigSave} onClose={() => setConfigModalOpen(false)} customCalendars={ganttState.customCalendars || []} globalDefaultCalendar={String(ganttState.defCal || 7)} />
             <EPSModal open={epsModalOpen} onClose={() => setEpsModalOpen(false)} />
             {colPickerOpen && (
                 <ColumnPickerModal

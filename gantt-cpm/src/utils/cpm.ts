@@ -188,7 +188,7 @@ export function normDate(d: Date | string | null | undefined): Date | null {
 
 // ─── New Activity Factory ───────────────────────────────────────
 
-export function newActivity(id?: string, defCal: CalendarType = 6): Activity {
+export function newActivity(id?: string, defCal: CalendarType = 7): Activity {
     return {
         id: id || '',
         name: '',

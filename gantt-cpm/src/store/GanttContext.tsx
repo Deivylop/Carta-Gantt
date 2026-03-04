@@ -3,7 +3,7 @@
 // All state management matching HTML globals + actions
 // ═══════════════════════════════════════════════════════════════════
 import React, { createContext, useContext, useReducer, type ReactNode } from 'react';
-import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, VisibleRow, ProgressHistoryEntry, BaselineEntry, CustomCalendar, CustomFilter, MFPConfig, LeanRestriction, PPCWeekRecord, CNCEntry, WhatIfScenario } from '../types/gantt';
+import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, VisibleRow, ProgressHistoryEntry, BaselineEntry, CustomCalendar, CustomFilter, MFPConfig, LeanRestriction, PPCWeekRecord, CNCEntry, WhatIfScenario, SavedGlobalChange } from '../types/gantt';
 import type { DurationDistribution, RiskEvent, SimulationParams, SimulationResult, RiskAnalysisState, RiskScoringConfig } from '../types/risk';
 import { DEFAULT_RISK_STATE } from '../types/risk';
 
@@ -147,6 +147,7 @@ export interface GanttState {
     filtersMatchAll: boolean; // true = AND all selected, false = OR any selected
     filtersModalOpen: boolean;
     globalChangeModalOpen: boolean;
+    savedGlobalChanges: SavedGlobalChange[];
     // Multiple Float Paths
     mfpConfig: MFPConfig;
     // Chain Trace (Trace Logic)
@@ -303,7 +304,9 @@ export type Action =
     // Global Change actions
     | { type: 'OPEN_GLOBAL_CHANGE_MODAL' }
     | { type: 'CLOSE_GLOBAL_CHANGE_MODAL' }
-    | { type: 'APPLY_GLOBAL_CHANGE'; changes: Array<{ index: number; updates: Partial<Activity> }> };
+    | { type: 'APPLY_GLOBAL_CHANGE'; changes: Array<{ index: number; updates: Partial<Activity> }> }
+    | { type: 'SAVE_GLOBAL_CHANGE'; change: SavedGlobalChange }
+    | { type: 'DELETE_GLOBAL_CHANGE'; id: string };
 
 // Module-level restriction cache (set synchronously in reducer before buildVisRows)
 let _moduleRestrictions: LeanRestriction[] = [];
@@ -706,7 +709,11 @@ function ensureProjRow(activities: Activity[], showProjRow: boolean, projName: s
         acts = acts.filter(a => !a._isProjRow);
         return acts;
     }
-    if (acts.length && acts[0]._isProjRow) return acts;
+    if (acts.length && acts[0]._isProjRow) {
+        // Update existing project row's calendar and name to match current settings
+        acts[0] = { ...acts[0], cal: defCal, name: projName || acts[0].name };
+        return acts;
+    }
     const pr = newActivity('PROY', defCal);
     pr.name = projName || 'Mi Proyecto';
     pr.type = 'summary';
@@ -1743,6 +1750,20 @@ function reducer(state: GanttState, action: Action): GanttState {
             return recalc({ ...state, activities: acts, globalChangeModalOpen: false });
         }
 
+        case 'SAVE_GLOBAL_CHANGE': {
+            const exists = state.savedGlobalChanges.findIndex(gc => gc.id === action.change.id);
+            const newList = [...state.savedGlobalChanges];
+            if (exists >= 0) {
+                newList[exists] = action.change;
+            } else {
+                newList.push(action.change);
+            }
+            return { ...state, savedGlobalChanges: newList };
+        }
+
+        case 'DELETE_GLOBAL_CHANGE':
+            return { ...state, savedGlobalChanges: state.savedGlobalChanges.filter(gc => gc.id !== action.id) };
+
         case 'SET_MFP_CONFIG': {
             const newMfp = { ...state.mfpConfig, ...action.config };
             return recalc({ ...state, mfpConfig: newMfp });
@@ -2004,7 +2025,7 @@ try {
 const initialState: GanttState = {
     projName: 'Mi Proyecto',
     projStart: now,
-    defCal: 6,
+    defCal: 7,
     statusDate: now,
     _cpmStatusDate: null,
     activities: [],
@@ -2052,6 +2073,7 @@ const initialState: GanttState = {
     filtersMatchAll: true,
     filtersModalOpen: false,
     globalChangeModalOpen: false,
+    savedGlobalChanges: [],
     mfpConfig: { enabled: false, endActivityId: null, mode: 'totalFloat', maxPaths: 10 },
     chainTrace: null,
     chainIds: new Set<string>(),

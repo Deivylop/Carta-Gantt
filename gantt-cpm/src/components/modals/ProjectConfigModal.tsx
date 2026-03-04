@@ -24,9 +24,10 @@ interface Props {
     }) => void;
     onClose: () => void;
     customCalendars?: { id: string; name: string }[];
+    globalDefaultCalendar?: string; // from Configuración page
 }
 
-export default function ProjectConfigModal({ open, project, nextCode = 'PRY-001', existingCodes = [], onSave, onClose, customCalendars = [] }: Props) {
+export default function ProjectConfigModal({ open, project, nextCode = 'PRY-001', existingCodes = [], onSave, onClose, customCalendars = [], globalDefaultCalendar = '7' }: Props) {
     const [form, setForm] = useState({
         name: '',
         code: '',
@@ -50,7 +51,7 @@ export default function ProjectConfigModal({ open, project, nextCode = 'PRY-001'
                     status: project.status,
                     startDate: project.startDate ? project.startDate.slice(0, 10) : '',
                     statusDate: project.statusDate ? project.statusDate.slice(0, 10) : '',
-                    calendar: '6',
+                    calendar: project.defaultCalendar || String(globalDefaultCalendar),
                     description: project.description,
                 });
             } else {
@@ -62,7 +63,7 @@ export default function ProjectConfigModal({ open, project, nextCode = 'PRY-001'
                     status: 'Planificación',
                     startDate: today,
                     statusDate: today,
-                    calendar: '6',
+                    calendar: String(globalDefaultCalendar),
                     description: '',
                 });
             }

@@ -25,7 +25,7 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
         const projName = state.projName || 'Mi Proyecto';
         const _projStart = isoDate(state.projStart) || null;
         const _statusDate = isoDate(state.statusDate) || null;
-        const defCal = state.defCal || 6;
+        const defCal = state.defCal || 7;
         let currentId = projectId;
 
         // Get User ID from Supabase
@@ -152,6 +152,16 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
                 name: '__COLUMN_VIEWS__',
                 type: 'milestone',
                 notes: JSON.stringify(state.columnViews),
+                lv: -1,
+            } as any);
+        }
+        // Inject Saved Global Changes as a hidden activity
+        if (state.savedGlobalChanges && state.savedGlobalChanges.length > 0) {
+            acts.push({
+                ...newActivity(`__GCHANGES__${userId}`, defCal),
+                name: '__GLOBAL_CHANGES__',
+                type: 'milestone',
+                notes: JSON.stringify(state.savedGlobalChanges),
                 lv: -1,
             } as any);
         }
@@ -571,7 +581,7 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
 
     const projName = proj.projname || 'Mi Proyecto';
     const projStart = proj.projstart ? (parseDate(proj.projstart) || new Date()) : new Date();
-    const defCal = proj.defcal || 6;
+    const defCal = proj.defcal || 7;
     const statusDate = proj.statusdate ? (parseDate(proj.statusdate) || new Date()) : new Date();
 
     // Get User ID from Supabase
@@ -629,6 +639,7 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
     let depsBackup: Record<string, { id: string; type: string; lag: number }[]> = {};
     let scenarios: any[] = [];
     let columnViews: any[] = [];
+    let savedGlobalChanges: any[] = [];
     let hiddenOtherData: any[] = [];
 
     // Build activities
@@ -729,6 +740,16 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
             }
             return false;
         }
+        // Extract hidden Saved Global Changes if found
+        if (na.id.startsWith('__GCHANGES__')) {
+            const isMyChanges = na.id === `__GCHANGES__${userId}`;
+            if (isMyChanges) {
+                try { savedGlobalChanges = JSON.parse(na.notes); } catch { /* ignore */ }
+            } else {
+                hiddenOtherData.push(na);
+            }
+            return false;
+        }
         // Extract hidden What-If scenarios if found
         if (na.id === '__SCENARIOS__') {
             try {
@@ -784,6 +805,7 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
         leanRestrictions,
         scenarios,
         columnViews,
+        savedGlobalChanges,
         _hiddenOtherData: hiddenOtherData,
         riskState: (await loadRiskStateFromSupabase(projectId)) as RiskAnalysisState,
     };
@@ -1130,7 +1152,7 @@ export async function listSupabaseProjects(): Promise<{
         projName: r.projname || 'Sin nombre',
         projStart: r.projstart || null,
         statusDate: r.statusdate || null,
-        defCal: r.defcal || 6,
+        defCal: r.defcal || 7,
         empresaId: r.empresa_id || null,
     }));
 }
@@ -1343,7 +1365,7 @@ export async function createSupabaseProject(
         .insert({
             projname: name,
             projstart: projStart || null,
-            defcal: defCal || 6,
+            defcal: defCal || 7,
             statusdate: statusDate || null,
         })
         .select()

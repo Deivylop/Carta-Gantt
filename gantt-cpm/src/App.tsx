@@ -564,11 +564,12 @@ function AppInner() {
       // No local state but project exists in Supabase — load from there
       // ALWAYS reset to a clean state first, then overlay Supabase data.
       const freshName = proj?.name || 'Nuevo Proyecto';
+      const newDefCal = proj?.defaultCalendar ? parseInt(proj.defaultCalendar) : 7;
       const freshActs = [
-        { ...newActivity('PROY', state.defCal), name: freshName, type: 'summary' as const, lv: -1, _isProjRow: true },
+        { ...newActivity('PROY', newDefCal as any), name: freshName, type: 'summary' as const, lv: -1, _isProjRow: true },
       ];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: freshName, projStart: new Date(), defCal: 6 as any, statusDate: new Date() } });
+      dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: freshName, projStart: new Date(), defCal: newDefCal as any, statusDate: new Date() } });
       dispatch({ type: 'SET_ACTIVITIES', activities: freshActs });
       dispatch({ type: 'SET_RESOURCES', resources: [] });
       dispatch({ type: 'SET_PROGRESS_HISTORY', history: [] });
@@ -595,11 +596,12 @@ function AppInner() {
     } else {
       // No saved state and no Supabase link — start fresh and auto-create in Supabase
       localStorage.removeItem('sb_current_project_id');
+      const newDefCal = proj?.defaultCalendar ? parseInt(proj.defaultCalendar) : 7;
       const freshActs = [
-        { ...newActivity('PROY', state.defCal), name: proj?.name || 'Nuevo Proyecto', type: 'summary' as const, lv: -1, _isProjRow: true },
+        { ...newActivity('PROY', newDefCal as any), name: proj?.name || 'Nuevo Proyecto', type: 'summary' as const, lv: -1, _isProjRow: true },
       ];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: proj?.name || 'Nuevo Proyecto', projStart: new Date(), defCal: 6 as any, statusDate: new Date() } });
+      dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: proj?.name || 'Nuevo Proyecto', projStart: new Date(), defCal: newDefCal as any, statusDate: new Date() } });
       dispatch({ type: 'SET_ACTIVITIES', activities: freshActs });
       dispatch({ type: 'SET_RESOURCES', resources: [] });
       dispatch({ type: 'SET_PROGRESS_HISTORY', history: [] });
@@ -609,7 +611,7 @@ function AppInner() {
       // Auto-create in Supabase so auto-save works immediately
       if (proj) {
         try {
-          const sbId = await createSupabaseProject(proj.name);
+          const sbId = await createSupabaseProject(proj.name, new Date().toISOString(), newDefCal, new Date().toISOString());
           localStorage.setItem('sb_current_project_id', sbId);
           pDispatch({ type: 'UPDATE_PROJECT', id: projectId, updates: { supabaseId: sbId } });
         } catch (err) {

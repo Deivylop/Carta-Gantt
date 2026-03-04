@@ -832,7 +832,12 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
                 if (cancelled) return;
                 creatingRef.current.add(proj.id);
                 try {
-                    const sbId = await createSupabaseProject(proj.name, proj.startDate, undefined, proj.statusDate);
+                    const sbId = await createSupabaseProject(
+                        proj.name,
+                        proj.startDate,
+                        proj.defaultCalendar ? parseInt(proj.defaultCalendar) : 7,
+                        proj.statusDate
+                    );
                     if (cancelled) return;
                     dispatch({ type: 'UPDATE_PROJECT', id: proj.id, updates: { supabaseId: sbId } });
                 } catch (e) {

@@ -369,3 +369,34 @@ export interface CustomFilter {
     active: boolean; // whether the filter is checked/applied
     builtin?: boolean; // true = system filter (read-only, cannot be deleted or edited)
 }
+
+// ─── Global Change Definitions ──────────────────────────────────
+export type GCOperator = 'equals' | 'not_equals' | 'greater_than' | 'less_than'
+    | 'greater_than_or_equal' | 'less_than_or_equal'
+    | 'contains' | 'not_contains' | 'is_empty' | 'is_not_empty';
+
+export type GCActionType = 'set' | 'add' | 'multiply' | 'append';
+
+export interface GCCondition {
+    id: string;
+    field: string;
+    operator: GCOperator;
+    value: string;
+}
+
+export interface GCActionDef {
+    field: string;
+    action: GCActionType;
+    value: string;
+}
+
+export interface SavedGlobalChange {
+    id: string;
+    name: string;
+    matchAll: boolean;
+    conditions: GCCondition[];
+    thenAction: GCActionDef | null;
+    elseEnabled: boolean;
+    elseAction: GCActionDef | null;
+}
+

@@ -121,10 +121,15 @@ export default function ConfigPage() {
           <select
             style={selectStyle}
             value={state.defCal}
-            onChange={e => dispatch({ type: 'SET_PROJECT_CONFIG', config: { ...state, defCal: e.target.value as CalendarType } })}>
-            <option value="5d">5 días (Lun-Vie)</option>
-            <option value="6d">6 días (Lun-Sáb)</option>
-            <option value="7d">7 días</option>
+            onChange={e => {
+              const v = e.target.value;
+              const numCal = parseInt(v);
+              const cal: CalendarType = (!isNaN(numCal) && [5,6,7].includes(numCal)) ? numCal as 5|6|7 : v;
+              dispatch({ type: 'SET_PROJECT_CONFIG', config: { ...state, defCal: cal } });
+            }}>
+            <option value="5">5 días (Lun-Vie)</option>
+            <option value="6">6 días (Lun-Sáb)</option>
+            <option value="7">7 días</option>
           </select>
         </Field>
         <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>

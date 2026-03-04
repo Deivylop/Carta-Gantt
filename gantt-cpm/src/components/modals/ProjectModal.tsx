@@ -9,8 +9,6 @@ export default function ProjectModal() {
     const { state, dispatch } = useGantt();
     const [form, setForm] = useState({ name: '', start: '', status: '', cal: '6' });
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     useEffect(() => {
         if (state.projModalOpen) {
             setForm({
@@ -25,16 +23,14 @@ export default function ProjectModal() {
     if (!state.projModalOpen) return null;
 
     const save = () => {
-        interface ProjectConfigMap { projName?: string; projStart?: Date; statusDate?: Date; defCal?: string | number; }
-        const config: ProjectConfigMap = {};
+        const config: any = {};
         config.projName = form.name || 'Mi Proyecto';
         const d = parseDate(form.start);
         if (d) config.projStart = d;
         const sd = parseDate(form.status);
         if (sd) config.statusDate = sd;
-        config.defCal = isNaN(parseInt(form.cal)) ? form.cal : (parseInt(form.cal) || 6);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        dispatch({ type: 'SET_PROJECT_CONFIG', config: config as any });
+        config.defCal = isNaN(parseInt(form.cal)) ? form.cal : parseInt(form.cal);
+        dispatch({ type: 'SET_PROJECT_CONFIG', config });
         dispatch({ type: 'CLOSE_PROJ_MODAL' });
     };
 

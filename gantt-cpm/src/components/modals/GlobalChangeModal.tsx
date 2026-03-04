@@ -1,34 +1,15 @@
 // ═══════════════════════════════════════════════════════════════════
 // GlobalChangeModal – Motor de cambio masivo al estilo Primavera P6
-// Flujo: definir condiciones IF → THEN / ELSE → Preview → Commit
+// Flujo: Listado -> Editor (definir condiciones IF -> THEN/ELSE) -> Preview -> Commit
 // ═══════════════════════════════════════════════════════════════════
 import { useState, useCallback } from 'react';
 import { useGantt } from '../../store/GanttContext';
 import { DEFAULT_COLS } from '../../store/GanttContext';
 import { Wand2, Plus, Trash2, ArrowRight, CheckCircle2, Eye } from 'lucide-react';
 import { isoDate, parseDate } from '../../utils/cpm';
-import type { Activity } from '../../types/gantt';
+import type { Activity, GCCondition, GCActionDef, GCActionType, GCOperator, SavedGlobalChange } from '../../types/gantt';
 
 // ─── Types ───────────────────────────────────────────────────────
-
-type GCOperator = 'equals' | 'not_equals' | 'greater_than' | 'less_than'
-    | 'greater_than_or_equal' | 'less_than_or_equal'
-    | 'contains' | 'not_contains' | 'is_empty' | 'is_not_empty';
-
-type GCAction = 'set' | 'add' | 'multiply' | 'append';
-
-interface GCCondition {
-    id: string;
-    field: string;
-    operator: GCOperator;
-    value: string;
-}
-
-interface GCActionDef {
-    field: string;
-    action: GCAction;
-    value: string;
-}
 
 interface GCPreviewRow {
     actId: string;
@@ -40,6 +21,8 @@ interface GCPreviewRow {
     newValue: string;
     updates: Partial<Activity>;
 }
+
+type ModalStep = 'list' | 'editor' | 'preview';
 
 // ─── Constants ───────────────────────────────────────────────────
 
@@ -212,7 +195,7 @@ function computeNewValue(a: Activity, actionDef: GCActionDef): { newRaw: unknown
 }
 
 // ─── Available actions per field type ────────────────────────────
-const ACTIONS_FOR_TYPE: Record<string, { value: GCAction; label: string }[]> = {
+const ACTIONS_FOR_TYPE: Record<string, { value: GCActionType; label: string }[]> = {
     number: [
         { value: 'set', label: 'Asignar valor' },
         { value: 'add', label: 'Sumar a valor actual' },
@@ -232,22 +215,86 @@ export default function GlobalChangeModal() {
     const { state, dispatch } = useGantt();
     const lm = state.lightMode;
 
-    // ── State ──
+    // ── Editor State ──
+    const [editorId, setEditorId] = useState<string | null>(null);
+    const [name, setName] = useState('');
     const [conditions, setConditions] = useState<GCCondition[]>([]);
     const [matchAll, setMatchAll] = useState(true);
     const [thenAction, setThenAction] = useState<GCActionDef>({ field: 'pct', action: 'set', value: '' });
     const [elseEnabled, setElseEnabled] = useState(false);
     const [elseAction, setElseAction] = useState<GCActionDef>({ field: 'pct', action: 'set', value: '' });
+
+    // ── App State ──
     const [preview, setPreview] = useState<GCPreviewRow[] | null>(null);
-    const [step, setStep] = useState<'editor' | 'preview'>('editor');
+    const [step, setStep] = useState<ModalStep>('list');
+    const [selectedGcId, setSelectedGcId] = useState<string | null>(null);
 
     const close = () => {
         dispatch({ type: 'CLOSE_GLOBAL_CHANGE_MODAL' });
         setPreview(null);
+        setStep('list');
+    };
+
+    // ── List View Handlers ──
+    const handleNew = () => {
+        setEditorId(uid());
+        setName('Nuevo Cambio Global');
+        setConditions([]);
+        setMatchAll(true);
+        setThenAction({ field: 'pct', action: 'set', value: '' });
+        setElseEnabled(false);
+        setElseAction({ field: 'pct', action: 'set', value: '' });
         setStep('editor');
     };
 
-    // ── Condition handlers ──
+    const handleEdit = (gc: SavedGlobalChange) => {
+        setEditorId(gc.id);
+        setName(gc.name);
+        setConditions(gc.conditions);
+        setMatchAll(gc.matchAll);
+        if (gc.thenAction) setThenAction(gc.thenAction);
+        setElseEnabled(gc.elseEnabled);
+        if (gc.elseAction) setElseAction(gc.elseAction);
+        setStep('editor');
+    };
+
+    const handleDelete = (id: string) => {
+        if (!confirm('¿Seguro que deseas eliminar este cambio global?')) return;
+        dispatch({ type: 'DELETE_GLOBAL_CHANGE', id });
+        if (selectedGcId === id) setSelectedGcId(null);
+    };
+
+    const handleApplyFromList = (gcId: string) => {
+        const gc = state.savedGlobalChanges.find((g: any) => g.id === gcId);
+        if (!gc) return;
+        // Load settings to background state for the preview build context
+        setConditions(gc.conditions);
+        setMatchAll(gc.matchAll);
+        setThenAction(gc.thenAction ?? { field: 'pct', action: 'set', value: '' });
+        setElseEnabled(gc.elseEnabled);
+        setElseAction(gc.elseAction ?? { field: 'pct', action: 'set', value: '' });
+
+        // Immediately build logic
+        buildPreviewFromData(gc.conditions, gc.matchAll, gc.thenAction ?? { field: 'pct', action: 'set', value: '' }, gc.elseEnabled, gc.elseAction ?? { field: 'pct', action: 'set', value: '' });
+    };
+
+    // ── Editor Handlers ──
+    const saveEditor = () => {
+        if (!name.trim()) return alert('El cambio global debe tener un nombre.');
+        const gc: SavedGlobalChange = {
+            id: editorId || uid(),
+            name,
+            matchAll,
+            conditions,
+            thenAction,
+            elseEnabled,
+            elseAction
+        };
+        dispatch({ type: 'SAVE_GLOBAL_CHANGE', change: gc });
+        setStep('list');
+    };
+
+    // Condition sub-handlers
     const addCondition = () => setConditions(prev => [
         ...prev,
         { id: uid(), field: 'name', operator: 'contains', value: '' }
@@ -257,15 +304,15 @@ export default function GlobalChangeModal() {
         setConditions(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
 
     // ── Preview generation ──
-    const buildPreview = useCallback(() => {
+    const buildPreviewFromData = useCallback((conds: GCCondition[], mAll: boolean, tAct: GCActionDef | null, eEnb: boolean, eAct: GCActionDef | null) => {
         const rows: GCPreviewRow[] = [];
         const activities = state.activities;
 
         activities.forEach((a, idx) => {
             if (a._isProjRow) return;
 
-            const passes = activityPasses(a, conditions, matchAll);
-            const actionToApply = passes ? thenAction : (elseEnabled ? elseAction : null);
+            const passes = activityPasses(a, conds, mAll);
+            const actionToApply = passes ? tAct : (eEnb ? eAct : null);
             if (!actionToApply) return;
             if (!actionToApply.field || actionToApply.value === '') return;
 
@@ -291,7 +338,11 @@ export default function GlobalChangeModal() {
 
         setPreview(rows);
         setStep('preview');
-    }, [state.activities, conditions, matchAll, thenAction, elseEnabled, elseAction]);
+    }, [state.activities]);
+
+    const handleBuildPreview = () => {
+        buildPreviewFromData(conditions, matchAll, thenAction, elseEnabled, elseAction);
+    };
 
     // ── Commit ──
     const commit = () => {
@@ -307,6 +358,7 @@ export default function GlobalChangeModal() {
 
         const changes = Array.from(byIndex.entries()).map(([index, updates]) => ({ index, updates }));
         dispatch({ type: 'APPLY_GLOBAL_CHANGE', changes });
+        close();
     };
 
     if (!state.globalChangeModalOpen) return null;
@@ -315,6 +367,7 @@ export default function GlobalChangeModal() {
     const border = `1px solid ${lm ? '#e2e8f0' : '#334155'}`;
     const bg = lm ? '#fff' : '#1e293b';
     const bgAlt = lm ? '#f8fafc' : '#0f172a';
+    const bgSelected = lm ? '#e0e7ff' : '#312e81';
     const textMuted = lm ? '#64748b' : '#94a3b8';
     const accent = '#818cf8';
 
@@ -330,8 +383,10 @@ export default function GlobalChangeModal() {
                 className="modal"
                 onClick={e => e.stopPropagation()}
                 style={{
-                    width: 900, maxHeight: '90vh', display: 'flex', flexDirection: 'column',
+                    width: step === 'list' ? 600 : 900,
+                    maxHeight: '90vh', display: 'flex', flexDirection: 'column',
                     background: bg, border,
+                    transition: 'width 0.2s',
                 }}
             >
                 {/* ── Header ── */}
@@ -342,14 +397,25 @@ export default function GlobalChangeModal() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <Wand2 size={20} color={accent} />
                         <h3 style={{ margin: 0, fontSize: 16, color: accent, fontWeight: 700 }}>Global Change</h3>
-                        <span style={{ fontSize: 11, color: textMuted, marginLeft: 4 }}>
-                            Motor de cambio masivo (Emulación P6)
-                        </span>
+                        {step === 'list' ? (
+                            <span style={{ fontSize: 11, color: textMuted, marginLeft: 4 }}>
+                                Selecciona un perfil de cambio
+                            </span>
+                        ) : (
+                            <span style={{ fontSize: 11, color: textMuted, marginLeft: 4 }}>
+                                Motor de cambio masivo (Emulación P6)
+                            </span>
+                        )}
                     </div>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        {step === 'editor' && (
+                            <button className="btn btn-secondary" onClick={() => setStep('list')} style={{ fontSize: 12 }}>
+                                ← Volver a la lista
+                            </button>
+                        )}
                         {step === 'preview' && (
                             <button className="btn btn-secondary" onClick={() => setStep('editor')} style={{ fontSize: 12 }}>
-                                ← Editar
+                                ← Editar Parámetros
                             </button>
                         )}
                         <button className="modal-close" onClick={close}>✕</button>
@@ -357,9 +423,90 @@ export default function GlobalChangeModal() {
                 </div>
 
                 {/* ── Body ── */}
-                <div className="modal-body" style={{ flex: 1, overflow: 'auto', padding: 18 }}>
-                    {step === 'editor' ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                <div className="modal-body" style={{ flex: 1, overflow: 'auto' }}>
+
+                    {/* ═══ LIST VIEW ═══ */}
+                    {step === 'list' && (
+                        <div style={{ display: 'flex', height: 400 }}>
+                            <div style={{ flex: 1, padding: 18, borderRight: border, overflowY: 'auto' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                                    <thead>
+                                        <tr style={{ textAlign: 'left', borderBottom: border }}>
+                                            <Th>Nombre</Th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {state.savedGlobalChanges.map((gc: any) => (
+                                            <tr key={gc.id}
+                                                onClick={() => setSelectedGcId(gc.id)}
+                                                onDoubleClick={() => handleApplyFromList(gc.id)}
+                                                style={{
+                                                    cursor: 'pointer',
+                                                    background: selectedGcId === gc.id ? bgSelected : 'transparent',
+                                                    borderBottom: border
+                                                }}>
+                                                <td style={{ padding: '8px 10px', color: selectedGcId === gc.id ? (lm ? '#3730a3' : '#a5b4fc') : 'inherit' }}>
+                                                    {gc.name}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        {state.savedGlobalChanges.length === 0 && (
+                                            <tr>
+                                                <td style={{ padding: '20px', textAlign: 'center', color: textMuted, fontStyle: 'italic' }}>
+                                                    No hay cambios globales guardados. Haz clic en "Nuevo" para crear uno.
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {/* P6 Sidebar Buttons */}
+                            <div style={{ width: 140, padding: 18, display: 'flex', flexDirection: 'column', gap: 10, background: bgAlt }}>
+                                <button className="btn btn-primary" onClick={close} style={{ width: '100%', justifyContent: 'center' }}>Cerrar</button>
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={() => selectedGcId && handleApplyFromList(selectedGcId)}
+                                    disabled={!selectedGcId}
+                                    style={{ width: '100%', justifyContent: 'center', opacity: selectedGcId ? 1 : 0.5 }}
+                                >
+                                    Aplicar cambio
+                                </button>
+                                <div style={{ height: 10 }}></div>
+                                <button className="btn btn-secondary" onClick={handleNew} style={{ width: '100%', justifyContent: 'center' }}>Nuevo</button>
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={() => selectedGcId && handleEdit(state.savedGlobalChanges.find((g: any) => g.id === selectedGcId)! as any)}
+                                    disabled={!selectedGcId}
+                                    style={{ width: '100%', justifyContent: 'center', opacity: selectedGcId ? 1 : 0.5 }}
+                                >
+                                    Modificar
+                                </button>
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={() => selectedGcId && handleDelete(selectedGcId)}
+                                    disabled={!selectedGcId}
+                                    style={{ width: '100%', justifyContent: 'center', opacity: selectedGcId ? 1 : 0.5 }}
+                                >
+                                    Suprimir
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ═══ EDITOR VIEW ═══ */}
+                    {step === 'editor' && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 20, padding: 18 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                <label style={{ fontSize: 13, fontWeight: 600, width: 120 }}>Nombre Cambio:</label>
+                                <input
+                                    type="text"
+                                    className="form-input"
+                                    style={{ flex: 1, padding: '6px 10px', fontSize: 14, fontWeight: 600 }}
+                                    value={name}
+                                    onChange={e => setName(e.target.value)}
+                                    placeholder="Nombre descriptivo para identificarlo..."
+                                />
+                            </div>
 
                             {/* ── Subject Area ── */}
                             <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px', background: bgAlt, borderRadius: 6, border }}>
@@ -367,7 +514,7 @@ export default function GlobalChangeModal() {
                                 <select className="form-input" style={{ fontSize: 12, padding: '4px 8px', width: 220 }} defaultValue="activities">
                                     <option value="activities">Activities</option>
                                 </select>
-                                <span style={{ fontSize: 11, color: textMuted }}>(Expansion en futuras versiones)</span>
+                                <span style={{ fontSize: 11, color: textMuted }}>(Expansión en futuras versiones)</span>
                             </div>
 
                             {/* ── IF CONDITIONS ── */}
@@ -442,10 +589,24 @@ export default function GlobalChangeModal() {
                                     </div>
                                 )}
                             </Section>
+
+                            {/* ── Editor Controls ── */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10 }}>
+                                <button className="btn btn-secondary" onClick={() => setStep('list')}>Cancelar</button>
+                                <div style={{ display: 'flex', gap: 8 }}>
+                                    <button className="btn btn-primary" onClick={handleBuildPreview}
+                                        style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#10b981', borderColor: '#059669' }}>
+                                        <Eye size={15} /> Preview (Vista previa)
+                                    </button>
+                                    <button className="btn btn-primary" onClick={saveEditor}>Guardar Cambio Global</button>
+                                </div>
+                            </div>
                         </div>
-                    ) : (
-                        /* ── PREVIEW TABLE ── */
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    )}
+
+                    {/* ═══ PREVIEW VIEW ═══ */}
+                    {step === 'preview' && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 18 }}>
                             <div style={{
                                 display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px',
                                 background: lm ? '#f0fdf4' : '#14532d33',
@@ -455,7 +616,7 @@ export default function GlobalChangeModal() {
                                 <CheckCircle2 size={14} color="#22c55e" />
                                 <span>
                                     <strong>{preview?.length ?? 0}</strong> actividade(s) se modificarán.
-                                    Revisa los cambios propuestos antes de confirmar.
+                                    Revisa los cambios propuestos antes de confirmar al archivo.
                                 </span>
                             </div>
 
@@ -505,17 +666,12 @@ export default function GlobalChangeModal() {
                 </div>
 
                 {/* ── Footer ── */}
-                <div className="modal-footer" style={{
-                    borderTop: border, padding: '12px 18px',
-                    display: 'flex', justifyContent: 'flex-end', gap: 10
-                }}>
-                    <button className="btn btn-secondary" onClick={close}>Cancelar</button>
-                    {step === 'editor' ? (
-                        <button className="btn btn-primary" onClick={buildPreview}
-                            style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <Eye size={15} /> Preview (Vista previa)
-                        </button>
-                    ) : (
+                {step === 'preview' && (
+                    <div className="modal-footer" style={{
+                        borderTop: border, padding: '12px 18px',
+                        display: 'flex', justifyContent: 'flex-end', gap: 10
+                    }}>
+                        <button className="btn btn-secondary" onClick={() => setStep('list')}>Cancelar</button>
                         <button
                             className="btn btn-primary"
                             onClick={commit}
@@ -528,8 +684,8 @@ export default function GlobalChangeModal() {
                         >
                             <CheckCircle2 size={15} /> Commit Changes ({preview?.length ?? 0})
                         </button>
-                    )}
-                </div>
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -578,6 +734,7 @@ function ConditionRow({ cond, index, matchAll, border, textMuted, onUpdate, onRe
         <div style={{
             display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6,
             padding: '6px 10px', border, borderRadius: 6,
+            background: 'transparent'
         }}>
             {/* Connector badge */}
             {index > 0 && (
@@ -659,7 +816,7 @@ function ActionRow({ actionDef, fieldType, lm, onUpdate }: {
                         const newField = e.target.value;
                         const newType = MUTABLE_FIELDS.find(f => f.key === newField)?.type ?? 'text';
                         const defaultAction = ACTIONS_FOR_TYPE[newType]?.[0]?.value ?? 'set';
-                        onUpdate({ field: newField, action: defaultAction, value: '' });
+                        onUpdate({ field: newField, action: defaultAction as GCActionType, value: '' });
                     }}>
                     {MUTABLE_FIELDS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
                 </select>
@@ -672,7 +829,7 @@ function ActionRow({ actionDef, fieldType, lm, onUpdate }: {
                 <label style={{ fontSize: 10, color: lm ? '#64748b' : '#94a3b8', fontWeight: 600 }}>OPERACIÓN</label>
                 <select className="form-input" style={{ fontSize: 12, padding: '5px 8px', minWidth: 160 }}
                     value={actionDef.action}
-                    onChange={e => onUpdate({ action: e.target.value as GCAction })}>
+                    onChange={e => onUpdate({ action: e.target.value as GCActionType })}>
                     {actions.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
                 </select>
             </div>
