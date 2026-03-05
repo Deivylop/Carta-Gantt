@@ -3,7 +3,7 @@
 import { supabase } from '../lib/supabase';
 import type { GanttState } from '../store/GanttContext';
 import { BUILTIN_FILTERS } from '../store/GanttContext';
-import { newActivity, isoDate, parseDate } from './cpm';
+import { newActivity, isoDate, parseDate, normDate } from './cpm';
 import { deriveResString } from './helpers';
 import type { RiskAnalysisState, RiskScoringConfig, SimulationResult, DurationDistribution, RiskEvent, RiskTaskImpact, SimulationParams } from '../types/risk';
 
@@ -654,7 +654,7 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
         na.encargado = a.encargado || '';
         na.manual = !!a.manual;
         na.blDur = a.bldur != null ? parseFloat(a.bldur) : null;
-        na.blES = a.bles ? new Date(a.bles) : null; na.blEF = a.blef ? new Date(a.blef) : null;
+        na.blES = normDate(a.bles); na.blEF = normDate(a.blef);
         na.txt1 = a.txt1 || ''; na.txt2 = a.txt2 || ''; na.txt3 = a.txt3 || '';
         // Restore actualStart and actualFinish from txt4 if encoded
         const rawTxt4 = a.txt4 || '';
@@ -677,7 +677,7 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
         if (rawTxt5.startsWith('__BL__')) {
             try {
                 const blArr = JSON.parse(rawTxt5.slice(6));
-                na.baselines = (blArr as any[]).map((bl: any) => bl ? { dur: bl.d, ES: bl.s ? new Date(bl.s) : null, EF: bl.e ? new Date(bl.e) : null, cal: bl.c, savedAt: bl.t || '', name: bl.n || '', description: bl.desc || '', pct: bl.p || 0, work: bl.w || 0, weight: bl.wt != null ? bl.wt : null, statusDate: bl.sd || '' } : null) as any;
+                na.baselines = (blArr as any[]).map((bl: any) => bl ? { dur: bl.d, ES: normDate(bl.s), EF: normDate(bl.e), cal: bl.c, savedAt: bl.t || '', name: bl.n || '', description: bl.desc || '', pct: bl.p || 0, work: bl.w || 0, weight: bl.wt != null ? bl.wt : null, statusDate: bl.sd || '' } : null) as any;
             } catch { na.baselines = []; }
             na.txt5 = '';
         } else {

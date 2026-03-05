@@ -512,10 +512,10 @@ export default function GanttTable() {
         }
         if (c.key === 'type') return a.type === 'milestone' ? 'Hito' : a.type === 'summary' ? 'Resumen' : 'Tarea';
         if (c.key === 'lv') return String(a.lv + 1);
-        if (c.key === 'actualStart') return a.actualStart ? fmtDate(new Date(a.actualStart)) : '';
-        if (c.key === 'actualFinish') return a.actualFinish ? fmtDate(new Date(a.actualFinish)) : '';
-        if (c.key === 'suspendDate') return a.suspendDate ? fmtDate(new Date(a.suspendDate)) : '';
-        if (c.key === 'resumeDate') return a.resumeDate ? fmtDate(new Date(a.resumeDate)) : '';
+        if (c.key === 'actualStart') return a.actualStart ? fmtDate(parseDate(a.actualStart)) : '';
+        if (c.key === 'actualFinish') return a.actualFinish ? fmtDate(parseDate(a.actualFinish)) : '';
+        if (c.key === 'suspendDate') return a.suspendDate ? fmtDate(parseDate(a.suspendDate)) : '';
+        if (c.key === 'resumeDate') return a.resumeDate ? fmtDate(parseDate(a.resumeDate)) : '';
         if (c.key === 'remStartDate') return a._remES ? fmtDate(a._remES) : '';
         if (c.key === 'remEndDate') return a._remEF ? fmtDate(addDays(a._remEF, -1)) : '';
         if (c.key === 'blDur') return a.blDur != null ? a.blDur + ' días' : '';
@@ -560,12 +560,13 @@ export default function GanttTable() {
             if (!pr) return '—';
             if (c.key === 'tipoRestr') return pr.category || '—';
             if (c.key === 'estRestr') return pr.status || '—';
-            if (c.key === 'fPrevista') return pr.plannedReleaseDate ? fmtDate(new Date(pr.plannedReleaseDate)) : '—';
-            if (c.key === 'fLiberado') return pr.actualReleaseDate ? fmtDate(new Date(pr.actualReleaseDate)) : '—';
+            if (c.key === 'fPrevista') return pr.plannedReleaseDate ? fmtDate(parseDate(pr.plannedReleaseDate)) : '—';
+            if (c.key === 'fLiberado') return pr.actualReleaseDate ? fmtDate(parseDate(pr.actualReleaseDate)) : '—';
             if (c.key === 'lpDias') {
                 if (pr.status === 'Liberada') return '✓';
                 if (!pr.plannedReleaseDate) return 'S/F';
-                const pd = new Date(pr.plannedReleaseDate);
+                const pd = parseDate(pr.plannedReleaseDate);
+                if (!pd) return '—';
                 const diff = Math.ceil((pd.getTime() - Date.now()) / 86400000);
                 return diff + 'd';
             }
