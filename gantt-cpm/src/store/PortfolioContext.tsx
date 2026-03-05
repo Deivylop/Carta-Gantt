@@ -576,9 +576,10 @@ function portfolioReducer(state: PortfolioState, action: PortfolioAction): Portf
         case 'SYNC_FROM_SUPABASE': {
             // Full bidirectional sync with Supabase:
             // 1. Remove local projects whose supabaseId no longer exists in Supabase
-            // 2. Add Supabase projects not yet in the local portfolio
+            // 2. Update names of existing projects from gantt_projects (source of truth)
+            // 3. Add Supabase projects not yet in the local portfolio
             const supabaseIds = new Set(action.supabaseProjects.map(sp => sp.id));
-
+            const supabaseNameMap = new Map(action.supabaseProjects.map(sp => [sp.id, sp.projName]));
 
             // Prune: remove projects whose supabaseId was deleted from Supabase
             let projects = state.projects.filter(p => {
@@ -586,11 +587,23 @@ function portfolioReducer(state: PortfolioState, action: PortfolioAction): Portf
                 return supabaseIds.has(p.supabaseId); // keep only if still in Supabase
             });
 
+            // Update: sync names from gantt_projects.projname (source of truth)
+            let nameUpdated = false;
+            projects = projects.map(p => {
+                if (!p.supabaseId) return p;
+                const sbName = supabaseNameMap.get(p.supabaseId);
+                if (sbName && sbName !== p.name) {
+                    nameUpdated = true;
+                    return { ...p, name: sbName, updatedAt: new Date().toISOString() };
+                }
+                return p;
+            });
+
             // Add: new Supabase projects not yet tracked locally
             const currentSupaIds = new Set(projects.map(p => p.supabaseId).filter(Boolean));
             const newProjects = action.supabaseProjects.filter(sp => !currentSupaIds.has(sp.id));
 
-            if (newProjects.length === 0 && projects.length === state.projects.length) return state;
+            if (newProjects.length === 0 && projects.length === state.projects.length && !nameUpdated) return state;
 
             // Ensure at least one EPS exists — create a default if empty
             let epsNodes = [...state.epsNodes];
