@@ -565,6 +565,7 @@ function AppInner() {
         localStorage.removeItem('sb_current_project_id');
       }
       restoreDatesFromSaved(saved);
+      saved.durationType = proj?.durationType; // Inject setting from portfolio
       dispatch({ type: 'LOAD_STATE', state: saved });
     } else if (proj?.supabaseId) {
       // Set Supabase ID BEFORE dispatching to prevent auto-save race
@@ -577,7 +578,7 @@ function AppInner() {
         { ...newActivity('PROY', newDefCal as any), name: freshName, type: 'summary' as const, lv: -1, _isProjRow: true },
       ];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: freshName, projStart: new Date(), defCal: newDefCal as any, statusDate: new Date() } });
+      dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: freshName, projStart: new Date(), defCal: newDefCal as any, statusDate: new Date(), durationType: proj?.durationType } });
       dispatch({ type: 'SET_ACTIVITIES', activities: freshActs });
       dispatch({ type: 'SET_RESOURCES', resources: [] });
       dispatch({ type: 'SET_PROGRESS_HISTORY', history: [] });
@@ -587,7 +588,7 @@ function AppInner() {
       try {
         const data = await loadFromSupabase(proj.supabaseId);
         // Overlay Supabase data on the clean state (only if project has real data)
-        if (data.projName) dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: data.projName, projStart: data.projStart, defCal: data.defCal, statusDate: data.statusDate || undefined, customFilters: data.customFilters || [], filtersMatchAll: data.filtersMatchAll !== undefined ? data.filtersMatchAll : true } });
+        if (data.projName) dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: data.projName, projStart: data.projStart, defCal: data.defCal, statusDate: data.statusDate || undefined, durationType: proj?.durationType, customFilters: data.customFilters || [], filtersMatchAll: data.filtersMatchAll !== undefined ? data.filtersMatchAll : true } });
         if (data.resourcePool && data.resourcePool.length) dispatch({ type: 'SET_RESOURCES', resources: data.resourcePool });
         if (data.activities && data.activities.length) dispatch({ type: 'SET_ACTIVITIES', activities: data.activities });
         if (data.progressHistory && data.progressHistory.length) dispatch({ type: 'SET_PROGRESS_HISTORY', history: data.progressHistory });

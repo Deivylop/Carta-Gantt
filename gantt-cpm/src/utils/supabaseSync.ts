@@ -229,6 +229,7 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
                     bldur: a.blDur != null ? a.blDur : null, bles: a.blES ? a.blES.toISOString() : null,
                     blef: a.blEF ? a.blEF.toISOString() : null,
                     encargado: a.encargado || '',
+                    duration_type: (a as any).durationType || null,
                     txt1: a.txt1 || '', txt2: a.txt2 || '', txt3: a.txt3 || '',
                     txt4: (a.actualStart || a.actualFinish || a.suspendDate || a.resumeDate) ? ('__AS__' + (a.actualStart || '') + '|' + (a.actualFinish || '') + '|' + (a.suspendDate || '') + '|' + (a.resumeDate || '')) : (a.txt4 || ''),
                     txt5: (a.baselines && a.baselines.some((b: any) => b))
@@ -692,6 +693,8 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
         actRes.forEach(ar => { const pr = getPoolResource(ar.rid); if (pr) ar.name = pr.name; });
         na.resources = actRes;
         if (actRes.length) deriveResString(na, resourcePool);
+        // Restore durationType if saved
+        if (a.duration_type) (na as any).durationType = a.duration_type;
         return na;
     }).filter(na => {
         // Extract hidden progress history if found (backward compat: old format is plain array, new format is { history, projMeta })

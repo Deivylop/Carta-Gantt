@@ -182,6 +182,9 @@ export interface Activity {
     txt4: string;
     txt5: string;
 
+    // ── Settings ──
+    durationType?: string;
+
     // ── Internal / Runtime (not persisted) ──
     _isProjRow?: boolean;
     _remStart?: Date | null;
@@ -236,6 +239,7 @@ export interface ProjectConfig {
     projStart: Date;
     defCal: CalendarType;
     statusDate: Date;
+    durationType?: string;
 }
 
 // ─── Visible Row (used for rendering) ───────────────────────────

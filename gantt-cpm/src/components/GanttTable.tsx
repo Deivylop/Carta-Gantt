@@ -511,6 +511,7 @@ export default function GanttTable() {
             return String(count);
         }
         if (c.key === 'type') return a.type === 'milestone' ? 'Hito' : a.type === 'summary' ? 'Resumen' : 'Tarea';
+        if (c.key === 'durationType') return a.durationType || state.durationType || 'Fija Duración y Unidades';
         if (c.key === 'lv') return String(a.lv + 1);
         if (c.key === 'actualStart') return a.actualStart ? fmtDate(parseDate(a.actualStart)) : '';
         if (c.key === 'actualFinish') return a.actualFinish ? fmtDate(parseDate(a.actualFinish)) : '';
@@ -873,6 +874,23 @@ export default function GanttTable() {
                                                     {state.customCalendars.map(cc => (
                                                         <option key={cc.id} value={cc.id} style={{ background: lightMode ? '#fff' : '#1f2937' }}>{cc.name}</option>
                                                     ))}
+                                                </select>
+                                            </div>
+                                        );
+                                    }
+
+                                    // Duration Type select dropdown
+                                    if (c.key === 'durationType' && c.edit === 'select') {
+                                        return (
+                                            <div key={c.key} data-colkey={c.key} className={`tcell ${c.cls}`} style={style}>
+                                                <select className="fp-cell-edit" style={{ width: '100%', height: '100%', background: 'transparent', border: 'none', color: 'inherit', fontSize: 11, outline: 'none', cursor: 'pointer' }}
+                                                    value={a.durationType || state.durationType || 'Fija Duración y Unidades'}
+                                                    onFocus={() => dispatch({ type: 'SET_SELECTION', index: vr._idx })}
+                                                    onChange={e => { dispatch({ type: 'PUSH_UNDO' }); dispatch({ type: 'COMMIT_EDIT', index: vr._idx, key: 'durationType', value: e.target.value }); }}>
+                                                    <option value="Fija Duración y Unidades" style={{ background: lightMode ? '#fff' : '#1f2937' }}>Fija Duración y Unidades</option>
+                                                    <option value="Fija Duración y Unidades/Tiempo" style={{ background: lightMode ? '#fff' : '#1f2937' }}>Fija Duración y Unidades/Tiempo</option>
+                                                    <option value="Fija Unidades" style={{ background: lightMode ? '#fff' : '#1f2937' }}>Fija Unidades</option>
+                                                    <option value="Fija Unidades/Tiempo" style={{ background: lightMode ? '#fff' : '#1f2937' }}>Fija Unidades/Tiempo</option>
                                                 </select>
                                             </div>
                                         );

@@ -7,7 +7,7 @@ import { useResizable } from '../hooks/useResizable';
 const COLUMN_GROUPS: { group: string; keys: string[] }[] = [
     {
         group: 'General',
-        keys: ['outlineNum', 'id', 'name', 'type', 'lv', 'notes'],
+        keys: ['outlineNum', 'id', 'name', 'type', 'durationType', 'lv', 'notes'],
     },
     {
         group: 'Duraciones',

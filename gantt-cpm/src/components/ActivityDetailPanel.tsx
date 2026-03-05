@@ -228,6 +228,19 @@ function TabGeneral({ a, dispatch, selIdx, state }: { a: Activity; dispatch: any
                     </select>
                 </div>
                 <div className="adp-field-row">
+                    <label className="adp-field-label">Tipo de duración</label>
+                    <select className="adp-input" value={a.durationType || state.durationType || 'Fija Duración y Unidades'}
+                        onChange={e => {
+                            dispatch({ type: 'PUSH_UNDO' });
+                            dispatch({ type: 'UPDATE_ACTIVITY', index: selIdx, updates: { durationType: e.target.value } });
+                        }}>
+                        <option value="Fija Duración y Unidades">Fija Duración y Unidades</option>
+                        <option value="Fija Duración y Unidades/Tiempo">Fija Duración y Unidades/Tiempo</option>
+                        <option value="Fija Unidades">Fija Unidades</option>
+                        <option value="Fija Unidades/Tiempo">Fija Unidades/Tiempo</option>
+                    </select>
+                </div>
+                <div className="adp-field-row">
                     <label className="adp-field-label">Calendario</label>
                     <select className="adp-input" value={a.cal}
                         onChange={e => {
@@ -430,7 +443,7 @@ function TabEstado({ a, dispatch, selIdx }: {
                     </div>
                     <div className="adp-field-row">
                         <label className="adp-field-label">Secundario</label>
-                        <select className="adp-input" value="" onChange={() => {}}>
+                        <select className="adp-input" value="" onChange={() => { }}>
                             {Object.entries(CONSTRAINT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                         </select>
                         <label className="adp-field-label" style={{ marginLeft: 12 }}>Fecha</label>

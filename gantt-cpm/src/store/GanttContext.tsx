@@ -75,6 +75,7 @@ export const DEFAULT_COLS: ColumnDef[] = [
     { key: 'varDur', label: 'Variación Duración', w: 90, edit: false, cls: 'tcell-dur', visible: false },
     { key: 'varWork', label: 'Variación Trabajo', w: 90, edit: false, cls: 'tcell-dur', visible: false },
     { key: 'type', label: 'Tipo', w: 70, edit: false, cls: 'tcell-num', visible: false },
+    { key: 'durationType', label: 'Tipo de Duración', w: 180, edit: 'select', cls: 'tcell-name', visible: false },
     { key: 'lv', label: 'WBS/Nivel', w: 50, edit: false, cls: 'tcell-num', visible: false },
     { key: 'constraint', label: 'Restricción', w: 80, edit: false, cls: 'tcell-date', visible: false },
     { key: 'constraintDate', label: 'Fecha Restr.', w: 90, edit: false, cls: 'tcell-date', visible: false },
@@ -99,6 +100,7 @@ export interface GanttState {
     projStart: Date;
     defCal: CalendarType;
     statusDate: Date;
+    durationType?: string;
     _cpmStatusDate: Date | null; // statusDate used in last CPM calc (for rendering)
     activities: Activity[];
     resourcePool: PoolResource[];
@@ -199,7 +201,7 @@ export type Action =
     | { type: 'EXPAND_ALL' }
     | { type: 'COLLAPSE_TO_LEVEL'; level: number }
     | { type: 'SET_GROUP'; group: string }
-    | { type: 'SET_PROJECT_CONFIG'; config: Partial<{ projName: string; projStart: Date; defCal: CalendarType; statusDate: Date; customFilters: CustomFilter[]; filtersMatchAll: boolean; _hiddenOtherData?: any[] }> }
+    | { type: 'SET_PROJECT_CONFIG'; config: Partial<{ projName: string; projStart: Date; defCal: CalendarType; statusDate: Date; durationType: string; customFilters: CustomFilter[]; filtersMatchAll: boolean; _hiddenOtherData?: any[] }> }
     | { type: 'RECALC_CPM' }
     | { type: 'SET_RESOURCES'; resources: PoolResource[] }
     | { type: 'UNDO' }
@@ -745,16 +747,18 @@ function recalcInternal(state: GanttState, statusDate: Date | null, autoFit = fa
     return { ...state, activities: result.activities, totalDays: result.totalDays, visRows, pxPerDay, timelineStart, _cpmStatusDate: statusDate };
 }
 
-/** Recalc automático: forward/backward pass SIN retained logic (statusDate = null).
- *  Esto evita que todas las tareas sin avance salten a la Fecha de Corte (Status Date)
- *  cada vez que el usuario edita duraciones o vínculos en vivo. */
+/** Recalc automático: forward/backward pass.
+ *  Si ya se calculó CPM con una Fecha de Corte (_cpmStatusDate), se conserva
+ *  la retained logic para que las actividades no se muevan antes de la Fecha de Corte
+ *  al editar duraciones o vínculos en vivo.
+ *  Si nunca se ha calculado CPM, se usa statusDate = null (sin retained logic). */
 function recalc(state: GanttState): GanttState {
-    return recalcInternal(state, null, false);
+    return recalcInternal(state, state._cpmStatusDate, false);
 }
 
 /** Recalc con auto-fit de zoom. Solo para carga inicial (SET_ACTIVITIES, LOAD_STATE). */
 function recalcAutoFit(state: GanttState): GanttState {
-    return recalcInternal(state, null, true);
+    return recalcInternal(state, state._cpmStatusDate, true);
 }
 
 /** Recalc completo: forward/backward pass CON retained logic. Solo para botón "Calcular CPM". */
@@ -794,7 +798,8 @@ function reducer(state: GanttState, action: Action): GanttState {
         case 'ADD_ACTIVITY': {
             const acts = [...state.activities];
             const idx = action.atIndex !== undefined ? action.atIndex : acts.length;
-            acts.splice(idx, 0, action.activity);
+            const newAct = { ...action.activity, durationType: action.activity.durationType || state.durationType || 'Fija Duración y Unidades' };
+            acts.splice(idx, 0, newAct);
             return recalc({ ...state, activities: acts, selIdx: idx });
         }
 
@@ -824,6 +829,26 @@ function reducer(state: GanttState, action: Action): GanttState {
             const acts = [...state.activities];
             const orig = acts[action.index];
             const updated = { ...orig, ...action.updates };
+            const dt = updated.durationType || state.durationType || 'Fija Duración y Unidades';
+
+            // P6 Duration Type Logic for explicit dialog updates
+            if ('dur' in action.updates && updated.dur !== orig.dur) {
+                const oldDur = orig.dur || 0;
+                const oldWork = orig.work || 0;
+                const oldUT = oldDur > 0 ? oldWork / oldDur : 0;
+                if (dt === 'Fija Duración y Unidades/Tiempo' || dt === 'Fija Unidades/Tiempo' || dt === 'Fija Unidades') {
+                    updated.work = Math.max(0, updated.dur * oldUT);
+                    distributeWork(updated as any);
+                }
+            } else if ('work' in action.updates && updated.work !== orig.work) {
+                const oldDur = orig.dur || 0;
+                const oldWork = orig.work || 0;
+                const oldUT = oldDur > 0 ? oldWork / oldDur : 0;
+                if ((dt === 'Fija Unidades/Tiempo' || dt === 'Fija Unidades') && oldUT > 0) {
+                    updated.dur = Math.max(1, Math.round(updated.work / oldUT));
+                }
+            }
+
             // Si la restricción CAMBIA de un valor real a vacío ("Sin Restricción"), borrar fecha y manual
             // Solo cuando orig tenía un constraint real (MSO, SNET, etc.) — no cuando ya era ''
             if ('constraint' in action.updates && !updated.constraint && orig.constraint) {
@@ -887,6 +912,7 @@ function reducer(state: GanttState, action: Action): GanttState {
                 if (key === 'startDate') return a.ES ? fmtDate(a.ES) : '';
                 if (key === 'endDate') return a.EF ? fmtDate(a.type === 'milestone' ? a.EF : addDays(a.EF, -1)) : '';
                 if (key === 'cal') return String(a.cal || state.defCal);
+                if (key === 'durationType') return a.durationType || state.durationType || 'Fija Duración y Unidades';
                 if (key === 'notes') return a.notes || '';
                 if (key === 'res') return a.res || '';
                 if (key.startsWith('txt')) return (a as any)[key] || '';
@@ -894,11 +920,13 @@ function reducer(state: GanttState, action: Action): GanttState {
             })();
             if (val === curVal) return state;
             if (key === 'name') a.name = val;
+            else if (key === 'durationType') a.durationType = val;
             else if (key === 'id') {
                 const oldId = a.id; a.id = val;
                 acts.forEach(x => { if (x.preds) x.preds.forEach(p => { if (p.id === oldId) p.id = val; }); });
             }
             else if (key === 'dur') {
+                const dt = a.durationType || state.durationType || 'Fija Duración y Unidades';
                 const n = parseInt(val); if (!isNaN(n)) {
                     const newDur = Math.max(0, n);
                     if (newDur === 0) a.type = 'milestone'; else if (a.type === 'milestone') a.type = 'task';
@@ -913,7 +941,16 @@ function reducer(state: GanttState, action: Action): GanttState {
                         a.remDur = Math.max(0, (a.dur || 0) + delta);
                     }
                     // Ajustar dur modelo por el delta (no asignar newDur directo)
+                    const oldDur = a.dur || 0;
+                    const oldWork = a.work || 0;
+                    const oldUT = oldDur > 0 ? oldWork / oldDur : 0;
+
                     a.dur = Math.max(0, (a.dur || 0) + delta);
+
+                    if (dt === 'Fija Duración y Unidades/Tiempo' || dt === 'Fija Unidades/Tiempo' || dt === 'Fija Unidades') {
+                        a.work = Math.max(0, a.dur * oldUT);
+                        distributeWork(a);
+                    }
                 }
             }
             else if (key === 'remDur') {
@@ -966,7 +1003,27 @@ function reducer(state: GanttState, action: Action): GanttState {
                 acts[action.index] = a;
                 return recalc({ ...state, activities: acts, resourcePool: pool });
             }
-            else if (key === 'work') { const n = parseFloat(val); if (!isNaN(n)) { a.work = Math.max(0, n); distributeWork(a); } }
+            else if (key === 'work') {
+                const n = parseFloat(val);
+                if (!isNaN(n)) {
+                    const dt = a.durationType || state.durationType || 'Fija Duración y Unidades';
+                    const oldDur = a.dur || 0;
+                    const oldWork = a.work || 0;
+                    const oldUT = oldDur > 0 ? oldWork / oldDur : 0;
+
+                    a.work = Math.max(0, n); distributeWork(a);
+
+                    if ((dt === 'Fija Unidades/Tiempo' || dt === 'Fija Unidades') && oldUT > 0) {
+                        a.dur = Math.max(1, Math.round(a.work / oldUT));
+                        // Altering duration might also adjust remDur if partially complete
+                        if ((a.pct || 0) > 0) {
+                            a.remDur = Math.round(a.dur * (100 - (a.pct || 0)) / 100);
+                        } else {
+                            a.remDur = a.dur;
+                        }
+                    }
+                }
+            }
             else if (key === 'weight') {
                 const cleaned = String(val).replace('%', '').trim();
                 const n = parseFloat(cleaned);

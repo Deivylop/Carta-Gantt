@@ -451,14 +451,27 @@ export function calcCPM(
                 // _spanDur guarda el span visual real ES→EF para mostrar en tabla.
                 a._spanDur = calWorkDays(a.ES!, a.EF!, a.cal || defCal);
             } else {
-                // Sin avance: mover si newES es posterior al ES actual
+                // Sin avance: reprogramar desde la fecha de corte o predecesoras retenidas.
+                // IMPORTANTE: NO comparar con a.ES del forward pass, ya que éste usa
+                // la duración COMPLETA (a.dur) de predecesoras en progreso, mientras que
+                // la retained logic usa la duración RESTANTE (_remDur). Si comparamos
+                // con el ES del forward pass, el sucesor puede quedar anclado a una fecha
+                // posterior incorrecta (basada en dur completa del predecesor).
                 // Snap to next work day (milestones included for consistency)
                 newES = snapToWorkDay(newES, a.cal || defCal);
-                if (newES > a.ES!) {
-                    a.ES = newES;
-                    const effDur = a.type === 'milestone' ? 0 : (a.remDur != null ? a.remDur : (a.dur || 0));
-                    a.EF = calcEF(newES, effDur, a.cal || defCal);
+
+                // Respetar restricciones (MSO / SNET) que el forward pass también honra
+                if (a.constraint === 'MSO' && a.constraintDate) {
+                    const cd = parseDate(a.constraintDate);
+                    if (cd && cd.getTime() > newES.getTime()) newES = new Date(cd);
+                } else if (a.constraint === 'SNET' && a.constraintDate) {
+                    const cd = parseDate(a.constraintDate);
+                    if (cd && cd.getTime() > newES.getTime()) newES = new Date(cd);
                 }
+
+                a.ES = newES;
+                const effDur = a.type === 'milestone' ? 0 : (a.remDur != null ? a.remDur : (a.dur || 0));
+                a.EF = calcEF(newES, effDur, a.cal || defCal);
                 a._retES = a.ES;
                 a._retEF = a.EF;
             }
