@@ -793,6 +793,26 @@ export function calcCPM(
         a.remDur = maxChildRemDur;
     }
 
+    // Compute Free Float explicitly during standard CPM pass
+    const succMap = new Map<string, { succ: Activity; link: PredecessorLink }[]>();
+    for (const a of activities) {
+        if (!a.preds) continue;
+        for (const p of a.preds) {
+            const pred = byId[p.id];
+            if (!pred || pred.type === 'summary') continue;
+            if (!succMap.has(p.id)) succMap.set(p.id, []);
+            succMap.get(p.id)!.push({ succ: a, link: p });
+        }
+    }
+    for (const a of activities) {
+        if (a.type === 'summary' || a._isProjRow) {
+            a._freeFloat = null;
+        } else {
+            const succs = succMap.get(a.id) || [];
+            a._freeFloat = calcFreeFloat(a, succs, defCal);
+        }
+    }
+
     return { activities, totalDays, projectDays };
 }
 
