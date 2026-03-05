@@ -157,7 +157,6 @@ export interface GanttState {
     customFilters: CustomFilter[];
     filtersMatchAll: boolean; // true = AND all selected, false = OR any selected
     filtersModalOpen: boolean;
-    thresholdsModalOpen: boolean;
     globalChangeModalOpen: boolean; // Retained backward compatibility
     savedGlobalChanges: SavedGlobalChange[];
     // Multiple Float Paths
@@ -316,8 +315,6 @@ export type Action =
     | { type: 'LOAD_RISK_STATE'; riskState: Partial<RiskAnalysisState> }
     // Global Change actions
     | { type: 'OPEN_GLOBAL_CHANGE_MODAL' }
-    | { type: 'OPEN_THRESHOLDS_MODAL' }
-    | { type: 'CLOSE_THRESHOLDS_MODAL' }
     | { type: 'CLOSE_GLOBAL_CHANGE_MODAL' }
     | { type: 'APPLY_GLOBAL_CHANGE'; changes: Array<{ index: number; updates: Partial<Activity> }> }
     | { type: 'SAVE_GLOBAL_CHANGE'; change: SavedGlobalChange }
@@ -1850,12 +1847,6 @@ function reducer(state: GanttState, action: Action): GanttState {
 
         case 'CLOSE_GLOBAL_CHANGE_MODAL':
             return { ...state, globalChangeModalOpen: false };
-            
-        case 'OPEN_THRESHOLDS_MODAL':
-            return { ...state, thresholdsModalOpen: true };
-
-        case 'CLOSE_THRESHOLDS_MODAL':
-            return { ...state, thresholdsModalOpen: false };
 
         case 'APPLY_GLOBAL_CHANGE': {
             const acts = [...state.activities];
@@ -2158,7 +2149,6 @@ const initialState: GanttState = {
     showTodayLine: true,
     showStatusLine: true,
     showDependencies: true,
-    thresholdsModalOpen: false,
     barColors: {
         normal: '#4ade80',  // Light green 
         critical: '#ef4444', // Red
