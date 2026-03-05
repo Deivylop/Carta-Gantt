@@ -60,9 +60,11 @@ function ClassicPicker({ initialColor, onSelect, onCancel }: { initialColor: str
             </div>
             
             <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-                <div style={{ width: 24, height: 24, backgroundColor: sel, border: '1px solid #000', marginRight: 8, cursor: 'pointer' }} onClick={() => nativeInputRef.current?.click()} title="Elegir color personalizado" />
+                <div style={{ position: 'relative', width: 24, height: 24, marginRight: 8 }}>
+                    <input type="color" onChange={handleNativeChange} value={sel} style={{ opacity: 0, width: 24, height: 24, cursor: 'pointer', padding: 0, border: 'none', margin: 0, position: 'absolute', top: 0, left: 0, zIndex: 2 }} title="Elegir color personalizado" />
+                    <div style={{ width: 24, height: 24, backgroundColor: sel, border: '1px solid #000', position: 'absolute', top: 0, left: 0, zIndex: 1, pointerEvents: 'none' }} />
+                </div>
                 <div style={{ fontSize: 12 }}>Color actual</div>
-                <input type="color" ref={nativeInputRef} onChange={handleNativeChange} style={{ opacity: 0, position: 'absolute', pointerEvents: 'none', width: 0, height: 0 }} />
             </div>
 
             <div style={{ fontSize: 12, marginBottom: 4, marginTop: 12 }}>Colores básicos:</div>
