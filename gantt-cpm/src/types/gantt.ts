@@ -233,6 +233,34 @@ export interface PoolResource {
     code: string;
 }
 
+// ─── Thresholds & Issues (Control de Proyecto) ────────────────────────
+export type ThresholdParameter = 'devPct' | 'varStart' | 'varEnd' | 'varDur';
+export type ThresholdOperator = '<' | '>' | '<=' | '>=';
+export type ThresholdSeverity = 'Baja' | 'Media' | 'Alta' | 'Crítica';
+export type IssueStatus = 'Abierto' | 'En Mitigación' | 'Cerrado';
+
+export interface ProjectThreshold {
+    id: string; // UUID
+    project_id: string;
+    parameter: ThresholdParameter;
+    operator: ThresholdOperator;
+    limit_value: number;
+    severity: ThresholdSeverity;
+    active: boolean;
+}
+
+export interface ProjectIssue {
+    id: string; // UUID
+    project_id: string;
+    task_id: string;
+    threshold_id: string | null;
+    status: IssueStatus;
+    description: string;
+    comments: string | null;
+    created_at: string;
+    resolved_at: string | null;
+}
+
 // ─── Project Configuration ──────────────────────────────────────
 export interface ProjectConfig {
     projName: string;
