@@ -157,7 +157,7 @@ export interface GanttState {
     customFilters: CustomFilter[];
     filtersMatchAll: boolean; // true = AND all selected, false = OR any selected
     filtersModalOpen: boolean;
-    globalChangeModalOpen: boolean;
+    activeModal: 'none' | 'thresholds' | 'columnPicker' | 'barColors' | 'globalChange';
     savedGlobalChanges: SavedGlobalChange[];
     // Multiple Float Paths
     mfpConfig: MFPConfig;
@@ -315,6 +315,8 @@ export type Action =
     | { type: 'LOAD_RISK_STATE'; riskState: Partial<RiskAnalysisState> }
     // Global Change actions
     | { type: 'OPEN_GLOBAL_CHANGE_MODAL' }
+    | { type: 'OPEN_MODAL'; modalName: 'thresholds' | 'columnPicker' | 'barColors' | 'globalChange' }
+    | { type: 'CLOSE_MODAL' }
     | { type: 'CLOSE_GLOBAL_CHANGE_MODAL' }
     | { type: 'APPLY_GLOBAL_CHANGE'; changes: Array<{ index: number; updates: Partial<Activity> }> }
     | { type: 'SAVE_GLOBAL_CHANGE'; change: SavedGlobalChange }
@@ -1847,6 +1849,12 @@ function reducer(state: GanttState, action: Action): GanttState {
 
         case 'CLOSE_GLOBAL_CHANGE_MODAL':
             return { ...state, globalChangeModalOpen: false };
+            
+        case 'OPEN_MODAL':
+            return { ...state, activeModal: action.modalName };
+
+        case 'CLOSE_MODAL':
+            return { ...state, activeModal: 'none' };
 
         case 'APPLY_GLOBAL_CHANGE': {
             const acts = [...state.activities];
@@ -2149,6 +2157,7 @@ const initialState: GanttState = {
     showTodayLine: true,
     showStatusLine: true,
     showDependencies: true,
+    activeModal: 'none',
     barColors: {
         normal: '#4ade80',  // Light green 
         critical: '#ef4444', // Red

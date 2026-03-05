@@ -131,6 +131,9 @@ export default function Ribbon() {
                         <RB icon={<Settings size={16} />} label="Configuración" onClick={() => dispatch({ type: 'OPEN_PROJ_MODAL' })} />
                         <RB icon={<Calculator size={16} />} label="Calcular CPM" onClick={() => dispatch({ type: 'RECALC_CPM' })} />
                     </RG>
+                    <RG label="CONTROL">
+                        <RB icon={<span style={{fontSize:16}}>🚦</span>} label="Umbrales" onClick={() => dispatch({ type: 'OPEN_MODAL', modalName: 'thresholds' })} />
+                    </RG>
                     <RG label="RUTAS DE ACCESO">
                         <button className={`rbtn ${state.mfpConfig.enabled ? 'active' : ''}`}
                             style={{ minWidth: 60, padding: '4px 10px' }}
