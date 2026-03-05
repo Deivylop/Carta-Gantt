@@ -22,8 +22,8 @@ CREATE POLICY "Enable read for project_thresholds based on tenant"
 ON public.project_thresholds FOR SELECT USING (
     EXISTS (
         SELECT 1 FROM public.gantt_projects p
-        JOIN public.users u ON p.tenant_id = u.tenant_id
-        WHERE p.id = project_thresholds.project_id AND u.id = auth.uid()
+        JOIN public.usuarios_empresas u ON p.empresa_id = u.empresa_id
+        WHERE p.id = project_thresholds.project_id AND u.user_id = auth.uid()
     )
 );
 
@@ -31,8 +31,8 @@ CREATE POLICY "Enable write for project_thresholds based on tenant"
 ON public.project_thresholds FOR ALL USING (
     EXISTS (
         SELECT 1 FROM public.gantt_projects p
-        JOIN public.users u ON p.tenant_id = u.tenant_id
-        WHERE p.id = project_thresholds.project_id AND u.id = auth.uid()
+        JOIN public.usuarios_empresas u ON p.empresa_id = u.empresa_id
+        WHERE p.id = project_thresholds.project_id AND u.user_id = auth.uid()
     )
 );
 
@@ -56,8 +56,8 @@ CREATE POLICY "Enable read for project_issues based on tenant"
 ON public.project_issues FOR SELECT USING (
     EXISTS (
         SELECT 1 FROM public.gantt_projects p
-        JOIN public.users u ON p.tenant_id = u.tenant_id
-        WHERE p.id = project_issues.project_id AND u.id = auth.uid()
+        JOIN public.usuarios_empresas u ON p.empresa_id = u.empresa_id
+        WHERE p.id = project_issues.project_id AND u.user_id = auth.uid()
     )
 );
 
@@ -65,8 +65,8 @@ CREATE POLICY "Enable write for project_issues based on tenant"
 ON public.project_issues FOR ALL USING (
     EXISTS (
         SELECT 1 FROM public.gantt_projects p
-        JOIN public.users u ON p.tenant_id = u.tenant_id
-        WHERE p.id = project_issues.project_id AND u.id = auth.uid()
+        JOIN public.usuarios_empresas u ON p.empresa_id = u.empresa_id
+        WHERE p.id = project_issues.project_id AND u.user_id = auth.uid()
     )
 );
 
@@ -88,8 +88,8 @@ CREATE POLICY "Enable read for issue_email_logs based on tenant"
 ON public.issue_email_logs FOR SELECT USING (
     EXISTS (
         SELECT 1 FROM public.gantt_projects p
-        JOIN public.users u ON p.tenant_id = u.tenant_id
-        WHERE p.id = issue_email_logs.project_id AND u.id = auth.uid()
+        JOIN public.usuarios_empresas u ON p.empresa_id = u.empresa_id
+        WHERE p.id = issue_email_logs.project_id AND u.user_id = auth.uid()
     )
 );
 
@@ -98,8 +98,8 @@ CREATE POLICY "Enable write for issue_email_logs based on tenant"
 ON public.issue_email_logs FOR ALL USING (
     EXISTS (
         SELECT 1 FROM public.gantt_projects p
-        JOIN public.users u ON p.tenant_id = u.tenant_id
-        WHERE p.id = issue_email_logs.project_id AND u.id = auth.uid()
+        JOIN public.usuarios_empresas u ON p.empresa_id = u.empresa_id
+        WHERE p.id = issue_email_logs.project_id AND u.user_id = auth.uid()
     )
 );
 
