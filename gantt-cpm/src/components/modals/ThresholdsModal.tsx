@@ -100,7 +100,7 @@ export function ThresholdsModal() {
     if (state.activeModal !== 'thresholds') return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70">
+        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black bg-opacity-70">
             <div className="bg-white text-gray-900 rounded-lg shadow-xl w-[700px] max-h-[80vh] flex flex-col">
                 <div className="flex items-center justify-between p-4 border-b">
                     <div>
