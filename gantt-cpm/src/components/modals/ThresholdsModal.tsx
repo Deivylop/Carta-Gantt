@@ -1,173 +1,214 @@
+// ═══════════════════════════════════════════════════════════════════
+// ThresholdsModal.tsx – Modal de Reglas de Control (Umbrales)
+// Patrón idéntico a CheckThresholdsModal – usa className="modal-overlay open"
+// ═══════════════════════════════════════════════════════════════════
 import { useState, useEffect } from 'react';
 import { useGantt } from '../../store/GanttContext';
 import { supabase } from '../../lib/supabase';
 import type { ProjectThreshold, ThresholdSeverity } from '../../types/gantt';
 
-const SEV_COLORS: Record<ThresholdSeverity, string> = {
-    'Crítica': '#ef4444',
-    'Alta': '#f97316',
-    'Media': '#eab308',
-    'Baja': '#3b82f6',
+const PARAM_LABELS: Record<string, string> = {
+    devPct: '% Desviación Fís.',
+    varStart: 'Var. Inicio (días)',
+    varEnd: 'Var. Fin (días)',
+    varDur: 'Var. Duración (días)',
 };
 
-export function ThresholdsModal() {
+const SEV_OPTIONS: { value: ThresholdSeverity; label: string; color: string }[] = [
+    { value: 'Crítica', label: '🔴 Crítica', color: '#ef4444' },
+    { value: 'Alta', label: '🟠 Alta', color: '#f97316' },
+    { value: 'Media', label: '🟡 Media', color: '#eab308' },
+    { value: 'Baja', label: '🔵 Baja', color: '#3b82f6' },
+];
+
+export default function ThresholdsModal() {
     const { state, dispatch } = useGantt();
-    const [thresholds, setThresholds] = useState<ProjectThreshold[]>([]);
-    const [loading, setLoading] = useState(true);
+    const isOpen = state.thresholdsModalOpen;
 
-    const projectId = localStorage.getItem('GANTT_ACTIVE_PROJECT_ID') || localStorage.getItem('supabase_project_id');
+    const [rows, setRows] = useState<ProjectThreshold[]>([]);
+    const [loading, setLoading] = useState(false);
 
-    const isOpen = state.thresholdsModalOpen === true;
+    const projectId =
+        localStorage.getItem('GANTT_ACTIVE_PROJECT_ID') ||
+        localStorage.getItem('supabase_project_id');
 
+    // Load thresholds when modal opens
     useEffect(() => {
-        if (!isOpen || !projectId) { setLoading(false); return; }
-        loadThresholds();
-    }, [isOpen]);
-
-    const loadThresholds = async () => {
+        if (!isOpen) return;
+        if (!projectId) { setLoading(false); return; }
         setLoading(true);
-        if (!projectId) return;
-        const { data } = await supabase
+        supabase
             .from('project_thresholds')
             .select('*')
             .eq('project_id', projectId)
-            .order('created_at', { ascending: true });
-        if (data) setThresholds(data as ProjectThreshold[]);
-        setLoading(false);
+            .order('created_at', { ascending: true })
+            .then(({ data }) => {
+                if (data) setRows(data as ProjectThreshold[]);
+                setLoading(false);
+            });
+    }, [isOpen]);
+
+    const onClose = () => dispatch({ type: 'CLOSE_THRESHOLDS_MODAL' });
+
+    const addRow = () => {
+        if (!projectId) { alert('No hay un proyecto conectado.'); return; }
+        setRows(prev => [
+            ...prev,
+            {
+                id: 'new-' + Date.now(),
+                project_id: projectId,
+                parameter: 'devPct',
+                operator: '<',
+                limit_value: -5,
+                severity: 'Crítica' as ThresholdSeverity,
+                active: true,
+            } as ProjectThreshold,
+        ]);
     };
 
-    const handleAdd = () => {
-        if (!projectId) { alert('No hay un proyecto conectado a la base de datos.'); return; }
-        setThresholds([...thresholds, {
-            id: 'temp-' + Date.now(),
-            project_id: projectId,
-            parameter: 'devPct',
-            operator: '<',
-            limit_value: -5,
-            severity: 'Crítica',
-            active: true,
-        } as ProjectThreshold]);
+    const updateRow = (id: string, field: keyof ProjectThreshold, value: any) => {
+        setRows(prev => prev.map(r => (r.id === id ? { ...r, [field]: value } : r)));
     };
 
-    const handleUpdate = (id: string, field: keyof ProjectThreshold, value: any) => {
-        setThresholds(thresholds.map(t => t.id === id ? { ...t, [field]: value } : t));
-    };
-
-    const handleRemove = async (id: string) => {
-        if (!id.startsWith('temp-')) {
+    const removeRow = async (id: string) => {
+        if (!id.startsWith('new-')) {
             await supabase.from('project_thresholds').delete().eq('id', id);
         }
-        setThresholds(thresholds.filter(t => t.id !== id));
+        setRows(prev => prev.filter(r => r.id !== id));
     };
 
-    const handleSave = async () => {
-        const toUpsert = thresholds.map(t => {
-            const copy: any = { ...t };
-            if (copy.id.startsWith('temp-')) delete copy.id;
+    const saveAll = async () => {
+        const toUpsert = rows.map(r => {
+            const copy: any = { ...r };
+            if (String(copy.id).startsWith('new-')) delete copy.id;
             return copy;
         });
         if (toUpsert.length > 0) {
             await supabase.from('project_thresholds').upsert(toUpsert);
         }
-        dispatch({ type: 'CLOSE_THRESHOLDS_MODAL' });
+        onClose();
     };
-
-    const handleClose = () => dispatch({ type: 'CLOSE_THRESHOLDS_MODAL' });
 
     if (!isOpen) return null;
 
-    // ── All inline styles ──
-    const overlay: React.CSSProperties = {
-        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-        background: 'rgba(0,0,0,0.7)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 999999,
-    };
-    const card: React.CSSProperties = {
-        background: '#fff', color: '#111', borderRadius: 8, boxShadow: '0 8px 30px rgba(0,0,0,0.4)',
-        width: 720, maxHeight: '80vh', display: 'flex', flexDirection: 'column',
-    };
-    const header: React.CSSProperties = {
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '14px 18px', borderBottom: '1px solid #e5e7eb',
-    };
-    const body: React.CSSProperties = { padding: 16, flex: 1, overflowY: 'auto', background: '#f9fafb' };
-    const footer: React.CSSProperties = {
-        display: 'flex', justifyContent: 'flex-end', gap: 8,
-        padding: '12px 18px', borderTop: '1px solid #e5e7eb', background: '#fff',
-    };
-    const rowStyle = (sev: ThresholdSeverity): React.CSSProperties => ({
-        display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-        background: '#fff', border: '1px solid #e5e7eb', borderLeft: `4px solid ${SEV_COLORS[sev]}`,
-        borderRadius: 6, marginBottom: 8, boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-    });
-    const selectS: React.CSSProperties = { border: '1px solid #d1d5db', borderRadius: 4, padding: '4px 6px', fontSize: 13, background: '#f9fafb' };
-    const inputS: React.CSSProperties = { ...selectS, width: 70 };
-    const btnPrimary: React.CSSProperties = { padding: '8px 18px', fontSize: 13, color: '#fff', background: '#2563eb', border: 'none', borderRadius: 4, cursor: 'pointer' };
-    const btnSecondary: React.CSSProperties = { padding: '8px 18px', fontSize: 13, color: '#374151', background: '#fff', border: '1px solid #d1d5db', borderRadius: 4, cursor: 'pointer' };
-    const btnAdd: React.CSSProperties = { ...btnSecondary, display: 'flex', alignItems: 'center', gap: 4, margin: '12px auto 0' };
+    const sevColor = (s: ThresholdSeverity) =>
+        SEV_OPTIONS.find(o => o.value === s)?.color ?? '#6b7280';
 
     return (
-        <div style={overlay} onClick={handleClose}>
-            <div style={card} onClick={e => e.stopPropagation()}>
-                <div style={header}>
-                    <div>
-                        <div style={{ fontSize: 16, fontWeight: 600 }}>Reglas de Control de Proyecto</div>
-                        <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>Configure los umbrales para envío de alertas y registro de problemas.</div>
+        <div className="modal-overlay open" onClick={onClose}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 720, maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+                {/* Header */}
+                <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 18 }}>🚦</span>
+                        <h3 style={{ margin: 0, fontSize: 15 }}>Reglas de Control de Proyecto</h3>
                     </div>
-                    <span style={{ cursor: 'pointer', fontSize: 18, color: '#9ca3af' }} onClick={handleClose}>✕</span>
+                    <button className="modal-close" onClick={onClose}>✕</button>
                 </div>
 
-                <div style={body}>
+                {/* Body */}
+                <div className="modal-body" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <p style={{ margin: 0, fontSize: 11, color: 'var(--text-secondary)' }}>
+                        Configure los umbrales que dispararán alertas y registrarán problemas automáticamente.
+                    </p>
+
                     {loading ? (
-                        <div style={{ textAlign: 'center', padding: 30, color: '#9ca3af' }}>Cargando reglas...</div>
-                    ) : thresholds.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: 30, color: '#9ca3af', border: '2px dashed #d1d5db', borderRadius: 8 }}>
-                            Ninguna regla definida para este proyecto.<br />
-                            <span style={{ color: '#2563eb', cursor: 'pointer' }} onClick={handleAdd}>Haga clic aquí para agregar una.</span>
+                        <div style={{ textAlign: 'center', padding: 30, color: 'var(--text-muted)' }}>Cargando reglas…</div>
+                    ) : rows.length === 0 ? (
+                        <div style={{
+                            textAlign: 'center', padding: 30, color: 'var(--text-muted)',
+                            border: '2px dashed var(--border-primary)', borderRadius: 8
+                        }}>
+                            No hay reglas definidas.
+                            <br />
+                            <span style={{ color: '#2563eb', cursor: 'pointer' }} onClick={addRow}>Haga clic aquí para agregar una.</span>
                         </div>
                     ) : (
-                        thresholds.map(t => (
-                            <div key={t.id} style={rowStyle(t.severity)}>
-                                <input type="checkbox" checked={t.active} onChange={e => handleUpdate(t.id, 'active', e.target.checked)} style={{ cursor: 'pointer' }} />
+                        rows.map(r => (
+                            <div key={r.id} style={{
+                                display: 'flex', alignItems: 'center', gap: 8,
+                                padding: '8px 10px',
+                                background: 'var(--bg-secondary, #1e293b)',
+                                border: '1px solid var(--border-primary)',
+                                borderLeft: `4px solid ${sevColor(r.severity)}`,
+                                borderRadius: 6,
+                            }}>
+                                <input
+                                    type="checkbox"
+                                    checked={r.active}
+                                    onChange={e => updateRow(r.id, 'active', e.target.checked)}
+                                    style={{ cursor: 'pointer' }}
+                                />
 
-                                <span style={{ fontSize: 13 }}>Si</span>
-                                <select value={t.parameter} onChange={e => handleUpdate(t.id, 'parameter', e.target.value)} style={selectS}>
-                                    <option value="devPct">% Desviación Fis.</option>
-                                    <option value="varStart">Var. Inicio</option>
-                                    <option value="varEnd">Var. Fin</option>
-                                    <option value="varDur">Var. Duración</option>
+                                <span style={{ fontSize: 12, whiteSpace: 'nowrap' }}>Si</span>
+
+                                <select
+                                    className="form-input"
+                                    value={r.parameter}
+                                    onChange={e => updateRow(r.id, 'parameter', e.target.value)}
+                                    style={{ fontSize: 12, padding: '3px 6px', minWidth: 130 }}
+                                >
+                                    {Object.entries(PARAM_LABELS).map(([k, v]) => (
+                                        <option key={k} value={k}>{v}</option>
+                                    ))}
                                 </select>
 
-                                <span style={{ fontSize: 13 }}>es</span>
-                                <select value={t.operator} onChange={e => handleUpdate(t.id, 'operator', e.target.value)} style={selectS}>
-                                    <option value="<">{'Menor a'}</option>
-                                    <option value="<=">{'Menor o igual a'}</option>
-                                    <option value=">">{'Mayor a'}</option>
-                                    <option value=">=">{'Mayor o igual a'}</option>
+                                <span style={{ fontSize: 12 }}>es</span>
+
+                                <select
+                                    className="form-input"
+                                    value={r.operator}
+                                    onChange={e => updateRow(r.id, 'operator', e.target.value)}
+                                    style={{ fontSize: 12, padding: '3px 6px', width: 90 }}
+                                >
+                                    <option value="<">Menor a</option>
+                                    <option value="<=">Menor o igual</option>
+                                    <option value=">">Mayor a</option>
+                                    <option value=">=">Mayor o igual</option>
                                 </select>
 
-                                <input type="number" value={t.limit_value} onChange={e => handleUpdate(t.id, 'limit_value', Number(e.target.value))} style={inputS} />
+                                <input
+                                    type="number"
+                                    className="form-input"
+                                    value={r.limit_value}
+                                    onChange={e => updateRow(r.id, 'limit_value', Number(e.target.value))}
+                                    style={{ fontSize: 12, padding: '3px 6px', width: 65 }}
+                                />
 
-                                <span style={{ fontSize: 12, color: '#6b7280' }}>→ Alerta:</span>
-                                <select value={t.severity} onChange={e => handleUpdate(t.id, 'severity', e.target.value as ThresholdSeverity)} style={{ ...selectS, fontWeight: 700, color: SEV_COLORS[t.severity] }}>
-                                    <option value="Crítica">CRÍTICA 🔴</option>
-                                    <option value="Alta">ALTA 🟠</option>
-                                    <option value="Media">MEDIA 🟡</option>
-                                    <option value="Baja">BAJA 🔵</option>
+                                <span style={{ fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>→ Alerta:</span>
+
+                                <select
+                                    className="form-input"
+                                    value={r.severity}
+                                    onChange={e => updateRow(r.id, 'severity', e.target.value as ThresholdSeverity)}
+                                    style={{ fontSize: 12, padding: '3px 6px', fontWeight: 700, color: sevColor(r.severity), minWidth: 100 }}
+                                >
+                                    {SEV_OPTIONS.map(o => (
+                                        <option key={o.value} value={o.value}>{o.label}</option>
+                                    ))}
                                 </select>
 
-                                <span style={{ cursor: 'pointer', color: '#ef4444', fontSize: 16, marginLeft: 'auto' }} onClick={() => handleRemove(t.id)} title="Eliminar">🗑</span>
+                                <span
+                                    style={{ cursor: 'pointer', color: '#ef4444', fontSize: 15, marginLeft: 'auto' }}
+                                    title="Eliminar"
+                                    onClick={() => removeRow(r.id)}
+                                >🗑</span>
                             </div>
                         ))
                     )}
 
-                    <button style={btnAdd} onClick={handleAdd}>＋ Añadir Nueva Regla</button>
+                    <button className="btn btn-secondary" onClick={addRow} style={{ alignSelf: 'center', marginTop: 6, fontSize: 12 }}>
+                        ＋ Añadir Nueva Regla
+                    </button>
                 </div>
 
-                <div style={footer}>
-                    <button style={btnSecondary} onClick={handleClose}>Cancelar</button>
-                    <button style={btnPrimary} onClick={handleSave}>Guardar Umbrales</button>
+                {/* Footer */}
+                <div className="modal-footer" style={{
+                    borderTop: '1px solid var(--border-primary)',
+                    padding: '10px 18px', display: 'flex', justifyContent: 'flex-end', gap: 8,
+                }}>
+                    <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+                    <button className="btn btn-primary" onClick={saveAll}>Guardar Umbrales</button>
                 </div>
             </div>
         </div>
