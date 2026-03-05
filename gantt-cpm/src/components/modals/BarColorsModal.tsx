@@ -24,12 +24,16 @@ function ClassicPicker({ initialColor, onSelect, onCancel }: { initialColor: str
     const handleNativeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newColor = e.target.value;
         setSel(newColor);
+    };
+
+    const saveCustomColor = () => {
+        if (!sel) return;
         const firstWhiteIdx = customColors.findIndex(c => c.toLowerCase() === '#ffffff');
         const nextCustom = [...customColors];
         if (firstWhiteIdx !== -1) {
-            nextCustom[firstWhiteIdx] = newColor;
+            nextCustom[firstWhiteIdx] = sel;
         } else {
-            nextCustom.unshift(newColor);
+            nextCustom.unshift(sel);
             nextCustom.pop();
         }
         setCustomColors(nextCustom);
@@ -49,13 +53,18 @@ function ClassicPicker({ initialColor, onSelect, onCancel }: { initialColor: str
     });
 
     return (
-        <div style={{ background: '#f0f0f0', color: '#000', padding: 12, borderRadius: 4, width: 260, border: '1px solid #ccc', boxShadow: '0 4px 12px rgba(0,0,0,0.5)', position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 10000, fontFamily: 'Segoe UI, Tahoma, sans-serif' }}>
+        <div style={{ background: '#f0f0f0', color: '#000', padding: 12, borderRadius: 4, width: 260, border: '1px solid #ccc', boxShadow: '0 4px 12px rgba(0,0,0,0.5)', position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 10000, fontFamily: 'Segoe UI, Tahoma, sans-serif' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, borderBottom: '1px solid #ccc', paddingBottom: 4 }}>
                 <span style={{ fontSize: 13, fontWeight: 'bold' }}>Color</span>
                 <span style={{ cursor: 'pointer', fontSize: 13 }} onClick={onCancel}>✕</span>
             </div>
             
-            <div style={{ fontSize: 12, marginBottom: 4 }}>Colores básicos:</div>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+                <div style={{ width: 24, height: 24, backgroundColor: sel, border: '1px solid #000', marginRight: 8 }} />
+                <div style={{ fontSize: 12 }}>Color actual</div>
+            </div>
+
+            <div style={{ fontSize: 12, marginBottom: 4, marginTop: 12 }}>Colores básicos:</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, max-content)', gap: 2, marginBottom: 12 }}>
                 {BASIC_COLORS.map((c, i) => (
                     <div key={'bsc'+i} style={swatchStyle(c, sel.toLowerCase() === c.toLowerCase())} onClick={() => handleSwatchClick(c)} />
@@ -69,11 +78,12 @@ function ClassicPicker({ initialColor, onSelect, onCancel }: { initialColor: str
                 ))}
             </div>
 
-            <input type="color" ref={nativeInputRef} onChange={handleNativeChange} style={{ display: 'none' }} />
+            <input type="color" ref={nativeInputRef} value={sel} onChange={handleNativeChange} style={{ display: 'none' }} />
 
-            <button onClick={() => nativeInputRef.current?.click()} style={{ background: '#e1e1e1', border: '1px solid #adadad', borderRadius: 2, width: '100%', marginBottom: 16, padding: '4px 0', fontSize: 12, cursor: 'pointer' }}>Definir colores personalizados &gt;&gt;</button>
+            <button onClick={() => { nativeInputRef.current?.click(); }} style={{ background: '#e1e1e1', border: '1px solid #adadad', borderRadius: 2, width: '100%', marginBottom: 8, padding: '4px 0', fontSize: 12, cursor: 'pointer' }}>Elegir color personalizado</button>
+            <button onClick={saveCustomColor} style={{ background: '#e1e1e1', border: '1px solid #adadad', borderRadius: 2, width: '100%', marginBottom: 16, padding: '4px 0', fontSize: 12, cursor: 'pointer' }}>Añadir a los colores personalizados</button>
 
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-start' }}>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
                 <button onClick={() => onSelect(sel)} style={{ background: '#e1e1e1', border: '1px solid #adadad', padding: '4px 20px', fontSize: 12, cursor: 'pointer' }}>Aceptar</button>
                 <button onClick={onCancel} style={{ background: '#e1e1e1', border: '1px solid #adadad', padding: '4px 20px', fontSize: 12, cursor: 'pointer' }}>Cancelar</button>
             </div>
