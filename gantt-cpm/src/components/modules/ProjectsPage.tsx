@@ -7,6 +7,7 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { usePortfolio } from '../../store/PortfolioContext';
 import { useGantt } from '../../store/GanttContext';
 import { supabase } from '../../lib/supabase';
+import { updateSupabaseProjectName } from '../../utils/supabaseSync';
 import type { ModuleId } from '../ModuleTabs';
 import type { TreeNode, ProjectMeta, EPSNode } from '../../types/portfolio';
 import type { ZoomLevel } from '../../types/gantt';
@@ -372,10 +373,19 @@ export default function ProjectsPage({ onOpenProject }: Props) {
 
     const handleOpenProject = useCallback((id: string) => onOpenProject(id), [onOpenProject]);
     const handleRename = useCallback((id: string, v: string) => {
-        if (pState.epsNodes.some(e => e.id === id)) pDispatch({ type: 'RENAME_EPS', id, name: v });
-        else pDispatch({ type: 'UPDATE_PROJECT', id, updates: { name: v } });
+        const newName = v.trim() || 'Proyecto sin nombre';
+        const isEps = pState.epsNodes.some(e => e.id === id);
+        if (isEps) {
+            pDispatch({ type: 'RENAME_EPS', id, name: newName });
+        } else {
+            pDispatch({ type: 'UPDATE_PROJECT', id, updates: { name: newName } });
+            const proj = pState.projects.find(p => p.id === id);
+            if (proj && proj.supabaseId) {
+                updateSupabaseProjectName(proj.supabaseId, newName);
+            }
+        }
         setEditingId(null);
-    }, [pState.epsNodes, pDispatch]);
+    }, [pState.epsNodes, pState.projects, pDispatch]);
     const handleRenameCode = useCallback((id: string, v: string) => {
         // Update the EPS code (epsCode). Bypass autoNumber for custom codes by using UPDATE_EPS directly.
         pDispatch({ type: 'UPDATE_EPS', id, updates: { epsCode: v.trim() || 'EPS-???' } });

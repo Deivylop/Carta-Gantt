@@ -6,6 +6,7 @@
 import { useState, useCallback } from 'react';
 import { usePortfolio } from '../../store/PortfolioContext';
 import type { ProjectMeta } from '../../types/portfolio';
+import { updateSupabaseProjectName } from '../../utils/supabaseSync';
 
 type Tab = 'general' | 'fechas' | 'defaults' | 'codigos' | 'notas';
 
@@ -48,7 +49,10 @@ export default function ProjectDetailPanel({ projectId, customCalendars = [] }: 
 
     const update = useCallback((updates: Partial<ProjectMeta>) => {
         dispatch({ type: 'UPDATE_PROJECT', id: projectId, updates });
-    }, [dispatch, projectId]);
+        if (updates.name && project?.supabaseId) {
+            updateSupabaseProjectName(project.supabaseId, updates.name);
+        }
+    }, [dispatch, projectId, project?.supabaseId]);
 
     // ── Tab: General ──
     const renderGeneral = () => (

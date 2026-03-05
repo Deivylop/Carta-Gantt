@@ -1373,3 +1373,11 @@ export async function createSupabaseProject(
     if (error) throw error;
     return data.id;
 }
+
+export async function updateSupabaseProjectName(projectId: string, projName: string): Promise<void> {
+    const { error } = await supabase
+        .from('gantt_projects')
+        .update({ projname: projName })
+        .eq('id', projectId);
+    if (error) console.error('Error updating project name in Supabase:', error);
+}
