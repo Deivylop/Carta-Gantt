@@ -2,11 +2,29 @@
 // ThresholdsPage – Vista completa de Reglas de Control (Umbrales)
 // Usa el mismo patrón que DashboardPage, ConfigPage, etc.
 // ═══════════════════════════════════════════════════════════════════
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useGantt } from '../../store/GanttContext';
 import { supabase } from '../../lib/supabase';
 import type { ProjectThreshold, ThresholdSeverity, ProjectIssue } from '../../types/gantt';
 import { ShieldAlert, Plus, Trash2, Save, RefreshCw, AlertTriangle, CheckCircle2, Clock } from 'lucide-react';
+
+// ─── Error Boundary ─────────────────────────────────────────────
+class ThresholdsErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: string }> {
+    constructor(props: any) { super(props); this.state = { hasError: false, error: '' }; }
+    static getDerivedStateFromError(err: any) { return { hasError: true, error: String(err) }; }
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div style={{ padding: 40, color: '#ef4444', textAlign: 'center' }}>
+                    <h3>Error en la página de Control</h3>
+                    <pre style={{ fontSize: 12, color: '#f97316', whiteSpace: 'pre-wrap' }}>{this.state.error}</pre>
+                    <button onClick={() => this.setState({ hasError: false, error: '' })} style={{ marginTop: 12, padding: '8px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>Reintentar</button>
+                </div>
+            );
+        }
+        return this.props.children;
+    }
+}
 
 // ─── Constants ──────────────────────────────────────────────────
 const PARAM_LABELS: Record<string, string> = {
@@ -27,12 +45,13 @@ const sevColor = (s: ThresholdSeverity) =>
     SEV_OPTIONS.find(o => o.value === s)?.color ?? '#6b7280';
 
 // ─── Component ──────────────────────────────────────────────────
-export default function ThresholdsPage() {
+function ThresholdsPageInner() {
     const { state } = useGantt();
     const [rows, setRows] = useState<ProjectThreshold[]>([]);
     const [issues, setIssues] = useState<ProjectIssue[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [error, setError] = useState<string | null>(null);
     const [tab, setTab] = useState<'rules' | 'issues'>('rules');
 
     const projectId =
@@ -47,12 +66,20 @@ export default function ThresholdsPage() {
 
     const loadAll = async () => {
         setLoading(true);
-        const [thRes, issRes] = await Promise.all([
-            supabase.from('project_thresholds').select('*').eq('project_id', projectId!).order('created_at', { ascending: true }),
-            supabase.from('project_issues').select('*').eq('project_id', projectId!).order('created_at', { ascending: false }),
-        ]);
-        if (thRes.data) setRows(thRes.data as ProjectThreshold[]);
-        if (issRes.data) setIssues(issRes.data as ProjectIssue[]);
+        setError(null);
+        try {
+            const [thRes, issRes] = await Promise.all([
+                supabase.from('project_thresholds').select('*').eq('project_id', projectId!).order('created_at', { ascending: true }),
+                supabase.from('project_issues').select('*').eq('project_id', projectId!).order('created_at', { ascending: false }),
+            ]);
+            if (thRes.error) console.warn('Thresholds query error:', thRes.error);
+            if (issRes.error) console.warn('Issues query error:', issRes.error);
+            if (thRes.data) setRows(thRes.data as ProjectThreshold[]);
+            if (issRes.data) setIssues(issRes.data as ProjectIssue[]);
+        } catch (err: any) {
+            console.error('Error loading thresholds data:', err);
+            setError(String(err?.message || err));
+        }
         setLoading(false);
     };
 
@@ -165,9 +192,20 @@ export default function ThresholdsPage() {
 
     if (!projectId) {
         return (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, color: 'var(--text-muted)', fontSize: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, color: '#94a3b8', fontSize: 14 }}>
                 <ShieldAlert size={20} style={{ marginRight: 8 }} />
                 Abra un proyecto para configurar los umbrales de control.
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: 12, color: '#ef4444' }}>
+                <AlertTriangle size={28} />
+                <div style={{ fontSize: 14 }}>Error al cargar datos de control</div>
+                <pre style={{ fontSize: 11, color: '#f97316', maxWidth: 500, whiteSpace: 'pre-wrap' }}>{error}</pre>
+                <button onClick={loadAll} style={{ padding: '8px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>Reintentar</button>
             </div>
         );
     }
@@ -383,5 +421,14 @@ export default function ThresholdsPage() {
                 </div>
             )}
         </div>
+    );
+}
+
+// ─── Wrapped Export ─────────────────────────────────────────────
+export default function ThresholdsPage() {
+    return (
+        <ThresholdsErrorBoundary>
+            <ThresholdsPageInner />
+        </ThresholdsErrorBoundary>
     );
 }
