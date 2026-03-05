@@ -352,6 +352,10 @@ export default function ProjectsPage({ onOpenProject }: Props) {
     }) => {
         if (configProject) {
             pDispatch({ type: 'UPDATE_PROJECT', id: configProject.id, updates: { name: data.name, code: data.code, priority: data.priority, status: data.status, startDate: data.startDate || null, statusDate: data.statusDate || null, description: data.description, defaultCalendar: data.calendar || '7' } });
+            // Also update gantt_projects.projname in Supabase
+            if (configProject.supabaseId && data.name) {
+                updateSupabaseProjectName(configProject.supabaseId, data.name);
+            }
         } else {
             const code = data.code || nextProjectCode;
             pDispatch({ type: 'ADD_PROJECT', epsId: configEpsId, name: data.name || 'Nuevo Proyecto', code, initialData: { startDate: data.startDate || null, statusDate: data.statusDate || null, description: data.description || '', status: data.status || 'Planificación', defaultCalendar: data.calendar || '7' } });
