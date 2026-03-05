@@ -175,15 +175,15 @@ export interface Activity {
     // ── Lean Construction / Last Planner ──
     encargado: string;        // Responsible / Last Planner (person who commits)
 
+    // ── P6 Duration Type ──
+    durationType?: string;    // 'Fija Duración y Unidades', 'Fija Duración y Unidades/Tiempo', 'Fija Unidades', 'Fija Unidades/Tiempo'
+
     // ── Custom Text Fields ──
     txt1: string;
     txt2: string;
     txt3: string;
     txt4: string;
     txt5: string;
-
-    // ── Settings ──
-    durationType?: string;
 
     // ── Internal / Runtime (not persisted) ──
     _isProjRow?: boolean;
@@ -239,7 +239,6 @@ export interface ProjectConfig {
     projStart: Date;
     defCal: CalendarType;
     statusDate: Date;
-    durationType?: string;
 }
 
 // ─── Visible Row (used for rendering) ───────────────────────────
