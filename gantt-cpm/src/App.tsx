@@ -19,6 +19,7 @@ import BaselineModal from './components/modals/BaselineModal';
 import CalendarModal from './components/modals/CalendarModal';
 import CheckThresholdsModal from './components/modals/CheckThresholdsModal';
 import FilterModal from './components/modals/FilterModal';
+import ThresholdsPage from './components/modules/ThresholdsPage';
 import GlobalChangeModal from './components/modals/GlobalChangeModal';
 import SCurveChart from './components/SCurveChart';
 import TaskUsageGrid from './components/TaskUsageGrid';
@@ -128,7 +129,7 @@ function AppInner() {
   const [resizing, setResizing] = useState<'v' | 'h' | null>(null);
   const [activeModule, setActiveModule] = useState<ModuleId>(() => {
     const saved = localStorage.getItem('gantt_active_module');
-    const valid: ModuleId[] = ['inicio', 'projects', 'gantt', 'lookAhead', 'dashboard', 'whatIf', 'risk', 'config'];
+    const valid: ModuleId[] = ['inicio', 'projects', 'gantt', 'lookAhead', 'dashboard', 'control', 'whatIf', 'risk', 'config'];
     return saved && valid.includes(saved as ModuleId) ? saved as ModuleId : 'projects';
   });
 
@@ -652,7 +653,10 @@ function AppInner() {
       {activeModule === 'lookAhead' && <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}><LookAheadPage /></div>}
 
       {/* ── Module: Dashboard ── */}
-      {activeModule === 'dashboard' && <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}><DashboardPage /></div>}
+            {activeModule === 'dashboard' && <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}><DashboardPage /></div>}
+
+      {/* ── Module: Control (Umbrales) ── */}
+      {activeModule === 'control' && <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}><ThresholdsPage /></div>}
 
       {/* ── Module: Configuración ── */}
       {activeModule === 'config' && <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}><ConfigPage /></div>}
