@@ -452,7 +452,7 @@ function AppInner() {
         // Compute actualWork per-task to match project view exactly
         const ew = tasks.reduce((sum, a) => sum + ((a.work || 0) * (a.pct || 0) / 100), 0);
         const meta = pState.projects.map(p => p.id === pState.activeProjectId ? {
-          ...p, name: state.projName,
+          ...p, name: pState.projects.find(p => p.id === pState.activeProjectId)?.name || state.projName,
           activityCount: tasks.length,
           completedCount: tasks.filter(a => a.pct === 100).length,
           criticalCount: tasks.filter(a => a.crit).length,
@@ -507,7 +507,7 @@ function AppInner() {
       const earnedWork = tasks.reduce((sum, a) => sum + ((a.work || 0) * (a.pct || 0) / 100), 0);
       pDispatch({
         type: 'UPDATE_PROJECT', id: pState.activeProjectId, updates: {
-          name: state.projName,
+          name: pState.projects.find(p => p.id === pState.activeProjectId)?.name || state.projName,
           activityCount: tasks.length,
           completedCount: tasks.filter(a => a.pct === 100).length,
           criticalCount: tasks.filter(a => a.crit).length,
