@@ -731,12 +731,9 @@ export default function GanttTable() {
 
                         // Chain trace highlighting
                         const chainActive = chainTrace != null && chainIds.size > 0;
-                        const inChain = chainActive && chainIds.has(a.id);
                         const isChainOrigin = chainTrace != null && a.id === chainTrace.actId;
-                        const chainStyle: React.CSSProperties = chainActive && !isProj
-                            ? inChain
-                                ? { background: isChainOrigin ? (lightMode ? '#fef9c3' : '#422006') : (lightMode ? '#eff6ff' : '#172554'), opacity: 1 }
-                                : { opacity: 0.35 }
+                        const chainStyle: React.CSSProperties = chainActive && !isProj && isChainOrigin
+                            ? { background: lightMode ? '#fef9c3' : '#422006' }
                             : {};
 
                         // Progress Spotlight row highlight
@@ -898,7 +895,8 @@ export default function GanttTable() {
 
                                     // Editable cell
                                     if (c.edit === true) {
-                                        const summaryReadOnly = isProj || (isSummary && (c.key === 'work' || c.key === 'pct' || c.key === 'dur'));
+                                        const summaryReadOnly = isProj || (isSummary && (c.key === 'work' || c.key === 'pct' || c.key === 'dur'))
+                                            || (a.type === 'milestone' && (c.key === 'work' || c.key === 'res'));
                                         if (summaryReadOnly) {
                                             return <div key={c.key} className={`tcell ${c.cls}`} style={{ ...style, opacity: 0.7 }}>{val}</div>;
                                         }

@@ -580,12 +580,14 @@ export function calcCPM(
         if (a.type === 'summary') return;
         // Use active baseline data if available
         const activeBl = (a.baselines || [])[activeBaselineIdx] || null;
-        const start = a.blES || a.ES;
-        const end = a.blEF || a.EF;
-        if (!start || !end) {
+        // Sin línea base → no hay referencia para % Programado
+        const hasBaseline = !!(a.blES && a.blEF);
+        if (!hasBaseline) {
             a._plannedPct = 0;
             return;
         }
+        const start = a.blES!;
+        const end = a.blEF!;
 
         // If the baseline has a saved pct and statusDate, interpolate:
         // Before baseline statusDate: use time ratio scaled to baseline pct
@@ -626,6 +628,7 @@ export function calcCPM(
                 }
             }
         } else {
+            // Baseline exists but no saved pct/statusDate → pure time ratio over baseline dates
             a._plannedPct = getExactElapsedRatio(start, end, sDateEnd, a.cal || defCal) * 100;
         }
     });

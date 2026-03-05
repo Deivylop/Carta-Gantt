@@ -101,8 +101,8 @@ export default function Ribbon() {
                         <RB icon={<Trash2 size={16} />} label="Eliminar" onClick={deleteAct} />
                     </RG>
                     <RG label="ESQUEMA">
-                        <RB icon={<ArrowRight size={14} />} label="Indentar" onClick={() => dispatch({ type: 'INDENT', dir: 1 })} />
-                        <RB icon={<ArrowLeft size={14} />} label="Des-indentar" onClick={() => dispatch({ type: 'INDENT', dir: -1 })} />
+                        <RB icon={<ArrowRight size={14} />} label="Derecha" onClick={() => dispatch({ type: 'INDENT', dir: 1 })} />
+                        <RB icon={<ArrowLeft size={14} />} label="Izquierda" onClick={() => dispatch({ type: 'INDENT', dir: -1 })} />
                     </RG>
                     <RG label="EDICIÓN">
                         <RB icon={<ArrowUp size={14} />} label="" onClick={() => dispatch({ type: 'MOVE_ROW', dir: -1 })} />

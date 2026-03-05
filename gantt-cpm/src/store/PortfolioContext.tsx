@@ -816,8 +816,11 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     }, []); // run once on mount
 
     // ── Debounced save portfolio to Supabase on state changes ──
+    // IMPORTANT: suppress saves until initial Supabase load completes to avoid
+    // overwriting remote data with stale localStorage state (race condition).
     const sbSaveTimeoutRef = useRef<number | null>(null);
     useEffect(() => {
+        if (isLoadingPortfolio) return; // ← wait until Supabase data is loaded
         if (sbSaveTimeoutRef.current) clearTimeout(sbSaveTimeoutRef.current);
         sbSaveTimeoutRef.current = window.setTimeout(async () => {
             try {
@@ -832,7 +835,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
             }
         }, 2000);
         return () => { if (sbSaveTimeoutRef.current) clearTimeout(sbSaveTimeoutRef.current); };
-    }, [state.epsNodes, state.projects, state.expandedIds, state.activeProjectId]);
+    }, [state.epsNodes, state.projects, state.expandedIds, state.activeProjectId, isLoadingPortfolio]);
 
     // ── Auto-create Supabase project for any project without supabaseId ──
     const creatingRef = useRef(new Set<string>());

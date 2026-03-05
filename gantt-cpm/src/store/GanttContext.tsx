@@ -734,7 +734,13 @@ function recalcInternal(state: GanttState, statusDate: Date | null, autoFit = fa
         calcMultipleFloatPaths(result.activities, state.mfpConfig.endActivityId, state.mfpConfig.mode, state.mfpConfig.maxPaths, state.defCal);
     }
     computeOutlineNumbers(result.activities);
-    const visRows = buildVisRows(result.activities, state.collapsed, state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes, state.activeCheckerFilter, state.checkerThresholds, state.statusDate, state.customFilters, state.filtersMatchAll);
+    let visRows = buildVisRows(result.activities, state.collapsed, state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes, state.activeCheckerFilter, state.checkerThresholds, state.statusDate, state.customFilters, state.filtersMatchAll);
+    // Re-compute chainIds if trace is active (activities may have changed) and filter visRows
+    let chainIds = state.chainIds;
+    if (state.chainTrace) {
+        chainIds = traceChain(result.activities, state.chainTrace.actId, state.chainTrace.dir);
+        visRows = visRows.filter(r => r._isProjRow || chainIds.has(r.id));
+    }
     // Only auto-fit pxPerDay on initial load (SET_ACTIVITIES) — preserve user's zoom otherwise
     let pxPerDay = state.pxPerDay;
     if (autoFit) {
@@ -744,7 +750,7 @@ function recalcInternal(state: GanttState, statusDate: Date | null, autoFit = fa
     }
     // Timeline rendering starts 30 days before project start
     const timelineStart = addDays(state.projStart, -30);
-    return { ...state, activities: result.activities, totalDays: result.totalDays, visRows, pxPerDay, timelineStart, _cpmStatusDate: statusDate };
+    return { ...state, activities: result.activities, totalDays: result.totalDays, visRows, chainIds, pxPerDay, timelineStart, _cpmStatusDate: statusDate };
 }
 
 /** Recalc automático: forward/backward pass.
@@ -775,8 +781,22 @@ function recalcFullAutoFit(state: GanttState): GanttState {
 function refreshVisRows(state: GanttState): GanttState {
     let acts = ensureProjRow([...state.activities], state.showProjRow, state.projName, state.defCal);
     computeOutlineNumbers(acts);
-    const visRows = buildVisRows(acts, state.collapsed, state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes, state.activeCheckerFilter, state.checkerThresholds, state.statusDate, state.customFilters, state.filtersMatchAll);
-    return { ...state, activities: acts, visRows };
+    let visRows = buildVisRows(acts, state.collapsed, state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes, state.activeCheckerFilter, state.checkerThresholds, state.statusDate, state.customFilters, state.filtersMatchAll);
+    // Apply chain trace filtering
+    let chainIds = state.chainIds;
+    if (state.chainTrace) {
+        chainIds = traceChain(acts, state.chainTrace.actId, state.chainTrace.dir);
+        visRows = visRows.filter(r => r._isProjRow || chainIds.has(r.id));
+    }
+    return { ...state, activities: acts, visRows, chainIds };
+}
+
+/** Apply chain trace filter to visRows when trace is active */
+function chainFilter(rows: VisibleRow[], st: GanttState): VisibleRow[] {
+    if (st.chainTrace && st.chainIds.size > 0) {
+        return rows.filter(r => r._isProjRow || st.chainIds.has(r.id));
+    }
+    return rows;
 }
 
 // ─── Reducer ────────────────────────────────────────────────────
@@ -837,7 +857,7 @@ function reducer(state: GanttState, action: Action): GanttState {
                 const oldWork = orig.work || 0;
                 const oldUT = oldDur > 0 ? oldWork / oldDur : 0;
                 if (dt === 'Fija Duración y Unidades/Tiempo' || dt === 'Fija Unidades/Tiempo' || dt === 'Fija Unidades') {
-                    updated.work = Math.max(0, updated.dur * oldUT);
+                    updated.work = Math.round(Math.max(0, updated.dur * oldUT) * 100) / 100;
                     distributeWork(updated as any);
                 }
             } else if ('work' in action.updates && updated.work !== orig.work) {
@@ -846,6 +866,7 @@ function reducer(state: GanttState, action: Action): GanttState {
                 const oldUT = oldDur > 0 ? oldWork / oldDur : 0;
                 if ((dt === 'Fija Unidades/Tiempo' || dt === 'Fija Unidades') && oldUT > 0) {
                     updated.dur = Math.max(1, Math.round(updated.work / oldUT));
+                    updated.work = Math.round(updated.work * 100) / 100;
                 }
             }
 
@@ -896,6 +917,7 @@ function reducer(state: GanttState, action: Action): GanttState {
             const a = { ...acts[action.index] };
             if (a._isProjRow) return state;
             if (a.type === 'summary' && (action.key === 'work' || action.key === 'pct' || action.key === 'dur')) return state;
+            if (a.type === 'milestone' && (action.key === 'work' || action.key === 'res')) return state;
             const val = action.value;
             const { key } = action;
 
@@ -948,7 +970,7 @@ function reducer(state: GanttState, action: Action): GanttState {
                     a.dur = Math.max(0, (a.dur || 0) + delta);
 
                     if (dt === 'Fija Duración y Unidades/Tiempo' || dt === 'Fija Unidades/Tiempo' || dt === 'Fija Unidades') {
-                        a.work = Math.max(0, a.dur * oldUT);
+                        a.work = Math.round(Math.max(0, a.dur * oldUT) * 100) / 100;
                         distributeWork(a);
                     }
                 }
@@ -957,6 +979,10 @@ function reducer(state: GanttState, action: Action): GanttState {
                 const n = parseInt(val);
                 if (!isNaN(n)) {
                     const newRemDur = Math.max(0, n);
+                    const dt = a.durationType || state.durationType || 'Fija Duración y Unidades';
+                    const oldDur = a.dur || 0;
+                    const oldWork = a.work || 0;
+                    const oldUT = oldDur > 0 ? oldWork / oldDur : 0;
                     // Bidireccional: ajustar dur por el mismo delta
                     if ((a.pct || 0) > 0) {
                         const delta = newRemDur - (a.remDur != null ? a.remDur : Math.round((a.dur || 0) * (100 - (a.pct || 0)) / 100));
@@ -965,6 +991,11 @@ function reducer(state: GanttState, action: Action): GanttState {
                         a.dur = newRemDur;
                     }
                     a.remDur = newRemDur;
+                    // Aplicar reglas de Tipo de Duración: recalcular trabajo
+                    if (dt === 'Fija Duración y Unidades/Tiempo' || dt === 'Fija Unidades/Tiempo' || dt === 'Fija Unidades') {
+                        a.work = Math.round(Math.max(0, a.dur * oldUT) * 100) / 100;
+                        distributeWork(a);
+                    }
                 }
                 // Siempre recalcular CPM para que la fecha fin se actualice al instante
                 acts[action.index] = a;
@@ -1015,6 +1046,7 @@ function reducer(state: GanttState, action: Action): GanttState {
 
                     if ((dt === 'Fija Unidades/Tiempo' || dt === 'Fija Unidades') && oldUT > 0) {
                         a.dur = Math.max(1, Math.round(a.work / oldUT));
+                        a.work = Math.round(a.work * 100) / 100;
                         // Altering duration might also adjust remDur if partially complete
                         if ((a.pct || 0) > 0) {
                             a.remDur = Math.round(a.dur * (100 - (a.pct || 0)) / 100);
@@ -1113,8 +1145,11 @@ function reducer(state: GanttState, action: Action): GanttState {
         }
 
         case 'SET_ZOOM': {
-            const timelineW = Math.max(400, (typeof window !== 'undefined' ? window.innerWidth : 1200) - state.tableW - 10);
-            const fitPx = Math.max(0.5, Math.min(timelineW / state.totalDays, 150));
+            let fitPx = state.pxPerDay;
+            if (action.zoom === 'day') fitPx = 30;
+            else if (action.zoom === 'week') fitPx = 10;
+            else if (action.zoom === 'month') fitPx = 2;
+            
             return { ...state, zoom: action.zoom, pxPerDay: fitPx };
         }
 
@@ -1166,7 +1201,7 @@ function reducer(state: GanttState, action: Action): GanttState {
             return { ...state, leanRestrictions: action.restrictions };
 
         case 'SET_VIEW': {
-            const visRows = buildVisRows(state.activities, state.collapsed, state.activeGroup, state.columns, action.view, state.expResources, state.usageModes);
+            const visRows = chainFilter(buildVisRows(state.activities, state.collapsed, state.activeGroup, state.columns, action.view, state.expResources, state.usageModes), state);
             return { ...state, currentView: action.view, visRows };
         }
         case 'TOGGLE_USAGE_MODE': {
@@ -1174,32 +1209,32 @@ function reducer(state: GanttState, action: Action): GanttState {
             const idx = modes.indexOf(action.mode);
             if (idx >= 0) modes.splice(idx, 1);
             else modes.push(action.mode);
-            const visRows = buildVisRows(state.activities, state.collapsed, state.activeGroup, state.columns, state.currentView, state.expResources, modes);
+            const visRows = chainFilter(buildVisRows(state.activities, state.collapsed, state.activeGroup, state.columns, state.currentView, state.expResources, modes), state);
             return { ...state, usageModes: modes, visRows };
         }
         case 'SET_USAGE_ZOOM': return { ...state, usageZoom: action.zoom };
         case 'TOGGLE_COLLAPSE': {
             const c = new Set(state.collapsed);
             c.has(action.id) ? c.delete(action.id) : c.add(action.id);
-            const visRows = buildVisRows(state.activities, c, state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes);
+            const visRows = chainFilter(buildVisRows(state.activities, c, state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes), state);
             return { ...state, collapsed: c, visRows };
         }
         case 'TOGGLE_RES_COLLAPSE': {
             const c = new Set(state.expResources);
             c.has(action.id) ? c.delete(action.id) : c.add(action.id);
-            const visRows = buildVisRows(state.activities, state.collapsed, state.activeGroup, state.columns, state.currentView, c, state.usageModes);
+            const visRows = chainFilter(buildVisRows(state.activities, state.collapsed, state.activeGroup, state.columns, state.currentView, c, state.usageModes), state);
             return { ...state, expResources: c, visRows };
         }
 
         case 'COLLAPSE_ALL': {
             const c = new Set<string>();
             state.activities.forEach(a => { if (a.type === 'summary') c.add(a.id); });
-            const visRows = buildVisRows(state.activities, c, state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes);
+            const visRows = chainFilter(buildVisRows(state.activities, c, state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes), state);
             return { ...state, collapsed: c, visRows };
         }
 
         case 'EXPAND_ALL': {
-            const visRows = buildVisRows(state.activities, new Set(), state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes);
+            const visRows = chainFilter(buildVisRows(state.activities, new Set(), state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes), state);
             return { ...state, collapsed: new Set(), visRows };
         }
 
@@ -1211,19 +1246,19 @@ function reducer(state: GanttState, action: Action): GanttState {
                     c.add(a.id);
                 }
             });
-            const visRows = buildVisRows(state.activities, c, state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes);
+            const visRows = chainFilter(buildVisRows(state.activities, c, state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes), state);
             return { ...state, collapsed: c, visRows };
         }
 
         case 'SET_GROUP': {
-            const visRows = buildVisRows(state.activities, state.collapsed, action.group, state.columns, state.currentView, state.expResources, state.usageModes);
+            const visRows = chainFilter(buildVisRows(state.activities, state.collapsed, action.group, state.columns, state.currentView, state.expResources, state.usageModes), state);
             return { ...state, activeGroup: action.group, visRows };
         }
 
         case 'SET_PROJECT_CONFIG': {
             const newState = { ...state, ...action.config };
             const acts = ensureProjRow([...newState.activities], newState.showProjRow, newState.projName, newState.defCal);
-            const visRows = buildVisRows(acts, newState.collapsed, newState.activeGroup, newState.columns, newState.currentView, newState.expResources, newState.usageModes || state.usageModes);
+            const visRows = chainFilter(buildVisRows(acts, newState.collapsed, newState.activeGroup, newState.columns, newState.currentView, newState.expResources, newState.usageModes || state.usageModes), state);
             return { ...newState, activities: acts, visRows };
         }
 
@@ -1523,7 +1558,7 @@ function reducer(state: GanttState, action: Action): GanttState {
                     ...(isActive ? { blDur: null, blES: null, blEF: null, blCal: null, blWork: null } : {}),
                 };
             });
-            return { ...state, activities: acts, visRows: buildVisRows(acts, state.collapsed, state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes) };
+            return { ...state, activities: acts, visRows: chainFilter(buildVisRows(acts, state.collapsed, state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes), state) };
         }
 
         // Modal toggles
@@ -1618,6 +1653,7 @@ function reducer(state: GanttState, action: Action): GanttState {
         case 'ADD_RESOURCE_TO_ACT': {
             const acts = [...state.activities];
             const a = { ...acts[action.actIdx] };
+            if (a.type === 'milestone') return state;
             if (!a.resources) a.resources = [];
             if (a.resources.find(r => r.rid === action.rid)) return state;
             a.resources = [...a.resources, { rid: action.rid, name: action.name, units: action.units, work: action.work }];
@@ -1630,6 +1666,7 @@ function reducer(state: GanttState, action: Action): GanttState {
         case 'ADD_RESOURCE_BY_NAME': {
             const trimmed = action.name.trim();
             if (!trimmed) return state;
+            if (state.activities[action.actIdx]?.type === 'milestone') return state;
             const pool = [...state.resourcePool];
             let poolR = pool.find(r => r.name.toLowerCase() === trimmed.toLowerCase());
             if (!poolR) {
@@ -1836,11 +1873,12 @@ function reducer(state: GanttState, action: Action): GanttState {
             const selAct = state.selIdx >= 0 ? state.activities[state.selIdx] : null;
             if (!selAct || selAct._isProjRow || selAct.type === 'summary') return state;
             const ids = traceChain(state.activities, selAct.id, action.dir);
-            return { ...state, chainTrace: { actId: selAct.id, dir: action.dir }, chainIds: ids };
+            const newState = { ...state, chainTrace: { actId: selAct.id, dir: action.dir }, chainIds: ids };
+            return refreshVisRows(newState);
         }
 
         case 'CLEAR_CHAIN_TRACE':
-            return { ...state, chainTrace: null, chainIds: new Set<string>() };
+            return refreshVisRows({ ...state, chainTrace: null, chainIds: new Set<string>() });
 
         // ═══ What-If Scenarios ═══
         case 'CREATE_SCENARIO': {
@@ -1983,7 +2021,7 @@ function reducer(state: GanttState, action: Action): GanttState {
             } catch (err) {
                 console.error('[MERGE_SCENARIO] recalc failed:', err);
                 // Fallback: set activities without recalc rather than losing data
-                return { ...newState, visRows: buildVisRows(safeActs, state.collapsed, state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes, state.activeCheckerFilter, state.checkerThresholds, state.statusDate, state.customFilters, state.filtersMatchAll) };
+                return { ...newState, visRows: chainFilter(buildVisRows(safeActs, state.collapsed, state.activeGroup, state.columns, state.currentView, state.expResources, state.usageModes, state.activeCheckerFilter, state.checkerThresholds, state.statusDate, state.customFilters, state.filtersMatchAll), state) };
             }
         }
 

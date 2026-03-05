@@ -393,9 +393,6 @@ export default function GanttTimeline() {
             const efX = r.EF ? dayDiff(projStart, r.EF) * PX : bx;
             const bw = Math.max(r.type === 'milestone' ? 0 : 4, efX - bx);
             const by = y + 5, bh = ROW_H - 10;
-            const inChain = chainActive && chainIds.has(r.id);
-            const dimmed = chainActive && !inChain && !r._isProjRow;
-            if (dimmed) ctx.globalAlpha = 0.18;
             const color = (() => {
                 if (mfpConfig.enabled && r._floatPath != null) {
                     const MFP_COLORS = ['#FF0000', '#FF6600', '#FFCC00', '#00AA00', '#0066FF', '#9933FF', '#FF66CC', '#00CCCC', '#996633', '#666666'];
@@ -406,7 +403,7 @@ export default function GanttTimeline() {
 
             // Chain trace: highlight origin activity with glow
             const isChainOrigin = chainTrace != null && r.id === chainTrace.actId;
-            if (inChain && !dimmed && r.type !== 'milestone' && r.type !== 'summary') {
+            if (chainActive && !r._isProjRow && r.type !== 'milestone' && r.type !== 'summary') {
                 ctx.save();
                 if (isChainOrigin) { ctx.shadowColor = '#facc15'; ctx.shadowBlur = 10; }
                 else { ctx.shadowColor = '#60a5fa'; ctx.shadowBlur = 6; }
@@ -586,7 +583,6 @@ export default function GanttTimeline() {
                 ctx.strokeStyle = t.blDiamond; ctx.lineWidth = 1;
                 ctx.beginPath(); ctx.rect(-3, -3, 6, 6); ctx.stroke(); ctx.restore();
             }
-            if (dimmed) ctx.globalAlpha = 1;
         });
 
         // ─── Connection Lines (dependency arrows) ───────────

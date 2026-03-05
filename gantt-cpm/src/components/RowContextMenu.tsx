@@ -116,15 +116,15 @@ export default function RowContextMenu({ x, y, onClose, onOpenColumns, colKey, s
 
             <div className="row-ctx-sep" />
 
-            {/* Indentar / Des-indentar */}
+            {/* Derecha / Izquierda */}
             <div className={`row-ctx-item${!hasSelection || isProj ? ' disabled' : ''}`}
                 onClick={() => hasSelection && !isProj && act(() => dispatch({ type: 'INDENT', dir: 1 }))}>
-                <span className="row-ctx-label">Indentar</span>
+                <span className="row-ctx-label">Derecha</span>
                 <span className="row-ctx-shortcut">Alt+→</span>
             </div>
             <div className={`row-ctx-item${!hasSelection || isProj ? ' disabled' : ''}`}
                 onClick={() => hasSelection && !isProj && act(() => dispatch({ type: 'INDENT', dir: -1 }))}>
-                <span className="row-ctx-label">Des-indentar</span>
+                <span className="row-ctx-label">Izquierda</span>
                 <span className="row-ctx-shortcut">Alt+←</span>
             </div>
 

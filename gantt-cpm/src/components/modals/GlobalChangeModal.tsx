@@ -36,11 +36,15 @@ const FILTER_FIELDS = DEFAULT_COLS.filter(c =>
 );
 
 const MUTABLE_FIELDS: { key: string; label: string; type: 'number' | 'text' | 'date' | 'select' }[] = [
+    { key: 'name', label: 'Nombre de tarea', type: 'text' },
     { key: 'dur', label: 'Duración', type: 'number' },
     { key: 'remDur', label: 'Dur. Restante', type: 'number' },
     { key: 'pct', label: '% Avance', type: 'number' },
     { key: 'work', label: 'Trabajo (hrs)', type: 'number' },
     { key: 'weight', label: 'Peso %', type: 'number' },
+    { key: 'cal', label: 'Calendario', type: 'select' },
+    { key: 'durationType', label: 'Tipo de Duración', type: 'select' },
+    { key: 'res', label: 'Recursos', type: 'text' },
     { key: 'encargado', label: 'Encargado', type: 'text' },
     { key: 'notes', label: 'Notas', type: 'text' },
     { key: 'txt1', label: 'Texto 1', type: 'text' },
@@ -50,14 +54,36 @@ const MUTABLE_FIELDS: { key: string; label: string; type: 'number' | 'text' | 'd
     { key: 'txt5', label: 'Texto 5', type: 'text' },
     { key: 'constraint', label: 'Restricción', type: 'select' },
     { key: 'constraintDate', label: 'Fecha Restricción', type: 'date' },
+    { key: 'startDate', label: 'Comienzo', type: 'date' },
+    { key: 'endDate', label: 'Fin', type: 'date' },
     { key: 'actualStart', label: 'Inicio Real', type: 'date' },
     { key: 'actualFinish', label: 'Fin Real', type: 'date' },
+    { key: 'suspendDate', label: 'Fecha Suspensión', type: 'date' },
+    { key: 'resumeDate', label: 'Fecha Reanudación', type: 'date' },
 ];
 
 const NUMERIC_FIELDS = new Set(['dur', 'remDur', 'pct', 'work', 'weight']);
 const DATE_FILTER_FIELDS = new Set(['startDate', 'endDate', 'actualStart', 'actualFinish',
     'blStart', 'blEnd', 'constraintDate', 'remStartDate', 'remEndDate', 'suspendDate', 'resumeDate']);
 const CONSTRAINT_OPTIONS = ['', 'SNET', 'SNLT', 'MSO', 'MFO', 'FNET', 'FNLT'];
+const CALENDAR_OPTIONS = ['5', '6', '7'];
+const DURATION_TYPE_OPTIONS = [
+    'Fija Duración y Unidades',
+    'Fija Duración y Unidades/Tiempo',
+    'Fija Unidades',
+    'Fija Unidades/Tiempo',
+];
+
+// ─── Display helpers ─────────────────────────────────────────────
+
+function calDisplayName(val: unknown, customCalendars: { id: string; name: string }[] = []): string {
+    const s = String(val ?? '');
+    if (s === '5') return '5 días (Lun-Vie)';
+    if (s === '6') return '6 días (Lun-Sáb)';
+    if (s === '7') return '7 días (Todos)';
+    const cc = customCalendars.find(c => c.id === s);
+    return cc ? cc.name : s;
+}
 
 // ─── Value resolver (mirrors buildVisRows resolveFieldValue) ─────
 
@@ -187,7 +213,14 @@ function computeNewValue(a: Activity, actionDef: GCActionDef): { newRaw: unknown
     }
 
     if (fInfo.type === 'select') {
-        if (action === 'set') return { newRaw: value, newDisplay: value };
+        if (action === 'set') {
+            // Calendar field stores numeric values internally
+            if (field === 'cal') {
+                const numCal = parseInt(value);
+                return { newRaw: isNaN(numCal) ? value : numCal, newDisplay: value };
+            }
+            return { newRaw: value, newDisplay: value };
+        }
         return null;
     }
 
@@ -323,6 +356,11 @@ export default function GlobalChangeModal() {
             // Only include if value actually changes
             if (oldDisplay === computed.newDisplay) return;
 
+            // Friendly display names for calendar field
+            const isCal = actionToApply.field === 'cal';
+            const displayOld = isCal ? calDisplayName(oldDisplay, state.customCalendars) : (oldDisplay || '—');
+            const displayNew = isCal ? calDisplayName(computed.newDisplay, state.customCalendars) : computed.newDisplay;
+
             const fLabel = MUTABLE_FIELDS.find(f => f.key === actionToApply.field)?.label ?? actionToApply.field;
             rows.push({
                 actId: a.id,
@@ -330,15 +368,15 @@ export default function GlobalChangeModal() {
                 index: idx,
                 fieldLabel: fLabel,
                 fieldKey: actionToApply.field,
-                oldValue: oldDisplay || '—',
-                newValue: computed.newDisplay,
+                oldValue: displayOld,
+                newValue: displayNew,
                 updates: { [actionToApply.field]: computed.newRaw } as Partial<Activity>,
             });
         });
 
         setPreview(rows);
         setStep('preview');
-    }, [state.activities]);
+    }, [state.activities, state.customCalendars]);
 
     const handleBuildPreview = () => {
         buildPreviewFromData(conditions, matchAll, thenAction, elseEnabled, elseAction);
@@ -403,7 +441,7 @@ export default function GlobalChangeModal() {
                             </span>
                         ) : (
                             <span style={{ fontSize: 11, color: textMuted, marginLeft: 4 }}>
-                                Motor de cambio masivo (Emulación P6)
+                                Motor de cambio masivo
                             </span>
                         )}
                     </div>
@@ -546,6 +584,7 @@ export default function GlobalChangeModal() {
                                         textMuted={textMuted}
                                         onUpdate={updates => updateCondition(cond.id, updates)}
                                         onRemove={() => removeCondition(cond.id)}
+                                        customCalendars={state.customCalendars}
                                     />
                                 ))}
 
@@ -562,6 +601,7 @@ export default function GlobalChangeModal() {
                                     fieldType={thenFieldType}
                                     lm={lm}
                                     onUpdate={u => setThenAction(prev => ({ ...prev, ...u }))}
+                                    customCalendars={state.customCalendars}
                                 />
                             </Section>
 
@@ -582,6 +622,7 @@ export default function GlobalChangeModal() {
                                         fieldType={elseFieldType}
                                         lm={lm}
                                         onUpdate={u => setElseAction(prev => ({ ...prev, ...u }))}
+                                        customCalendars={state.customCalendars}
                                     />
                                 ) : (
                                     <div style={{ color: textMuted, fontStyle: 'italic', fontSize: 12 }}>
@@ -625,11 +666,11 @@ export default function GlobalChangeModal() {
                                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                                         <thead>
                                             <tr style={{ background: lm ? '#f1f5f9' : '#334155', textAlign: 'left' }}>
-                                                <Th>Activity ID</Th>
-                                                <Th>Activity Name</Th>
-                                                <Th>Field Name</Th>
-                                                <Th>Old Value</Th>
-                                                <Th style={{ color: '#22c55e' }}>New Value</Th>
+                                                <Th>ID</Th>
+                                                <Th>Nombre de Tarea</Th>
+                                                <Th>Campo</Th>
+                                                <Th>Valor Anterior</Th>
+                                                <Th style={{ color: '#22c55e' }}>Valor Nuevo</Th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -682,7 +723,7 @@ export default function GlobalChangeModal() {
                                 opacity: (!preview || preview.length === 0) ? 0.5 : 1,
                             }}
                         >
-                            <CheckCircle2 size={15} /> Commit Changes ({preview?.length ?? 0})
+                            <CheckCircle2 size={15} /> Aplicar Cambios ({preview?.length ?? 0})
                         </button>
                     </div>
                 )}
@@ -716,7 +757,7 @@ function Th({ children, style }: { children: React.ReactNode; style?: React.CSSP
     return <th style={{ padding: '7px 10px', fontWeight: 600, fontSize: 11, ...style }}>{children}</th>;
 }
 
-function ConditionRow({ cond, index, matchAll, border, textMuted, onUpdate, onRemove }: {
+function ConditionRow({ cond, index, matchAll, border, textMuted, onUpdate, onRemove, customCalendars = [] }: {
     cond: GCCondition;
     index: number;
     matchAll: boolean;
@@ -724,6 +765,7 @@ function ConditionRow({ cond, index, matchAll, border, textMuted, onUpdate, onRe
     textMuted: string;
     onUpdate: (updates: Partial<GCCondition>) => void;
     onRemove: () => void;
+    customCalendars?: { id: string; name: string }[];
 }) {
     const isDate = DATE_FILTER_FIELDS.has(cond.field);
     const isNumeric = NUMERIC_FIELDS.has(cond.field) ||
@@ -778,6 +820,24 @@ function ConditionRow({ cond, index, matchAll, border, textMuted, onUpdate, onRe
                 isDate ? (
                     <input type="date" className="form-input" style={{ fontSize: 11, padding: '4px 6px', flex: 1 }}
                         value={cond.value} onChange={e => onUpdate({ value: e.target.value })} />
+                ) : cond.field === 'cal' ? (
+                    <select className="form-input" style={{ fontSize: 11, padding: '4px 6px', flex: 1 }}
+                        value={cond.value} onChange={e => onUpdate({ value: e.target.value })}>
+                        <option value="">— seleccionar —</option>
+                        {CALENDAR_OPTIONS.map(o => <option key={o} value={o}>{o === '5' ? '5 días (Lun-Vie)' : o === '6' ? '6 días (Lun-Sáb)' : '7 días (Todos)'}</option>)}
+                        {customCalendars.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                ) : cond.field === 'durationType' ? (
+                    <select className="form-input" style={{ fontSize: 11, padding: '4px 6px', flex: 1 }}
+                        value={cond.value} onChange={e => onUpdate({ value: e.target.value })}>
+                        <option value="">— seleccionar —</option>
+                        {DURATION_TYPE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                ) : cond.field === 'constraint' ? (
+                    <select className="form-input" style={{ fontSize: 11, padding: '4px 6px', flex: 1 }}
+                        value={cond.value} onChange={e => onUpdate({ value: e.target.value })}>
+                        {CONSTRAINT_OPTIONS.map(o => <option key={o} value={o}>{o || '(Sin restricción)'}</option>)}
+                    </select>
                 ) : (
                     <input type={isNumeric ? 'number' : 'text'} className="form-input"
                         style={{ fontSize: 11, padding: '4px 6px', flex: 1 }}
@@ -795,11 +855,12 @@ function ConditionRow({ cond, index, matchAll, border, textMuted, onUpdate, onRe
     );
 }
 
-function ActionRow({ actionDef, fieldType, lm, onUpdate }: {
+function ActionRow({ actionDef, fieldType, lm, onUpdate, customCalendars = [] }: {
     actionDef: GCActionDef;
     fieldType: string;
     lm: boolean;
     onUpdate: (updates: Partial<GCActionDef>) => void;
+    customCalendars?: { id: string; name: string }[];
 }) {
     const actions = ACTIONS_FOR_TYPE[fieldType] ?? ACTIONS_FOR_TYPE.text;
     const isDate = fieldType === 'date';
@@ -847,7 +908,11 @@ function ActionRow({ actionDef, fieldType, lm, onUpdate }: {
                 ) : isSelect ? (
                     <select className="form-input" style={{ fontSize: 12, padding: '5px 8px' }}
                         value={actionDef.value} onChange={e => onUpdate({ value: e.target.value })}>
-                        {CONSTRAINT_OPTIONS.map(o => <option key={o} value={o}>{o || '(Sin restricción)'}</option>)}
+                        {actionDef.field === 'cal'
+                            ? <>{CALENDAR_OPTIONS.map(o => <option key={o} value={o}>{o === '5' ? '5 días (Lun-Vie)' : o === '6' ? '6 días (Lun-Sáb)' : '7 días'}</option>)}{customCalendars.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</>
+                            : actionDef.field === 'durationType'
+                                ? DURATION_TYPE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)
+                                : CONSTRAINT_OPTIONS.map(o => <option key={o} value={o}>{o || '(Sin restricción)'}</option>)}
                     </select>
                 ) : (
                     <input

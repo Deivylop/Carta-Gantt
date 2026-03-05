@@ -459,6 +459,13 @@ function TabEstado({ a, dispatch, selIdx }: {
    TAB: Recursos
    ════════════════════════════════════════════════════════════════ */
 function TabRecursos({ a, selIdx, dispatch, resourcePool, acOpen, acTarget, acFilter, acRef, setAcOpen, setAcTarget, setAcFilter, acItems, addResourceToAct, addResourceByName }: any) {
+    if (a.type === 'milestone') {
+        return (
+            <div className="adp-table-tab" style={{ padding: 16, color: 'var(--text-muted)', fontStyle: 'italic', fontSize: 12 }}>
+                Los hitos no pueden tener recursos ni trabajo asignado.
+            </div>
+        );
+    }
     return (
         <div className="adp-table-tab">
             <table className="adp-tbl">

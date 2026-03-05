@@ -297,6 +297,11 @@ export default function TaskForm() {
 
                 {tab === 'res' && (
                     <div>
+                        {a.type === 'milestone' ? (
+                            <div style={{ padding: 16, color: 'var(--text-muted)', fontStyle: 'italic', fontSize: 12 }}>
+                                Los hitos no pueden tener recursos ni trabajo asignado.
+                            </div>
+                        ) : (<>
                         <div className="fp-section-hdr" style={{ color: '#34d399' }}>🔧 RECURSOS ASIGNADOS</div>
                         <div className="fp-col-hdr">
                             <div className="fp-cell fp-cell-id">ID Req.</div>
@@ -350,6 +355,7 @@ export default function TaskForm() {
                         <div style={{ marginTop: 8, padding: 4, fontSize: 10, color: 'var(--text-muted)' }}>
                             Trabajo total: <b>{(a.work || 0).toFixed(1)} hrs</b>
                         </div>
+                    </>)}
                     </div>
                 )}
             </div>
