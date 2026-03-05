@@ -1,13 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useGantt } from '../../store/GanttContext';
 import { X, Plus, Trash2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import type { ProjectThreshold, ThresholdParameter, ThresholdOperator, ThresholdSeverity } from '../../types/gantt';
+import type { ProjectThreshold, ThresholdParameter, ThresholdSeverity } from '../../types/gantt';
 
 export function ThresholdsModal() {
     const { state, dispatch } = useGantt();
     const [thresholds, setThresholds] = useState<ProjectThreshold[]>([]);
     const [loading, setLoading] = useState(true);
+    
+    // Obtener ID real del proyecto actual si lo hay guardado para carga a base de datos.
+    const projectId = localStorage.getItem('GANTT_ACTIVE_PROJECT_ID') || localStorage.getItem('supabase_project_id');
 
     const parameterLabels: Record<ThresholdParameter, string> = {
         devPct: '% Desviación',
@@ -24,16 +27,21 @@ export function ThresholdsModal() {
     };
 
     useEffect(() => {
-        if (!state.currentProjectId) return;
+        if (!projectId) {
+            setLoading(false);
+            return;
+        }
         loadThresholds();
-    }, [state.currentProjectId]);
+    }, [projectId, state.activeModal]);
 
     const loadThresholds = async () => {
         setLoading(true);
+        if(!projectId) return;
+
         const { data, error } = await supabase
             .from('project_thresholds')
             .select('*')
-            .eq('project_id', state.currentProjectId)
+            .eq('project_id', projectId)
             .order('created_at', { ascending: true });
 
         if (!error && data) {
@@ -43,9 +51,13 @@ export function ThresholdsModal() {
     };
 
     const handleAdd = () => {
+        if (!projectId) {
+            alert("No hay un proyecto conectado a la base de datos.");
+            return;
+        }
         const newThreshold: Partial<ProjectThreshold> = {
             id: 'temp-' + Date.now(),
-            project_id: state.currentProjectId!,
+            project_id: projectId,
             parameter: 'devPct',
             operator: '<',
             limit_value: -5,
