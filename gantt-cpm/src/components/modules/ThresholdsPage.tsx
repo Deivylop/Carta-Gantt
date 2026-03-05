@@ -1,21 +1,17 @@
-// ThresholdsPage – MINIMAL TEST (si ves esto, el routing funciona)
+// ThresholdsPage – TEST v3 con fondo rojo para detectar si renderiza
 export default function ThresholdsPage() {
     return (
         <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flex: 1,
+            background: '#ff0000',
+            color: '#ffffff',
+            width: '100%',
+            height: '100%',
+            minHeight: '500px',
             padding: 40,
-            color: '#e2e8f0',
-            fontSize: 16,
+            fontSize: 24,
+            fontWeight: 'bold',
         }}>
-            <h2 style={{ color: '#818cf8', marginBottom: 16 }}>🚦 Control de Proyecto</h2>
-            <p>Si ves este texto, el routing funciona correctamente.</p>
-            <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>
-                ProjectID: {localStorage.getItem('GANTT_ACTIVE_PROJECT_ID') || localStorage.getItem('supabase_project_id') || '(ninguno)'}
-            </p>
+            CONTROL - TEST v3 - Si ves este fondo ROJO, el componente renderiza.
         </div>
     );
 }
