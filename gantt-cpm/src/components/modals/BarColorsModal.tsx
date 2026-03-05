@@ -129,14 +129,15 @@ export default function BarColorsModal({ colors, onSave, onClose }: Props) {
                             {categories.map(cat => (
                                 <tr key={cat.key}>
                                     <td>{cat.label}</td>
-                                    <td>
+                                    <td style={{ textAlign: 'center' }}>
                                         <div
                                             onClick={() => setPickingFor(cat.key)}
                                             style={{
-                                                width: '100%', height: 28, cursor: 'pointer',
+                                                width: 24, height: 24, cursor: 'pointer', margin: '0 auto',
                                                 backgroundColor: localColors[cat.key],
-                                                border: '1px solid #777',
-                                                boxShadow: 'inset 0px 1px 3px rgba(0,0,0,0.2)'
+                                                border: '1px solid var(--border-secondary)',
+                                                borderRadius: 4,
+                                                boxShadow: 'inset 0px 1px 3px rgba(0,0,0,0.1)'
                                             }}
                                         />
                                     </td>
