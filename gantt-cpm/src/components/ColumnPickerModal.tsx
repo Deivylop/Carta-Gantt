@@ -23,7 +23,7 @@ const COLUMN_GROUPS: { group: string; keys: string[] }[] = [
     },
     {
         group: 'Avance',
-        keys: ['pct', 'plannedPct', 'simRealPct', 'simProgPct'],
+        keys: ['pct', 'plannedPct', 'devPct', 'simRealPct', 'simProgPct'],
     },
     {
         group: 'Recursos',

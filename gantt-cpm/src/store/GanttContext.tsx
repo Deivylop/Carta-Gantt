@@ -47,6 +47,7 @@ export const DEFAULT_COLS: ColumnDef[] = [
     { key: 'predStr', label: 'Predecesoras', w: 100, edit: true, cls: 'tcell-pred', visible: false },
     { key: 'pct', label: '% Avance', w: 60, edit: true, cls: 'tcell-pct', visible: true },
     { key: 'plannedPct', label: '% Prog.', w: 65, edit: false, cls: 'tcell-pct', visible: true },
+    { key: 'devPct', label: '% Desviación', w: 85, edit: false, cls: 'tcell-pct', visible: false },
     { key: 'simRealPct', label: 'Avance Sim. Real', w: 90, edit: false, cls: 'tcell-pct', visible: false },
     { key: 'simProgPct', label: 'Avance Sim. Prog.', w: 90, edit: false, cls: 'tcell-pct', visible: false },
     { key: 'res', label: 'Recursos', w: 110, edit: true, cls: 'tcell-res', visible: false },

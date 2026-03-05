@@ -29,7 +29,7 @@ type ModalStep = 'list' | 'editor' | 'preview';
 const uid = () => Math.random().toString(36).slice(2, 9);
 
 const FILTER_FIELDS = DEFAULT_COLS.filter(c =>
-    !['_num', '_info', '_mode', 'activityCount', 'simRealPct', 'simProgPct',
+    !['_num', '_info', '_mode', 'activityCount', 'devPct', 'simRealPct', 'simProgPct',
         'earnedValue', 'remainingWork', 'varStart', 'varEnd', 'varDur', 'varWork',
         'lpEstado', 'tipoRestr', 'estRestr', 'lpDias', 'fPrevista', 'fLiberado',
         'plannedPct', 'floatPath', 'FF'].includes(c.key)

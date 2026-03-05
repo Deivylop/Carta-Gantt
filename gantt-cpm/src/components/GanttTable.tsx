@@ -438,6 +438,12 @@ export default function GanttTable() {
         if (c.key === 'predStr') return predsToStr(a.preds);
         if (c.key === 'pct') return Number(a.pct || 0).toFixed(1) + '%';
         if (c.key === 'plannedPct') return Number(a._plannedPct != null ? a._plannedPct : (a.pct || 0)).toFixed(1) + '%';
+        if (c.key === 'devPct') {
+            const actual = a.pct || 0;
+            const planned = a._plannedPct != null ? a._plannedPct : actual;
+            const val = actual - planned;
+            return <span style={{ color: val < 0 ? '#ef4444' : val > 0 ? '#10b981' : 'inherit' }}>{val > 0 ? '+' : ''}{val.toFixed(1)}%</span>;
+        }
         if (c.key === 'simRealPct') {
             if (!spotlightEnabled || !spotlightEnd) return '—';
             const entry = simMap.get(a.id);
