@@ -55,8 +55,7 @@ function ThresholdsPageInner() {
     const [tab, setTab] = useState<'rules' | 'issues'>('rules');
 
     const projectId =
-        localStorage.getItem('GANTT_ACTIVE_PROJECT_ID') ||
-        localStorage.getItem('supabase_project_id');
+        localStorage.getItem('sb_current_project_id');
 
     // ── Load data ──
     useEffect(() => {
