@@ -109,15 +109,48 @@ function ThresholdsPageInner() {
 
     const saveAll = async () => {
         setSaving(true);
-        const toUpsert = rows.map(r => {
-            const copy: any = { ...r };
-            if (String(copy.id).startsWith('new-')) delete copy.id;
-            return copy;
-        });
-        if (toUpsert.length > 0) {
-            await supabase.from('project_thresholds').upsert(toUpsert);
+        setError(null);
+        try {
+            const newRows = rows.filter(r => String(r.id).startsWith('new-'));
+            const existingRows = rows.filter(r => !String(r.id).startsWith('new-'));
+
+            // INSERT new rows (let DB generate UUID)
+            for (const r of newRows) {
+                const { error: insErr } = await supabase.from('project_thresholds').insert({
+                    project_id: r.project_id,
+                    parameter: r.parameter,
+                    operator: r.operator,
+                    limit_value: r.limit_value,
+                    severity: r.severity,
+                    active: r.active,
+                });
+                if (insErr) {
+                    console.error('Insert error:', insErr);
+                    setError('Error guardando regla: ' + insErr.message);
+                    setSaving(false);
+                    return;
+                }
+            }
+
+            // UPDATE existing rows
+            for (const r of existingRows) {
+                const { error: updErr } = await supabase.from('project_thresholds')
+                    .update({ parameter: r.parameter, operator: r.operator, limit_value: r.limit_value, severity: r.severity, active: r.active })
+                    .eq('id', r.id);
+                if (updErr) {
+                    console.error('Update error:', updErr);
+                    setError('Error actualizando regla: ' + updErr.message);
+                    setSaving(false);
+                    return;
+                }
+            }
+
+            // Reload to get server-generated IDs
+            await loadAll();
+        } catch (err: any) {
+            console.error('Save error:', err);
+            setError('Error al guardar: ' + String(err?.message || err));
         }
-        await loadAll();
         setSaving(false);
     };
 
