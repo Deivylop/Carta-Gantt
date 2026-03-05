@@ -132,7 +132,7 @@ export default function Ribbon() {
                         <RB icon={<Calculator size={16} />} label="Calcular CPM" onClick={() => dispatch({ type: 'RECALC_CPM' })} />
                     </RG>
                     <RG label="CONTROL">
-                        <RB icon={<span style={{fontSize:16}}>🚦</span>} label="Umbrales" onClick={() => dispatch({ type: 'OPEN_MODAL', modalName: 'thresholds' })} />
+                        <RB icon={<span style={{fontSize:16}}>🚦</span>} label="Umbrales" onClick={() => dispatch({ type: 'OPEN_THRESHOLDS_MODAL' })} />
                     </RG>
                     <RG label="RUTAS DE ACCESO">
                         <button className={`rbtn ${state.mfpConfig.enabled ? 'active' : ''}`}

@@ -17,7 +17,7 @@ export function ThresholdsModal() {
 
     const projectId = localStorage.getItem('GANTT_ACTIVE_PROJECT_ID') || localStorage.getItem('supabase_project_id');
 
-    const isOpen = state.activeModal === 'thresholds';
+    const isOpen = state.thresholdsModalOpen === true;
 
     useEffect(() => {
         if (!isOpen || !projectId) { setLoading(false); return; }
@@ -69,10 +69,10 @@ export function ThresholdsModal() {
         if (toUpsert.length > 0) {
             await supabase.from('project_thresholds').upsert(toUpsert);
         }
-        dispatch({ type: 'CLOSE_MODAL' });
+        dispatch({ type: 'CLOSE_THRESHOLDS_MODAL' });
     };
 
-    const handleClose = () => dispatch({ type: 'CLOSE_MODAL' });
+    const handleClose = () => dispatch({ type: 'CLOSE_THRESHOLDS_MODAL' });
 
     if (!isOpen) return null;
 
