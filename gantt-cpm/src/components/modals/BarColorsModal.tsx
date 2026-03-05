@@ -53,15 +53,16 @@ function ClassicPicker({ initialColor, onSelect, onCancel }: { initialColor: str
     });
 
     return (
-        <div style={{ background: '#f0f0f0', color: '#000', padding: 12, borderRadius: 4, width: 260, border: '1px solid #ccc', boxShadow: '0 4px 12px rgba(0,0,0,0.5)', position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 10000, fontFamily: 'Segoe UI, Tahoma, sans-serif' }}>
+        <div style={{ background: '#f0f0f0', color: '#000', padding: 12, borderRadius: 4, width: 280, border: '1px solid #ccc', boxShadow: '0 4px 12px rgba(0,0,0,0.5)', position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 999999, fontFamily: 'Segoe UI, Tahoma, sans-serif' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, borderBottom: '1px solid #ccc', paddingBottom: 4 }}>
                 <span style={{ fontSize: 13, fontWeight: 'bold' }}>Color</span>
                 <span style={{ cursor: 'pointer', fontSize: 13 }} onClick={onCancel}>✕</span>
             </div>
             
             <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-                <div style={{ width: 24, height: 24, backgroundColor: sel, border: '1px solid #000', marginRight: 8 }} />
+                <div style={{ width: 24, height: 24, backgroundColor: sel, border: '1px solid #000', marginRight: 8, cursor: 'pointer' }} onClick={() => nativeInputRef.current?.click()} title="Elegir color personalizado" />
                 <div style={{ fontSize: 12 }}>Color actual</div>
+                <input type="color" ref={nativeInputRef} onChange={handleNativeChange} style={{ opacity: 0, position: 'absolute', pointerEvents: 'none', width: 0, height: 0 }} />
             </div>
 
             <div style={{ fontSize: 12, marginBottom: 4, marginTop: 12 }}>Colores básicos:</div>
