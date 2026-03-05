@@ -158,6 +158,7 @@ export interface GanttState {
     filtersMatchAll: boolean; // true = AND all selected, false = OR any selected
     filtersModalOpen: boolean;
     activeModal: 'none' | 'thresholds' | 'columnPicker' | 'barColors' | 'globalChange';
+    globalChangeModalOpen: boolean; // Retained backward compatibility
     savedGlobalChanges: SavedGlobalChange[];
     // Multiple Float Paths
     mfpConfig: MFPConfig;
