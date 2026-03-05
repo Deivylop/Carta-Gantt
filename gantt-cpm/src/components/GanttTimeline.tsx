@@ -6,6 +6,7 @@ import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react'
 import { useGantt } from '../store/GanttContext';
 import { dayDiff, addDays, fmtDate, isoDate, normDate } from '../utils/cpm';
 import type { ThemeColors, LeanRestriction } from '../types/gantt';
+import BarColorsModal from './modals/BarColorsModal';
 
 const ROW_H = 26;
 const HDR_H = 36;
@@ -91,6 +92,10 @@ export default function GanttTimeline() {
 
     // Spotlight drag – live x coordinate during drag (null = not dragging)
     const [spotlightDragX, setSpotlightDragX] = useState<number | null>(null);
+
+    // Context Menu and Bar Colors Modifier
+    const [ctxMenu, setCtxMenu] = useState<{ x: number, y: number } | null>(null);
+    const [showColorsModal, setShowColorsModal] = useState(false);
 
     // Measure container
     useEffect(() => {
@@ -398,7 +403,7 @@ export default function GanttTimeline() {
                     const MFP_COLORS = ['#FF0000', '#FF6600', '#FFCC00', '#00AA00', '#0066FF', '#9933FF', '#FF66CC', '#00CCCC', '#996633', '#666666'];
                     return MFP_COLORS[(r._floatPath - 1) % MFP_COLORS.length];
                 }
-                return r.crit ? '#ef4444' : (r.lv <= 1 ? '#6366f1' : '#3b82f6');
+                return r.crit ? state.barColors.critical : state.barColors.normal;
             })();
 
             // Chain trace: highlight origin activity with glow
@@ -415,18 +420,18 @@ export default function GanttTimeline() {
             if (r.type === 'milestone') {
                 const mx = bx, my = y + ROW_H / 2, sz = 7;
                 ctx.save(); ctx.translate(mx, my); ctx.rotate(Math.PI / 4);
-                ctx.fillStyle = '#fbbf24'; ctx.beginPath(); ctx.rect(-sz / 2, -sz / 2, sz, sz); ctx.fill();
+                ctx.fillStyle = state.barColors.milestone; ctx.beginPath(); ctx.rect(-sz / 2, -sz / 2, sz, sz); ctx.fill();
                 ctx.strokeStyle = '#92400e'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.restore();
-                ctx.fillStyle = lightMode ? '#92400e' : '#fbbf24'; ctx.font = 'bold 9px Segoe UI';
+                ctx.fillStyle = lightMode ? '#92400e' : state.barColors.milestone; ctx.font = 'bold 9px Segoe UI';
                 ctx.fillText(fmtDate(r.ES), mx + 10, my + 3.5);
             } else if (r.type === 'summary') {
                 const sy = y + 6, sh = 6, brkH = 10;
-                const sColor = r.crit ? '#ef4444' : t.summaryBar;
+                const sColor = r.crit ? state.barColors.critical : state.barColors.summary;
                 ctx.fillStyle = sColor;
                 ctx.fillRect(bx, sy, Math.max(bw, 2), sh);
                 ctx.beginPath(); ctx.moveTo(bx, sy); ctx.lineTo(bx + 6, sy); ctx.lineTo(bx, sy + brkH); ctx.closePath(); ctx.fill();
                 ctx.beginPath(); ctx.moveTo(bx + bw, sy); ctx.lineTo(bx + bw - 6, sy); ctx.lineTo(bx + bw, sy + brkH); ctx.closePath(); ctx.fill();
-                if ((r.pct || 0) > 0) { const pw = bw * r.pct / 100; ctx.fillStyle = '#22c55ecc'; ctx.fillRect(bx, sy, pw, sh); }
+                if ((r.pct || 0) > 0) { const pw = bw * r.pct / 100; ctx.fillStyle = state.barColors.progress + 'cc'; ctx.fillRect(bx, sy, pw, sh); }
                 // Label — always show for summary bars
                 ctx.fillStyle = t.barLabelOut; ctx.font = 'bold 9px Segoe UI';
                 const lbl = ((r as any)._spanDur != null ? (r as any)._spanDur : (r.dur || 0)) + 'd' + (r.pct ? ' ' + r.pct + '%' : '');
@@ -474,11 +479,11 @@ export default function GanttTimeline() {
                         const progEndX = Math.min((dayDiff(projStart, barStatusDate) + 1) * PX, seg1EndX);
                         const progW = Math.max(0, progEndX - seg1x);
                         if (progW > 0) {
-                            ctx.fillStyle = lightMode ? '#22c55eaa' : '#22c55e99';
+                            ctx.fillStyle = state.barColors.progress + (lightMode ? 'aa' : '99');
                             rrect(ctx, seg1x, by, progW, bh, 3); ctx.fill();
                         }
                     } else {
-                        ctx.fillStyle = lightMode ? '#22c55eaa' : '#22c55e99';
+                        ctx.fillStyle = state.barColors.progress + (lightMode ? 'aa' : '99');
                         rrect(ctx, seg1x, by, seg1w, bh, 3); ctx.fill();
                     }
 
@@ -540,9 +545,9 @@ export default function GanttTimeline() {
                     if (pct > 0 && barStatusDate && r.ES) {
                         const sdX = (dayDiff(projStart, barStatusDate) + 1) * PX;
                         const progressW = Math.min(Math.max(0, sdX - bx), bw);
-                        if (progressW > 0) { ctx.fillStyle = lightMode ? '#22c55eaa' : '#22c55e99'; rrect(ctx, bx, by, progressW, bh, 3); ctx.fill(); }
+                        if (progressW > 0) { ctx.fillStyle = state.barColors.progress + (lightMode ? 'aa' : '99'); rrect(ctx, bx, by, progressW, bh, 3); ctx.fill(); }
                     } else if (pct > 0) {
-                        const pw = bw * pct / 100; ctx.fillStyle = lightMode ? '#22c55eaa' : '#22c55e99'; rrect(ctx, bx, by, pw, bh, 3); ctx.fill();
+                        const pw = bw * pct / 100; ctx.fillStyle = state.barColors.progress + (lightMode ? 'aa' : '99'); rrect(ctx, bx, by, pw, bh, 3); ctx.fill();
                     }
                     // Gradient sheen
                     const g = ctx.createLinearGradient(0, by, 0, by + bh);
@@ -576,11 +581,11 @@ export default function GanttTimeline() {
                 const blEx = dayDiff(projStart, nBlEF) * PX;
                 const blBw = Math.max(2, blEx - blBx);
                 const blBy = y + ROW_H - 6, blBh = 4;
-                ctx.fillStyle = t.blBar; rrect(ctx, blBx, blBy, blBw, blBh, 2); ctx.fill();
+                ctx.fillStyle = state.barColors.baseline; rrect(ctx, blBx, blBy, blBw, blBh, 2); ctx.fill();
             } else if (nBlES && r.type === 'milestone') {
                 const bmx = dayDiff(projStart, nBlES) * PX, bmy = y + ROW_H - 4;
                 ctx.save(); ctx.translate(bmx, bmy); ctx.rotate(Math.PI / 4);
-                ctx.strokeStyle = t.blDiamond; ctx.lineWidth = 1;
+                ctx.strokeStyle = state.barColors.baseline; ctx.lineWidth = 1;
                 ctx.beginPath(); ctx.rect(-3, -3, 6, 6); ctx.stroke(); ctx.restore();
             }
         });
@@ -663,7 +668,7 @@ export default function GanttTimeline() {
 
         // Draw drag overlay if active
         if (dragPreviewRef.current) drawDragOverlay();
-    }, [visRows, zoom, totalDays, projStart, statusDate, selIdx, selIndices, lightMode, activities, W, H, t, PX, defCal, drawDragOverlay, state.activeBaselineIdx, showTodayLine, showStatusLine, showDependencies, restrMap]);
+    }, [visRows, zoom, totalDays, projStart, statusDate, selIdx, selIndices, lightMode, activities, W, H, t, PX, defCal, drawDragOverlay, state.activeBaselineIdx, showTodayLine, showStatusLine, showDependencies, restrMap, state.barColors]);
 
     // ─── Spotlight drag handler ───────────────────────────────────
     const handleSpotlightDragStart = useCallback((e: React.MouseEvent) => {
@@ -962,6 +967,19 @@ export default function GanttTimeline() {
         }
     }, [visRows, dispatch]);
 
+    const handleContextMenu = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        setCtxMenu({ x: e.clientX, y: e.clientY });
+    }, []);
+
+    // Close context menu on outside click
+    useEffect(() => {
+        if (!ctxMenu) return;
+        const handleClickOut = () => setCtxMenu(null);
+        window.addEventListener('click', handleClickOut);
+        return () => window.removeEventListener('click', handleClickOut);
+    }, [ctxMenu]);
+
     return (
         <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden', position: 'relative' }}>
             {/* Header canvas */}
@@ -983,7 +1001,8 @@ export default function GanttTimeline() {
                     onMouseUp={handleMouseUp}
                     onMouseLeave={handleMouseLeave}
                     onClick={handleClick}
-                    onDoubleClick={handleDblClick} />
+                    onDoubleClick={handleDblClick}
+                    onContextMenu={handleContextMenu} />
                 {/* Progress Spotlight overlay */}
                 {spotlightEnabled && (() => {
                     const slStart = statusDate;
@@ -1023,6 +1042,33 @@ export default function GanttTimeline() {
             </div>
             {/* Tooltip */}
             {tip && <div className="gantt-tip" style={{ display: 'block', left: tip.x, top: tip.y }} dangerouslySetInnerHTML={{ __html: tip.html }} />}
+
+            {/* Context Menu */}
+            {ctxMenu && (
+                <div style={{
+                    position: 'fixed', left: ctxMenu.x, top: ctxMenu.y, zIndex: 1000,
+                    background: 'var(--bg-panel)', border: '1px solid var(--border-color)',
+                    boxShadow: '0 4px 6px rgba(0,0,0,0.1)', borderRadius: 4, padding: '4px 0', minWidth: 150
+                }}>
+                    <div
+                        style={{ padding: '8px 16px', cursor: 'pointer', fontSize: 13, color: 'var(--text-main)' }}
+                        onClick={(e) => { e.stopPropagation(); setCtxMenu(null); setShowColorsModal(true); }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                    >
+                        Barras...
+                    </div>
+                </div>
+            )}
+
+            {/* Bar Colors Modal */}
+            {showColorsModal && (
+                <BarColorsModal
+                    colors={state.barColors}
+                    onClose={() => setShowColorsModal(false)}
+                    onSave={(colors) => dispatch({ type: 'SET_BAR_COLORS', colors })}
+                />
+            )}
         </div>
     );
 }

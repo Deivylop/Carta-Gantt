@@ -116,6 +116,14 @@ export interface GanttState {
     showTodayLine: boolean;
     showStatusLine: boolean;
     showDependencies: boolean;
+    barColors: {
+        normal: string;
+        critical: string;
+        progress: string;
+        summary: string;
+        milestone: string;
+        baseline: string;
+    };
     // View state
     currentView: 'gantt' | 'resources' | 'scurve' | 'usage' | 'resUsage' | 'wbs';
     collapsed: Set<string>;
@@ -266,6 +274,7 @@ export type Action =
     | { type: 'CLEAR_CHAIN_TRACE' }
     | { type: 'TOGGLE_SPOTLIGHT' }
     | { type: 'SET_SPOTLIGHT_END'; isoDate: string }
+    | { type: 'SET_BAR_COLORS'; colors: Partial<GanttState['barColors']> }
     // Lean Construction actions
     | { type: 'ADD_RESTRICTION'; restriction: LeanRestriction }
     | { type: 'UPDATE_RESTRICTION'; id: string; updates: Partial<LeanRestriction> }
@@ -1175,6 +1184,9 @@ function reducer(state: GanttState, action: Action): GanttState {
         }
         case 'SET_SPOTLIGHT_END':
             return { ...state, spotlightEnd: action.isoDate };
+
+        case 'SET_BAR_COLORS':
+            return { ...state, barColors: { ...state.barColors, ...action.colors } };
 
         // ─── Lean Construction / Last Planner System ────────────────────
         case 'ADD_RESTRICTION':
@@ -2136,6 +2148,14 @@ const initialState: GanttState = {
     showTodayLine: true,
     showStatusLine: true,
     showDependencies: true,
+    barColors: {
+        normal: '#4ade80',  // Light green 
+        critical: '#ef4444', // Red
+        progress: '#3b82f6', // Blue for Actual Work
+        baseline: '#eab308', // Yellow
+        summary: '#1e293b',  // Dark slate for summary
+        milestone: '#000000' // Black for Milestone
+    },
     currentView: 'gantt',
     collapsed: new Set(),
     expResources: new Set(),
