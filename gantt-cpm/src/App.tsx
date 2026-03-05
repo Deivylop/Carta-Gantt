@@ -276,7 +276,9 @@ function AppInner() {
       const currentPid = localStorage.getItem('sb_current_project_id');
       if (!currentPid) return;
       try {
-        const newId = await saveToSupabase(state, currentPid);
+        const pName = pState.projects.find(p => p.supabaseId === currentPid)?.name || state.projName;
+        const stateToSave = { ...state, projName: pName };
+        const newId = await saveToSupabase(stateToSave, currentPid);
         if (newId && newId !== currentPid) localStorage.setItem('sb_current_project_id', newId);
         // Dual-write: also save to localStorage for beforeunload recovery
         if (pState.activeProjectId) {
@@ -333,7 +335,9 @@ function AppInner() {
         return;
       }
       try {
-        const newId = await saveToSupabase(state, pid);
+        const pName = pState.projects.find(p => p.supabaseId === pid)?.name || state.projName;
+        const stateToSave = { ...state, projName: pName };
+        const newId = await saveToSupabase(stateToSave, pid);
         if (newId && newId !== pid) localStorage.setItem('sb_current_project_id', newId);
         if (!silent) alert('Proyecto guardado exitosamente');
         else console.log('Silent save to Supabase completed');
@@ -542,7 +546,11 @@ function AppInner() {
       saveProjectState(pState.activeProjectId, snapshot);
       // Also save to Supabase (fire-and-forget) so data is persisted remotely
       const oldPid = localStorage.getItem('sb_current_project_id');
-      if (oldPid) saveToSupabase(state, oldPid).catch(e => console.warn('Save before switch failed:', e));
+      if (oldPid) {
+        const pName = pState.projects.find(p => p.supabaseId === oldPid)?.name || state.projName;
+        const stateToSave = { ...state, projName: pName };
+        saveToSupabase(stateToSave, oldPid).catch(e => console.warn('Save before switch failed:', e));
+      }
     }
 
     const proj = pState.projects.find(p => p.id === projectId);
