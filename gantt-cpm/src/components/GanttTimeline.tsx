@@ -976,8 +976,8 @@ export default function GanttTimeline() {
     useEffect(() => {
         if (!ctxMenu) return;
         const handleClickOut = () => setCtxMenu(null);
-        window.addEventListener('click', handleClickOut);
-        return () => window.removeEventListener('click', handleClickOut);
+        window.addEventListener('mousedown', handleClickOut);
+        return () => window.removeEventListener('mousedown', handleClickOut);
     }, [ctxMenu]);
 
     return (
@@ -1052,7 +1052,7 @@ export default function GanttTimeline() {
                 }}>
                     <div
                         style={{ padding: '8px 16px', cursor: 'pointer', fontSize: 13, color: 'var(--text-main)' }}
-                        onClick={(e) => { e.stopPropagation(); setCtxMenu(null); setShowColorsModal(true); }}
+                        onMouseDown={(e) => { e.stopPropagation(); setCtxMenu(null); setShowColorsModal(true); }}
                         onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
                         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                     >

@@ -26,11 +26,11 @@ export default function BarColorsModal({ colors, onSave, onClose }: Props) {
     ];
 
     return (
-        <div className="modal-overlay" style={{ zIndex: 9999 }}>
-            <div className="modal-content" style={{ width: 450 }}>
-                <div className="modal-header">
-                    <h2>Configuración de Barras</h2>
-                    <button className="icon-btn" onClick={onClose}>&times;</button>
+        <div className="modal-overlay open" style={{ zIndex: 9999 }}>
+            <div className="modal-content" style={{ width: 450, background: 'var(--bg-panel)', padding: 20, borderRadius: 8, border: '1px solid var(--border-color)', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
+                <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                    <h2 style={{ margin: 0, fontSize: 16 }}>Configuración de Barras</h2>
+                    <button className="icon-btn" onClick={onClose} style={{ cursor: 'pointer', background: 'none', border: 'none', fontSize: 20, color: 'var(--text-main)' }}>&times;</button>
                 </div>
                 <div className="modal-body">
                     <table className="rt-table" style={{ width: '100%', marginBottom: 16 }}>
