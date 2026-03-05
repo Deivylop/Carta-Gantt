@@ -1,70 +1,52 @@
 import { useState, useEffect } from 'react';
 import { useGantt } from '../../store/GanttContext';
-import { X, Plus, Trash2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import type { ProjectThreshold, ThresholdParameter, ThresholdSeverity } from '../../types/gantt';
+import type { ProjectThreshold, ThresholdSeverity } from '../../types/gantt';
+
+const SEV_COLORS: Record<ThresholdSeverity, string> = {
+    'Crítica': '#ef4444',
+    'Alta': '#f97316',
+    'Media': '#eab308',
+    'Baja': '#3b82f6',
+};
 
 export function ThresholdsModal() {
     const { state, dispatch } = useGantt();
     const [thresholds, setThresholds] = useState<ProjectThreshold[]>([]);
     const [loading, setLoading] = useState(true);
-    
-    // Obtener ID real del proyecto actual si lo hay guardado para carga a base de datos.
+
     const projectId = localStorage.getItem('GANTT_ACTIVE_PROJECT_ID') || localStorage.getItem('supabase_project_id');
 
-    const parameterLabels: Record<ThresholdParameter, string> = {
-        devPct: '% Desviación',
-        varStart: 'Variación de Inicio (días)',
-        varEnd: 'Variación de Fin (días)',
-        varDur: 'Variación de Duración (días)',
-    };
-
-    const severityColors: Record<ThresholdSeverity, string> = {
-        'Crítica': '#ef4444',
-        'Alta': '#f97316',
-        'Media': '#eab308',
-        'Baja': '#3b82f6',
-    };
+    const isOpen = state.activeModal === 'thresholds';
 
     useEffect(() => {
-        if (!projectId) {
-            setLoading(false);
-            return;
-        }
+        if (!isOpen || !projectId) { setLoading(false); return; }
         loadThresholds();
-    }, [projectId, state.activeModal]);
+    }, [isOpen]);
 
     const loadThresholds = async () => {
         setLoading(true);
-        if(!projectId) return;
-
-        const { data, error } = await supabase
+        if (!projectId) return;
+        const { data } = await supabase
             .from('project_thresholds')
             .select('*')
             .eq('project_id', projectId)
             .order('created_at', { ascending: true });
-
-        if (!error && data) {
-            setThresholds(data as ProjectThreshold[]);
-        }
+        if (data) setThresholds(data as ProjectThreshold[]);
         setLoading(false);
     };
 
     const handleAdd = () => {
-        if (!projectId) {
-            alert("No hay un proyecto conectado a la base de datos.");
-            return;
-        }
-        const newThreshold: Partial<ProjectThreshold> = {
+        if (!projectId) { alert('No hay un proyecto conectado a la base de datos.'); return; }
+        setThresholds([...thresholds, {
             id: 'temp-' + Date.now(),
             project_id: projectId,
             parameter: 'devPct',
             operator: '<',
             limit_value: -5,
             severity: 'Crítica',
-            active: true
-        };
-        setThresholds([...thresholds, newThreshold as ProjectThreshold]);
+            active: true,
+        } as ProjectThreshold]);
     };
 
     const handleUpdate = (id: string, field: keyof ProjectThreshold, value: any) => {
@@ -78,113 +60,114 @@ export function ThresholdsModal() {
         setThresholds(thresholds.filter(t => t.id !== id));
     };
 
-    const handleSaveAndClose = async () => {
+    const handleSave = async () => {
         const toUpsert = thresholds.map(t => {
-            const copy = { ...t };
-            if (copy.id.startsWith('temp-')) {
-                // @ts-ignore
-                delete copy.id; // Let supabase generate UUID
-            }
+            const copy: any = { ...t };
+            if (copy.id.startsWith('temp-')) delete copy.id;
             return copy;
         });
-
         if (toUpsert.length > 0) {
             await supabase.from('project_thresholds').upsert(toUpsert);
         }
-
         dispatch({ type: 'CLOSE_MODAL' });
     };
 
     const handleClose = () => dispatch({ type: 'CLOSE_MODAL' });
 
-    if (state.activeModal !== 'thresholds') return null;
+    if (!isOpen) return null;
+
+    // ── All inline styles ──
+    const overlay: React.CSSProperties = {
+        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+        background: 'rgba(0,0,0,0.7)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 999999,
+    };
+    const card: React.CSSProperties = {
+        background: '#fff', color: '#111', borderRadius: 8, boxShadow: '0 8px 30px rgba(0,0,0,0.4)',
+        width: 720, maxHeight: '80vh', display: 'flex', flexDirection: 'column',
+    };
+    const header: React.CSSProperties = {
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '14px 18px', borderBottom: '1px solid #e5e7eb',
+    };
+    const body: React.CSSProperties = { padding: 16, flex: 1, overflowY: 'auto', background: '#f9fafb' };
+    const footer: React.CSSProperties = {
+        display: 'flex', justifyContent: 'flex-end', gap: 8,
+        padding: '12px 18px', borderTop: '1px solid #e5e7eb', background: '#fff',
+    };
+    const rowStyle = (sev: ThresholdSeverity): React.CSSProperties => ({
+        display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+        background: '#fff', border: '1px solid #e5e7eb', borderLeft: `4px solid ${SEV_COLORS[sev]}`,
+        borderRadius: 6, marginBottom: 8, boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+    });
+    const selectS: React.CSSProperties = { border: '1px solid #d1d5db', borderRadius: 4, padding: '4px 6px', fontSize: 13, background: '#f9fafb' };
+    const inputS: React.CSSProperties = { ...selectS, width: 70 };
+    const btnPrimary: React.CSSProperties = { padding: '8px 18px', fontSize: 13, color: '#fff', background: '#2563eb', border: 'none', borderRadius: 4, cursor: 'pointer' };
+    const btnSecondary: React.CSSProperties = { padding: '8px 18px', fontSize: 13, color: '#374151', background: '#fff', border: '1px solid #d1d5db', borderRadius: 4, cursor: 'pointer' };
+    const btnAdd: React.CSSProperties = { ...btnSecondary, display: 'flex', alignItems: 'center', gap: 4, margin: '12px auto 0' };
 
     return (
-        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black bg-opacity-70">
-            <div className="bg-white text-gray-900 rounded-lg shadow-xl w-[700px] max-h-[80vh] flex flex-col">
-                <div className="flex items-center justify-between p-4 border-b">
+        <div style={overlay} onClick={handleClose}>
+            <div style={card} onClick={e => e.stopPropagation()}>
+                <div style={header}>
                     <div>
-                        <h2 className="text-lg font-semibold">Reglas de Control de Proyecto</h2>
-                        <p className="text-xs text-gray-500">Configure los umbrales para envío de alertas y registro de problemas.</p>
+                        <div style={{ fontSize: 16, fontWeight: 600 }}>Reglas de Control de Proyecto</div>
+                        <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>Configure los umbrales para envío de alertas y registro de problemas.</div>
                     </div>
-                    <button onClick={handleClose} className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600 transition-colors">
-                        <X size={20} />
-                    </button>
+                    <span style={{ cursor: 'pointer', fontSize: 18, color: '#9ca3af' }} onClick={handleClose}>✕</span>
                 </div>
 
-                <div className="p-4 flex-1 overflow-y-auto bg-gray-50">
+                <div style={body}>
                     {loading ? (
-                        <div className="text-center py-8 text-gray-500">Cargando reglas...</div>
+                        <div style={{ textAlign: 'center', padding: 30, color: '#9ca3af' }}>Cargando reglas...</div>
                     ) : thresholds.length === 0 ? (
-                        <div className="text-center py-8 text-gray-500 border-2 border-dashed border-gray-300 rounded-lg">
+                        <div style={{ textAlign: 'center', padding: 30, color: '#9ca3af', border: '2px dashed #d1d5db', borderRadius: 8 }}>
                             Ninguna regla definida para este proyecto.<br />
-                            <button onClick={handleAdd} className="mt-2 text-blue-600 hover:underline">Haga clic aquí para agregar una.</button>
+                            <span style={{ color: '#2563eb', cursor: 'pointer' }} onClick={handleAdd}>Haga clic aquí para agregar una.</span>
                         </div>
                     ) : (
-                        <div className="space-y-3">
-                            {thresholds.map((t) => (
-                                <div key={t.id} className={`flex items-center gap-3 p-3 bg-white border border-l-4 rounded shadow-sm`} style={{ borderLeftColor: severityColors[t.severity] }}>
-                                    
-                                    <div className="flex items-center">
-                                        <input type="checkbox" checked={t.active} onChange={(e) => handleUpdate(t.id, 'active', e.target.checked)} className="cursor-pointer" title="Regla Activa" />
-                                    </div>
+                        thresholds.map(t => (
+                            <div key={t.id} style={rowStyle(t.severity)}>
+                                <input type="checkbox" checked={t.active} onChange={e => handleUpdate(t.id, 'active', e.target.checked)} style={{ cursor: 'pointer' }} />
 
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-sm">Si</span>
-                                        <select value={t.parameter} onChange={(e) => handleUpdate(t.id, 'parameter', e.target.value)} className="border rounded p-1 text-sm bg-gray-50">
-                                            <option value="devPct">% de Desviación Fis.</option>
-                                            <option value="varStart">Variación de Inicio</option>
-                                            <option value="varEnd">Variación de Fin</option>
-                                            <option value="varDur">Variación de Duración</option>
-                                        </select>
-                                    </div>
+                                <span style={{ fontSize: 13 }}>Si</span>
+                                <select value={t.parameter} onChange={e => handleUpdate(t.id, 'parameter', e.target.value)} style={selectS}>
+                                    <option value="devPct">% Desviación Fis.</option>
+                                    <option value="varStart">Var. Inicio</option>
+                                    <option value="varEnd">Var. Fin</option>
+                                    <option value="varDur">Var. Duración</option>
+                                </select>
 
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-sm">es</span>
-                                        <select value={t.operator} onChange={(e) => handleUpdate(t.id, 'operator', e.target.value)} className="border rounded p-1 text-sm bg-gray-50">
-                                            <option value="<">Menor a</option>
-                                            <option value="<=">Menor o igual a</option>
-                                            <option value=">">Mayor a</option>
-                                            <option value=">=">Mayor o igual a</option>
-                                        </select>
-                                    </div>
+                                <span style={{ fontSize: 13 }}>es</span>
+                                <select value={t.operator} onChange={e => handleUpdate(t.id, 'operator', e.target.value)} style={selectS}>
+                                    <option value="<">{'Menor a'}</option>
+                                    <option value="<=">{'Menor o igual a'}</option>
+                                    <option value=">">{'Mayor a'}</option>
+                                    <option value=">=">{'Mayor o igual a'}</option>
+                                </select>
 
-                                    <div className="flex items-center gap-2 flex-1">
-                                        <input type="number" value={t.limit_value} onChange={(e) => handleUpdate(t.id, 'limit_value', Number(e.target.value))} className="border rounded p-1 w-20 text-sm" />
-                                    </div>
+                                <input type="number" value={t.limit_value} onChange={e => handleUpdate(t.id, 'limit_value', Number(e.target.value))} style={inputS} />
 
-                                    <div className="flex items-center gap-2 justify-end">
-                                        <span className="text-sm text-gray-500">→ Alerta:</span>
-                                        <select value={t.severity} onChange={(e) => handleUpdate(t.id, 'severity', e.target.value)} className="border rounded p-1 text-sm bg-gray-50 uppercase font-semibold text-xs" style={{ color: severityColors[t.severity] }}>
-                                            <option value="Crítica">CRÍTICA 🔴</option>
-                                            <option value="Alta">ALTA 🟠</option>
-                                            <option value="Media">MEDIA 🟡</option>
-                                            <option value="Baja">BAJA 🔵</option>
-                                        </select>
-                                        <button onClick={() => handleRemove(t.id)} className="p-1 text-red-500 hover:bg-red-100 rounded ml-2" title="Eliminar Regla">
-                                            <Trash2 size={16} />
-                                        </button>
-                                    </div>
+                                <span style={{ fontSize: 12, color: '#6b7280' }}>→ Alerta:</span>
+                                <select value={t.severity} onChange={e => handleUpdate(t.id, 'severity', e.target.value as ThresholdSeverity)} style={{ ...selectS, fontWeight: 700, color: SEV_COLORS[t.severity] }}>
+                                    <option value="Crítica">CRÍTICA 🔴</option>
+                                    <option value="Alta">ALTA 🟠</option>
+                                    <option value="Media">MEDIA 🟡</option>
+                                    <option value="Baja">BAJA 🔵</option>
+                                </select>
 
-                                </div>
-                            ))}
-                        </div>
+                                <span style={{ cursor: 'pointer', color: '#ef4444', fontSize: 16, marginLeft: 'auto' }} onClick={() => handleRemove(t.id)} title="Eliminar">🗑</span>
+                            </div>
+                        ))
                     )}
 
-                    <div className="mt-4 flex justify-center">
-                        <button onClick={handleAdd} className="flex items-center gap-1 px-4 py-2 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50">
-                            <Plus size={16} /> Añadir Nueva Regla
-                        </button>
-                    </div>
+                    <button style={btnAdd} onClick={handleAdd}>＋ Añadir Nueva Regla</button>
                 </div>
 
-                <div className="p-4 border-t flex justify-end gap-2 bg-white rounded-b-lg">
-                    <button onClick={handleClose} className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 border border-gray-300 rounded transition-colors">
-                        Cancelar
-                    </button>
-                    <button onClick={handleSaveAndClose} className="px-4 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded transition-colors shadow-sm">
-                        Guardar Umbrales
-                    </button>
+                <div style={footer}>
+                    <button style={btnSecondary} onClick={handleClose}>Cancelar</button>
+                    <button style={btnPrimary} onClick={handleSave}>Guardar Umbrales</button>
                 </div>
             </div>
         </div>
