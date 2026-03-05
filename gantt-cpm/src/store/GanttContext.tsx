@@ -745,16 +745,16 @@ function recalcInternal(state: GanttState, statusDate: Date | null, autoFit = fa
     return { ...state, activities: result.activities, totalDays: result.totalDays, visRows, pxPerDay, timelineStart, _cpmStatusDate: statusDate };
 }
 
-/** Recalc automático: forward/backward pass + retained logic con statusDate actual.
- *  Usar statusDate (no _cpmStatusDate) para que ediciones inline produzcan los
- *  mismos resultados que el botón "Calcular CPM" — evita fecha de fin estática. */
+/** Recalc automático: forward/backward pass SIN retained logic (statusDate = null).
+ *  Esto evita que todas las tareas sin avance salten a la Fecha de Corte (Status Date)
+ *  cada vez que el usuario edita duraciones o vínculos en vivo. */
 function recalc(state: GanttState): GanttState {
-    return recalcInternal(state, state.statusDate, false);
+    return recalcInternal(state, null, false);
 }
 
 /** Recalc con auto-fit de zoom. Solo para carga inicial (SET_ACTIVITIES, LOAD_STATE). */
 function recalcAutoFit(state: GanttState): GanttState {
-    return recalcInternal(state, state.statusDate, true);
+    return recalcInternal(state, null, true);
 }
 
 /** Recalc completo: forward/backward pass CON retained logic. Solo para botón "Calcular CPM". */
@@ -935,6 +935,7 @@ function reducer(state: GanttState, action: Action): GanttState {
             }
             else if (key === 'predStr') {
                 a.preds = strToPreds(val);
+                acts[action.index] = a;
             }
             else if (key === 'startDate') {
                 const d = parseDate(val);

@@ -686,9 +686,18 @@ export function calcCPM(
     };
     const sorted = [...activities].sort((a, b) => toD(normEF(b)).getTime() - toD(normEF(a)).getTime());
 
-    // Función auxiliar: duración efectiva en días laborales (ES→EF) para el backward pass
+    // Función auxiliar: duración efectiva para el backward pass
+    // Para actividades con avance (pct > 0), usar la duración RESTANTE (_remDur),
+    // NO el span ES→EF completo (que incluye trabajo ya realizado + restante).
+    // Esto asegura que el backward pass calcule LS/LF relativo al trabajo pendiente.
     const effWorkDur = (a: Activity): number => {
         if (a.type === 'milestone') return 0;
+        const pct = a.pct || 0;
+        if (pct > 0 && pct < 100) {
+            // Actividad en progreso: usar duración restante
+            const rem = a._remDur ?? a.remDur ?? Math.round((a.dur || 0) * (100 - pct) / 100);
+            return Math.max(0, rem);
+        }
         if (a.ES && a.EF) return Math.max(0, calWorkDays(a.ES, a.EF, a.cal || defCal));
         return a.dur || 0;
     };
@@ -724,7 +733,19 @@ export function calcCPM(
         if (!a.LF) a.LF = new Date(projEnd);
         const dur = effWorkDur(a);
         a.LS = calcLateStart(a.LF, dur, a.cal || defCal);
-        a.TF = (a.ES && a.LS) ? Math.max(0, getExactWorkDays(a.ES, a.LS, a.cal || defCal)) : 0;
+        // Para actividades en progreso, la holgura se mide desde donde inicia el trabajo RESTANTE
+        // (_remES), no desde el inicio original (ES). Esto evita 1-2 días de holgura artïicial
+        // con calendarios de 6 días donde la parte realizada "consume" días sábado.
+        const pct = a.pct || 0;
+        const tfStart = (pct > 0 && pct < 100 && a._remES) ? a._remES : a.ES;
+        // LF para actividades en progreso debe reflejar solo el trabajo restante
+        const tfLF = (pct > 0 && pct < 100 && a._remES)
+            ? calcEF(a.LS!, effWorkDur(a), a.cal || defCal)
+            : a.LF;
+        const lsForTF = (tfLF && a._remES && pct > 0 && pct < 100)
+            ? calcLateStart(tfLF, effWorkDur(a), a.cal || defCal)
+            : a.LS;
+        a.TF = (tfStart && lsForTF) ? Math.max(0, getExactWorkDays(tfStart, lsForTF, a.cal || defCal)) : 0;
         a.crit = a.TF === 0;
         if (a.type !== 'summary' && !a._isProjRow) {
             // Task-level: derive remDur from dur and pct only if not explicitly set

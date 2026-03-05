@@ -381,6 +381,10 @@ export default function ProjectsPage({ onOpenProject }: Props) {
         pDispatch({ type: 'UPDATE_EPS', id, updates: { epsCode: v.trim() || 'EPS-???' } });
         setEditingId(null);
     }, [pDispatch]);
+    const handleRenameProjectCode = useCallback((id: string, v: string) => {
+        pDispatch({ type: 'UPDATE_PROJECT', id, updates: { code: v.trim() || id } });
+        setEditingId(null);
+    }, [pDispatch]);
     const handleContextMenu = useCallback((e: React.MouseEvent, nodeId: string, kind: 'eps' | 'project') => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, nodeId, kind }); }, []);
 
     const handleCut = useCallback(() => { if (selectedProject) pDispatch({ type: 'CUT_PROJECT', id: selectedProject.id }); }, [selectedProject, pDispatch]);
@@ -595,7 +599,7 @@ export default function ProjectsPage({ onOpenProject }: Props) {
         return (
             <div key={nodeId}
                 onClick={(e) => pDispatch({ type: 'SELECT', id: nodeId, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey, flatIds: flatNodeIds })}
-                onDoubleClick={() => { if (node.kind === 'project') handleOpenProject(nodeId); else pDispatch({ type: 'TOGGLE_EXPAND', id: nodeId }); }}
+                onDoubleClick={() => { if (node.kind === 'eps') pDispatch({ type: 'TOGGLE_EXPAND', id: nodeId }); }}
                 onContextMenu={e => handleContextMenu(e, nodeId, node.kind)}
                 style={{
                     display: 'flex', alignItems: 'center', height: ROW_H, flexShrink: 0,
@@ -619,46 +623,49 @@ export default function ProjectsPage({ onOpenProject }: Props) {
                     };
 
                     if (col.key === 'i') {
-                        return <div key={col.key} style={{ ...cellStyle, color: 'var(--text-muted)', fontSize: 10 }}>
+                        return <div key={col.key} style={{ ...cellStyle, color: 'var(--text-muted)', fontSize: 10 }}
+                            onDoubleClick={!isEps ? (e) => { e.stopPropagation(); handleOpenProject(nodeId); } : undefined}>
                             {isEps ? (
                                 <span onClick={e => { e.stopPropagation(); pDispatch({ type: 'TOGGLE_EXPAND', id: nodeId }); }} style={{ display: 'flex', alignItems: 'center' }}>
                                     {node.hasChildren ? (node.expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />) : <span style={{ width: 12 }} />}
                                 </span>
                             ) : (
-                                <span>{index + 1}</span>
+                                <span title="Doble clic para abrir" style={{ cursor: 'pointer' }}>{index + 1}</span>
                             )}
                         </div>;
                     }
 
                     if (col.key === 'id') {
-                        // EPS code cell: click to select, double-click to edit code inline
-                        if (isEps && editingId === nodeId && editingField === 'code') {
+                        // EPS code cell: double-click to edit code inline
+                        // Project code cell: double-click to edit code inline
+                        if (editingId === nodeId && editingField === 'code') {
                             return <div key={col.key} style={{ ...cellStyle, paddingLeft: 4 + node.depth * 14 }}>
-                                <FolderOpen size={13} style={{ color: (node.data as EPSNode).color || '#f59e0b', marginRight: 4, flexShrink: 0 }} />
-                                <InlineEdit value={(node.data as EPSNode).epsCode || ''} onSave={v => handleRenameCode(nodeId, v)} onCancel={() => setEditingId(null)} />
+                                {isEps
+                                    ? <FolderOpen size={13} style={{ color: (node.data as EPSNode).color || '#f59e0b', marginRight: 4, flexShrink: 0 }} />
+                                    : <Briefcase size={12} style={{ color: isActive ? '#6366f1' : '#64748b', marginRight: 4, flexShrink: 0 }} />}
+                                <InlineEdit value={isEps ? ((node.data as EPSNode).epsCode || '') : (node.data as ProjectMeta).code} onSave={v => isEps ? handleRenameCode(nodeId, v) : handleRenameProjectCode(nodeId, v)} onCancel={() => setEditingId(null)} />
                             </div>;
                         }
                         return <div key={col.key} style={{ ...cellStyle, paddingLeft: 4 + node.depth * 14 }}
-                            onDoubleClick={isEps ? (e) => { e.stopPropagation(); setEditingField('code'); setEditingId(nodeId); } : undefined}>
+                            onDoubleClick={(e) => { e.stopPropagation(); setEditingField('code'); setEditingId(nodeId); }}>
                             {isEps
                                 ? <FolderOpen size={13} style={{ color: (node.data as EPSNode).color || '#f59e0b', marginRight: 4, flexShrink: 0 }} />
                                 : <Briefcase size={12} style={{ color: isActive ? '#6366f1' : '#64748b', marginRight: 4, flexShrink: 0 }} />}
                             <span style={{
                                 color: isEps ? '#f59e0b' : '#6366f1', fontWeight: 600, fontSize: 10,
-                                cursor: isEps ? 'text' : 'default',
-                                borderBottom: isEps ? '1px dashed rgba(245,158,11,0.4)' : 'none',
-                                title: isEps ? 'Doble clic para editar código' : ''
-                            } as any}>{data.id}</span>
+                                cursor: 'text',
+                                borderBottom: '1px dashed rgba(99,102,241,0.4)',
+                            }}>{data.id}</span>
                             {isActive && <span style={{ fontSize: 8, color: '#fff', background: '#6366f1', padding: '0 3px', borderRadius: 2, marginLeft: 4, fontWeight: 700 }}>●</span>}
                         </div>;
                     }
 
                     if (col.key === 'name') {
                         return <div key={col.key} style={cellStyle}
-                            onDoubleClick={isEps ? (e) => { e.stopPropagation(); setEditingField('name'); setEditingId(nodeId); } : undefined}>
+                            onDoubleClick={(e) => { e.stopPropagation(); setEditingField('name'); setEditingId(nodeId); }}>
                             {editingId === nodeId && editingField === 'name'
                                 ? <InlineEdit value={data.name} onSave={v => handleRename(nodeId, v)} onCancel={() => setEditingId(null)} />
-                                : <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{data.name}</span>}
+                                : <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'text', borderBottom: '1px dashed rgba(226,232,240,0.2)' }}>{data.name}</span>}
                         </div>;
                     }
 
