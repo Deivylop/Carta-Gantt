@@ -102,7 +102,15 @@ function ThresholdsPageInner() {
 
     const removeRow = async (id: string) => {
         if (!id.startsWith('new-')) {
-            await supabase.from('project_thresholds').delete().eq('id', id);
+            const { error: delErr } = await supabase.rpc('delete_project_threshold', {
+                p_id: id,
+                p_project_id: projectId!,
+            });
+            if (delErr) {
+                console.error('Delete error:', delErr);
+                setError('Error eliminando regla: ' + delErr.message);
+                return;
+            }
         }
         setRows(prev => prev.filter(r => r.id !== id));
     };
@@ -114,31 +122,39 @@ function ThresholdsPageInner() {
             const newRows = rows.filter(r => String(r.id).startsWith('new-'));
             const existingRows = rows.filter(r => !String(r.id).startsWith('new-'));
 
-            // INSERT new rows (let DB generate UUID)
+            // INSERT new rows via RPC (bypasses RLS, con verificación propia)
             for (const r of newRows) {
-                const { error: insErr } = await supabase.from('project_thresholds').insert({
-                    project_id: r.project_id,
-                    parameter: r.parameter,
-                    operator: r.operator,
-                    limit_value: r.limit_value,
-                    severity: r.severity,
-                    active: r.active,
+                const { data, error: insErr } = await supabase.rpc('upsert_project_threshold', {
+                    p_id: null,
+                    p_project_id: r.project_id,
+                    p_parameter: r.parameter,
+                    p_operator: r.operator,
+                    p_limit_value: r.limit_value,
+                    p_severity: r.severity,
+                    p_active: r.active,
                 });
                 if (insErr) {
-                    console.error('Insert error:', insErr);
+                    console.error('Insert RPC error:', insErr);
                     setError('Error guardando regla: ' + insErr.message);
                     setSaving(false);
                     return;
                 }
+                console.log('Inserted threshold, new id:', data);
             }
 
-            // UPDATE existing rows
+            // UPDATE existing rows via RPC
             for (const r of existingRows) {
-                const { error: updErr } = await supabase.from('project_thresholds')
-                    .update({ parameter: r.parameter, operator: r.operator, limit_value: r.limit_value, severity: r.severity, active: r.active })
-                    .eq('id', r.id);
+                const { error: updErr } = await supabase.rpc('upsert_project_threshold', {
+                    p_id: r.id,
+                    p_project_id: r.project_id,
+                    p_parameter: r.parameter,
+                    p_operator: r.operator,
+                    p_limit_value: r.limit_value,
+                    p_severity: r.severity,
+                    p_active: r.active,
+                });
                 if (updErr) {
-                    console.error('Update error:', updErr);
+                    console.error('Update RPC error:', updErr);
                     setError('Error actualizando regla: ' + updErr.message);
                     setSaving(false);
                     return;
@@ -156,32 +172,41 @@ function ThresholdsPageInner() {
 
     // ── Evaluate thresholds against current activities ──
     const evaluationResults = useMemo(() => {
-        const results: { actName: string; actId: string; param: string; value: number; threshold: ProjectThreshold }[] = [];
+        const results: { actName: string; actId: string; param: string; value: number; threshold: ProjectThreshold; valActual: string; valBaseline: string }[] = [];
         const activeRules = rows.filter(r => r.active);
         if (activeRules.length === 0) return results;
+
+        const fmt = (d: string | undefined) => d ? new Date(d).toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '-';
 
         for (const act of state.activities) {
             if (act.type === 'summary') continue;
             for (const rule of activeRules) {
                 let val: number | undefined;
+                let valActual = '-';
+                let valBaseline = '-';
                 if (rule.parameter === 'devPct') {
                     const actual = act.pct || 0;
                     const planned = act._plannedPct != null ? act._plannedPct : actual;
                     val = actual - planned;
+                    valActual = `${actual.toFixed(1)}%`;
+                    valBaseline = `${planned.toFixed(1)}%`;
                 } else if (rule.parameter === 'varStart') {
-                    // Variation = Early Start - Baseline Early Start (in days)
                     if (act.ES && act.blES) {
                         val = Math.round((new Date(act.ES).getTime() - new Date(act.blES).getTime()) / 86400000);
+                        valActual = fmt(act.ES);
+                        valBaseline = fmt(act.blES);
                     }
                 } else if (rule.parameter === 'varEnd') {
-                    // Variation = Early Finish - Baseline Early Finish (in days)
                     if (act.EF && act.blEF) {
                         val = Math.round((new Date(act.EF).getTime() - new Date(act.blEF).getTime()) / 86400000);
+                        valActual = fmt(act.EF);
+                        valBaseline = fmt(act.blEF);
                     }
                 } else if (rule.parameter === 'varDur') {
-                    // Variation = Current Duration - Baseline Duration (in days)
                     if (act.dur != null && act.blDur != null) {
                         val = act.dur - act.blDur;
+                        valActual = `${act.dur} días`;
+                        valBaseline = `${act.blDur} días`;
                     }
                 }
                 if (val == null) continue;
@@ -197,12 +222,66 @@ function ThresholdsPageInner() {
                         param: rule.parameter,
                         value: val,
                         threshold: rule,
+                        valActual,
+                        valBaseline,
                     });
                 }
             }
         }
         return results;
     }, [rows, state.activities]);
+
+    // ── Save breach results to DB + envía UN correo con tabla completa ──
+    const [registering, setRegistering] = useState(false);
+    const saveBreachesToDB = async () => {
+        if (!projectId || evaluationResults.length === 0) return;
+        setRegistering(true);
+        try {
+            // 1. Insertar todos los issues en BD
+            const newIssues = evaluationResults.map(r => ({
+                project_id: projectId,
+                task_id: r.actId,
+                threshold_id: r.threshold.id.startsWith('new-') ? null : r.threshold.id,
+                description: `[${r.threshold.severity}] ${r.actName}: ${PARAM_LABELS[r.param] || r.param} = ${r.value.toFixed(1)} (umbral: ${r.threshold.operator} ${r.threshold.limit_value})`,
+                status: 'Abierto',
+            }));
+            const { error: insErr } = await supabase.from('project_issues').insert(newIssues);
+            if (insErr) {
+                console.error('Error registrando issues:', insErr);
+                alert('Error al registrar issues: ' + insErr.message);
+                setRegistering(false);
+                return;
+            }
+
+            // 2. Llamar edge function UNA sola vez con TODAS las alertas
+            const alerts = evaluationResults.map(r => ({
+                actId:       r.actId,
+                actName:     r.actName,
+                param:       r.param,
+                value:       r.value,
+                severity:    r.threshold.severity,
+                operator:    r.threshold.operator,
+                limit_value: r.threshold.limit_value,
+                valActual:   r.valActual,
+                valBaseline: r.valBaseline,
+            }));
+            console.log('[Thresholds] Llamando edge function con', alerts.length, 'alertas, project_id:', projectId);
+            const { data: fnData, error: fnErr } = await supabase.functions.invoke('send-issue-email', {
+                body: { project_id: projectId, alerts },
+            });
+            console.log('[Thresholds] Respuesta edge function:', fnData, fnErr);
+            if (fnErr) {
+                console.warn('Aviso al enviar correo:', fnErr.message);
+                alert(`✅ ${newIssues.length} issue(s) registrado(s), pero hubo un problema al enviar correos: ${fnErr.message}`);
+            } else {
+                alert(`✅ ${newIssues.length} issue(s) registrado(s) y correo de alerta enviado.`);
+            }
+            await loadAll();
+        } catch (err: any) {
+            alert('Error inesperado: ' + String(err?.message || err));
+        }
+        setRegistering(false);
+    };
 
     // ── KPIs ──
     const kpis = useMemo(() => {
@@ -398,6 +477,21 @@ function ThresholdsPageInner() {
                                     </div>
                                 ))}
                             </div>
+                            <button
+                                onClick={saveBreachesToDB}
+                                disabled={registering}
+                                style={{
+                                    marginTop: 10, padding: '8px 18px',
+                                    background: registering ? '#64748b' : '#ef4444',
+                                    color: '#fff', border: 'none', borderRadius: 6,
+                                    cursor: registering ? 'not-allowed' : 'pointer',
+                                    fontWeight: 700, fontSize: 13,
+                                    display: 'flex', alignItems: 'center', gap: 6,
+                                }}
+                            >
+                                <AlertTriangle size={14} />
+                                {registering ? 'Registrando...' : `Registrar ${evaluationResults.length} Issue(s) y Enviar Alertas`}
+                            </button>
                         </div>
                     )}
                 </div>
