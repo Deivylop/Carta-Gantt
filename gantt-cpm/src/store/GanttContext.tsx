@@ -3,7 +3,7 @@
 // All state management matching HTML globals + actions
 // ═══════════════════════════════════════════════════════════════════
 import React, { createContext, useContext, useReducer, type ReactNode } from 'react';
-import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, CalScale, UsageChartType, VisibleRow, ProgressHistoryEntry, BaselineEntry, CustomCalendar, CustomFilter, MFPConfig, LeanRestriction, PPCWeekRecord, CNCEntry, WhatIfScenario, SavedGlobalChange } from '../types/gantt';
+import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, CalScale, VisibleRow, ProgressHistoryEntry, BaselineEntry, CustomCalendar, CustomFilter, MFPConfig, LeanRestriction, PPCWeekRecord, CNCEntry, WhatIfScenario, SavedGlobalChange } from '../types/gantt';
 import type { DurationDistribution, RiskEvent, SimulationParams, SimulationResult, RiskAnalysisState, RiskScoringConfig } from '../types/risk';
 import { DEFAULT_RISK_STATE } from '../types/risk';
 
@@ -168,7 +168,6 @@ export interface GanttState {
     colWidths: number[];
     usageModes: string[];  // multi-select: which metrics to show as sub-rows
     usageZoom: 'day' | 'week' | 'month';
-    usageChartType: UsageChartType;
     undoStack: string[];
     clipboard: Activity | null;
     clipboardMulti: Activity[];
@@ -228,7 +227,6 @@ export type Action =
     | { type: 'SET_SELECTION'; index: number; shift?: boolean; ctrl?: boolean }
     | { type: 'SET_ZOOM'; zoom: ZoomLevel }
     | { type: 'SET_CAL_SCALE'; calScale: CalScale }
-    | { type: 'SET_USAGE_CHART_TYPE'; chartType: UsageChartType }
     | { type: 'SET_PX_PER_DAY'; px: number }
     | { type: 'TOGGLE_THEME' }
     | { type: 'TOGGLE_TODAY_LINE' }
@@ -1200,9 +1198,6 @@ function reducer(state: GanttState, action: Action): GanttState {
 
         case 'SET_CAL_SCALE':
             return { ...state, calScale: action.calScale };
-
-        case 'SET_USAGE_CHART_TYPE':
-            return { ...state, usageChartType: action.chartType };
 
         case 'SET_PX_PER_DAY':
             return { ...state, pxPerDay: action.px };
@@ -2204,7 +2199,6 @@ const initialState: GanttState = {
     colWidths: DEFAULT_COLS.map(c => c.w),
     usageModes: ['Trabajo'],
     usageZoom: 'week',
-    usageChartType: 'none' as UsageChartType,
     undoStack: [],
     clipboard: null,
     clipboardMulti: [],

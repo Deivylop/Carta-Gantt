@@ -1,9 +1,8 @@
 import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { useGantt } from '../store/GanttContext';
 import { dayDiff, addDays, getUsageDailyValues } from '../utils/cpm';
-import type { ThemeColors, CalScale, UsageChartType } from '../types/gantt';
+import type { ThemeColors, CalScale } from '../types/gantt';
 import DetailContextMenu from './DetailContextMenu';
-
 
 const LINE_H = 16;      // height per metric line inside a row
 const MIN_ROW_H = 26;   // minimum row height (single line)
@@ -56,7 +55,7 @@ const METRIC_COLORS: Record<string, [string, string]> = {
 export default function TaskUsageGrid() {
     const { state, dispatch } = useGantt();
     const { visRows, usageZoom, usageModes, totalDays, timelineStart: projStart,
-        selIdx, lightMode, activities, pxPerDay, statusDate, activeBaselineIdx, progressHistory, calScale, usageChartType } = state;
+        selIdx, lightMode, activities, pxPerDay, statusDate, activeBaselineIdx, progressHistory, calScale } = state;
 
     const PX = pxPerDay;
     const activeZoom = usageZoom || 'week';
@@ -477,7 +476,6 @@ export default function TaskUsageGrid() {
     const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
     const [timeCtxMenu, setTimeCtxMenu] = useState<{ x: number; y: number } | null>(null);
     const [showScaleMenu, setShowScaleMenu] = useState(false);
-    const [showChartMenu, setShowChartMenu] = useState(false);
 
     const [headerDrag, setHeaderDrag] = useState<{ startX: number; startPX: number } | null>(null);
     const handleHeaderMouseDown = useCallback((e: React.MouseEvent) => { setHeaderDrag({ startX: e.clientX, startPX: PX }); }, [PX]);
@@ -514,11 +512,10 @@ export default function TaskUsageGrid() {
                     position: 'fixed', left: timeCtxMenu.x, top: timeCtxMenu.y, zIndex: 1000,
                     background: 'var(--bg-panel)', border: '1px solid var(--border-color)',
                     boxShadow: '0 4px 6px rgba(0,0,0,0.15)', borderRadius: 4, padding: '4px 0', minWidth: 170
-                }} onMouseLeave={() => { setTimeCtxMenu(null); setShowScaleMenu(false); setShowChartMenu(false); }}>
-                    {/* Escala Calendario submenu */}
+                }} onMouseLeave={() => { setTimeCtxMenu(null); setShowScaleMenu(false); }}>
                     <div
                         style={{ position: 'relative' }}
-                        onMouseEnter={() => { setShowScaleMenu(true); setShowChartMenu(false); }}
+                        onMouseEnter={() => setShowScaleMenu(true)}
                         onMouseLeave={() => setShowScaleMenu(false)}
                     >
                         <div style={{ padding: '8px 16px', cursor: 'pointer', fontSize: 13, color: 'var(--text-main)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
@@ -540,37 +537,6 @@ export default function TaskUsageGrid() {
                                         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                                         onMouseDown={(e) => { e.stopPropagation(); dispatch({ type: 'SET_CAL_SCALE', calScale: opt.key }); setTimeCtxMenu(null); setShowScaleMenu(false); }}>
                                         <span style={{ width:14, display:'inline-block', color:'var(--accent,#6366f1)', flexShrink:0 }}>{calScale===opt.key?'✓':''}</span>
-                                        {opt.label}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                    {/* Mostrar gráfico submenu */}
-                    <div
-                        style={{ position: 'relative' }}
-                        onMouseEnter={() => { setShowChartMenu(true); setShowScaleMenu(false); }}
-                        onMouseLeave={() => setShowChartMenu(false)}
-                    >
-                        <div style={{ padding: '8px 16px', cursor: 'pointer', fontSize: 13, color: 'var(--text-main)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                            onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                            <span>Mostrar gráfico</span>
-                            <span style={{ marginLeft: 8, opacity: 0.7 }}>▶</span>
-                        </div>
-                        {showChartMenu && (
-                            <div style={{
-                                position: 'absolute', left: '100%', top: 0, zIndex: 1001,
-                                background: 'var(--bg-panel)', border: '1px solid var(--border-color)',
-                                boxShadow: '0 4px 6px rgba(0,0,0,0.15)', borderRadius: 4, padding: '4px 0', minWidth: 170
-                            }}>
-                                {([{key:'none',label:'Sin gráfico'},{key:'histogram',label:'Histograma'},{key:'curve',label:'Curva S'},{key:'both',label:'Histograma + Curva'}] as {key:UsageChartType;label:string}[]).map(opt => (
-                                    <div key={opt.key}
-                                        style={{ padding: '8px 16px', cursor: 'pointer', fontSize: 13, color: 'var(--text-main)', fontWeight: usageChartType===opt.key?700:400, display:'flex', alignItems:'center', gap:6 }}
-                                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                                        onMouseDown={(e) => { e.stopPropagation(); dispatch({ type: 'SET_USAGE_CHART_TYPE', chartType: opt.key }); setTimeCtxMenu(null); setShowChartMenu(false); }}>
-                                        <span style={{ width:14, display:'inline-block', color:'var(--accent,#6366f1)', flexShrink:0 }}>{usageChartType===opt.key?'✓':''}</span>
                                         {opt.label}
                                     </div>
                                 ))}
@@ -622,8 +588,6 @@ export default function TaskUsageGrid() {
                     <canvas ref={bodyCanvasRef} style={{ display: 'block' }} />
                 </div>
             </div>
-
-
         </div>
     );
 }
