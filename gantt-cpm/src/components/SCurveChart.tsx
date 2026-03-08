@@ -1010,12 +1010,18 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
         });
     }, [projStart, PX, points]);
 
+    // Initial scroll sync (mount only — do NOT put this in [draw] or it resets on every usageChartType change)
     useEffect(() => {
         const el = containerRef.current;
         if (!el) return;
-        // Sync initial scroll position from whichever grid is visible
         const grBody = document.getElementById('gr-body');
         if (grBody) el.scrollLeft = grBody.scrollLeft;
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Draw / resize observer — fires when draw callback changes
+    useEffect(() => {
+        const el = containerRef.current;
+        if (!el) return;
         const ro = new ResizeObserver(() => {
             draw(el.getBoundingClientRect().height);
         });
