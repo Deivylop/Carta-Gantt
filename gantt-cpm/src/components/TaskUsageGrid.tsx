@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { useGantt } from '../store/GanttContext';
 import { dayDiff, addDays, getUsageDailyValues } from '../utils/cpm';
-import type { ThemeColors } from '../types/gantt';
+import type { ThemeColors, CalScale } from '../types/gantt';
 import DetailContextMenu from './DetailContextMenu';
 
 const LINE_H = 16;      // height per metric line inside a row
@@ -55,11 +55,11 @@ const METRIC_COLORS: Record<string, [string, string]> = {
 export default function TaskUsageGrid() {
     const { state, dispatch } = useGantt();
     const { visRows, usageZoom, usageModes, totalDays, timelineStart: projStart,
-        selIdx, lightMode, activities, pxPerDay, statusDate, activeBaselineIdx, progressHistory } = state;
+        selIdx, lightMode, activities, pxPerDay, statusDate, activeBaselineIdx, progressHistory, calScale } = state;
 
     const PX = pxPerDay;
     const activeZoom = usageZoom || 'week';
-    const hdrH = activeZoom === 'day' ? HDR_H_DAY : HDR_H;
+    const hdrH = calScale === 'week-day' ? HDR_H_DAY : HDR_H;
     const modes = usageModes.length > 0 ? usageModes : ['Trabajo'];
 
     const hdrRef = useRef<HTMLCanvasElement>(null);
@@ -102,33 +102,54 @@ export default function TaskUsageGrid() {
         return () => ro.disconnect();
     }, [hdrH]);
 
-    // Time intervals
+    // Time intervals (driven by calScale)
     const getIntervals = useCallback(() => {
         const intervals: { start: Date; end: Date; label: string; w: number; isWeekend: boolean }[] = [];
-        let cur = new Date(projStart);
-        const end = addDays(projStart, totalDays);
-        if (activeZoom === 'day') {
-            while (cur < end) {
+        const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+        const endD = addDays(projStart, totalDays);
+        const cs = calScale;
+        if (cs === 'week-day') {
+            // Daily intervals
+            let cur = new Date(projStart);
+            while (cur < endD) {
                 intervals.push({ start: new Date(cur), end: addDays(cur, 1), label: String(cur.getDate()), w: PX, isWeekend: cur.getDay() === 0 || cur.getDay() === 6 });
                 cur.setDate(cur.getDate() + 1);
             }
-        } else if (activeZoom === 'week') {
-            while (cur < end) {
+        } else if (cs === 'month-week') {
+            // Weekly intervals aligned to Monday
+            let cur = new Date(projStart);
+            const dow = cur.getDay(); cur.setDate(cur.getDate() - (dow === 0 ? 6 : dow - 1));
+            while (cur < endD) {
                 const next = addDays(cur, 7);
-                const dd = String(cur.getDate()).padStart(2, '0') + '/' + String(cur.getMonth() + 1).padStart(2, '0');
-                intervals.push({ start: new Date(cur), end: next, label: dd, w: 7 * PX, isWeekend: false });
+                const ds = cur < projStart ? new Date(projStart) : new Date(cur);
+                const lbl = String(ds.getDate()).padStart(2, '0') + '-' + MESES[ds.getMonth()];
+                intervals.push({ start: ds, end: next > endD ? endD : next, label: lbl, w: 7 * PX, isWeekend: false });
+                cur = next;
+            }
+        } else if (cs === 'year-quarter') {
+            // Quarterly intervals
+            let cur = new Date(projStart.getFullYear(), Math.floor(projStart.getMonth() / 3) * 3, 1);
+            while (cur < endD) {
+                const next = new Date(cur.getFullYear(), cur.getMonth() + 3, 1);
+                const ds = cur < projStart ? new Date(projStart) : new Date(cur);
+                const de = next > endD ? endD : next;
+                const q = Math.floor(cur.getMonth() / 3) + 1;
+                intervals.push({ start: ds, end: de, label: `Q${q}`, w: dayDiff(ds, de) * PX, isWeekend: false });
                 cur = next;
             }
         } else {
-            while (cur < end) {
+            // Monthly intervals (year-month, quarter-month)
+            let cur = new Date(projStart.getFullYear(), projStart.getMonth(), 1);
+            while (cur < endD) {
                 const next = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
-                const daysInMonth = dayDiff(cur, next);
-                intervals.push({ start: new Date(cur), end: next, label: cur.toLocaleDateString('es-CL', { month: 'short' }), w: daysInMonth * PX, isWeekend: false });
+                const ds = cur < projStart ? new Date(projStart) : new Date(cur);
+                const de = next > endD ? endD : next;
+                intervals.push({ start: ds, end: de, label: MESES[cur.getMonth()], w: dayDiff(ds, de) * PX, isWeekend: false });
                 cur = next;
             }
         }
         return intervals;
-    }, [projStart, totalDays, activeZoom, PX]);
+    }, [projStart, totalDays, calScale, PX]);
 
     const W = Math.max(totalDays * PX, containerSize.w - DETAIL_W);
     const H = Math.max(totalH, containerSize.h);
@@ -167,69 +188,92 @@ export default function TaskUsageGrid() {
         const hCtx = hdrC.getContext('2d')!;
         hCtx.clearRect(0, 0, W, hdrH);
 
-        // Top header row (months/years)
-        let cur = new Date(projStart);
-        const end = addDays(projStart, totalDays);
-        if (activeZoom === 'day' || activeZoom === 'week') {
-            while (cur < end) {
-                const x = dayDiff(projStart, cur) * PX;
-                const nm = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
-                const w = Math.min(dayDiff(cur, nm) * PX, W - x);
+        // Top header row (calScale-aware)
+        const cs = calScale;
+        const endD = addDays(projStart, totalDays);
+        const MESES_H = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+
+        if (cs === 'year-month' || cs === 'year-quarter') {
+            for (let yr = projStart.getFullYear(); yr <= endD.getFullYear(); yr++) {
+                const yS = new Date(yr, 0, 1), yE = new Date(yr + 1, 0, 1);
+                const ds = yS < projStart ? projStart : yS, de = yE > endD ? endD : yE;
+                const x = dayDiff(projStart, ds) * PX, w = dayDiff(ds, de) * PX;
                 hCtx.fillStyle = t.hdrTopBg; hCtx.fillRect(x, 0, w, 17);
                 hCtx.strokeStyle = t.hdrTopBorder; hCtx.strokeRect(x, 0, w, 17);
                 hCtx.fillStyle = t.hdrTopText; hCtx.font = 'bold 10px Segoe UI';
-                const lbl = cur.toLocaleDateString('es-CL', { month: 'long', year: 'numeric' });
-                if (w > 40) hCtx.fillText(lbl, x + 4, 12);
-                cur = nm;
+                if (w > 20) hCtx.fillText(String(yr), x + 4, 12);
+            }
+        } else if (cs === 'quarter-month') {
+            for (let yr = projStart.getFullYear(); yr <= endD.getFullYear(); yr++) {
+                for (let q = 0; q < 4; q++) {
+                    const qS = new Date(yr, q * 3, 1), qE = new Date(yr, q * 3 + 3, 1);
+                    if (qE <= projStart || qS >= endD) continue;
+                    const ds = qS < projStart ? projStart : qS, de = qE > endD ? endD : qE;
+                    const x = dayDiff(projStart, ds) * PX, w = dayDiff(ds, de) * PX;
+                    hCtx.fillStyle = t.hdrTopBg; hCtx.fillRect(x, 0, w, 17);
+                    hCtx.strokeStyle = t.hdrTopBorder; hCtx.strokeRect(x, 0, w, 17);
+                    hCtx.fillStyle = t.hdrTopText; hCtx.font = 'bold 10px Segoe UI';
+                    if (w > 20) hCtx.fillText(`Q${q + 1} ${yr}`, x + 4, 12);
+                }
+            }
+        } else if (cs === 'week-day') {
+            // Top: week spans
+            let curW = new Date(projStart);
+            const dow = curW.getDay(); curW.setDate(curW.getDate() - (dow === 0 ? 6 : dow - 1));
+            while (curW < endD) {
+                const wEnd = new Date(curW); wEnd.setDate(wEnd.getDate() + 7);
+                const ds = curW < projStart ? projStart : curW;
+                const x = dayDiff(projStart, ds) * PX, w = dayDiff(ds, wEnd > endD ? endD : wEnd) * PX;
+                hCtx.fillStyle = t.hdrTopBg; hCtx.fillRect(x, 0, w, 17);
+                hCtx.strokeStyle = t.hdrTopBorder; hCtx.strokeRect(x, 0, w, 17);
+                hCtx.fillStyle = t.hdrTopText; hCtx.font = 'bold 10px Segoe UI';
+                const lbl = String(ds.getDate()).padStart(2, '0') + '-' + MESES_H[ds.getMonth()];
+                if (w > 24) hCtx.fillText(lbl, x + 4, 12);
+                curW.setDate(curW.getDate() + 7);
             }
         } else {
-            while (cur < end) {
-                const x = dayDiff(projStart, cur) * PX;
-                const ny = new Date(cur.getFullYear() + 1, 0, 1);
-                const w = dayDiff(cur, ny) * PX;
+            // month-week: top = months
+            let curM = new Date(projStart.getFullYear(), projStart.getMonth(), 1);
+            while (curM < endD) {
+                const nm = new Date(curM.getFullYear(), curM.getMonth() + 1, 1);
+                const ds = curM < projStart ? projStart : curM;
+                const x = dayDiff(projStart, ds) * PX, w = Math.min(dayDiff(ds, nm) * PX, W - x);
                 hCtx.fillStyle = t.hdrTopBg; hCtx.fillRect(x, 0, w, 17);
                 hCtx.strokeStyle = t.hdrTopBorder; hCtx.strokeRect(x, 0, w, 17);
                 hCtx.fillStyle = t.hdrTopText; hCtx.font = 'bold 10px Segoe UI';
-                if (w > 20) hCtx.fillText(String(cur.getFullYear()), x + 4, 12);
-                cur = ny;
+                const lbl = curM.toLocaleDateString('es-CL', { month: 'short', year: '2-digit' });
+                if (w > 24) hCtx.fillText(lbl, x + 4, 12);
+                curM = nm;
             }
         }
 
         // Bottom header (intervals)
-        if (activeZoom === 'day') {
-            // Day zoom: 3-row header — day number (row 2) + day letter (row 3)
+        if (cs === 'week-day') {
+            // 3-row: day number (row2) + day letter (row3)
             intervals.forEach(inv => {
                 const x = dayDiff(projStart, inv.start) * PX;
                 const wkndFill = inv.isWeekend ? t.hdrWeekend : t.hdrBotBg;
                 const wkndText = inv.isWeekend ? (lightMode ? '#94a3b8' : '#374151') : t.hdrBotText;
-                // Row 2: day number (17-33)
                 hCtx.fillStyle = wkndFill; hCtx.fillRect(x, 17, inv.w, 16);
-                // Row 3: day letter (33-50)
                 hCtx.fillStyle = wkndFill; hCtx.fillRect(x, 33, inv.w, 17);
-                // Vertical grid
                 hCtx.strokeStyle = t.hdrBotBorder;
                 hCtx.beginPath(); hCtx.moveTo(x, 17); hCtx.lineTo(x, hdrH); hCtx.stroke();
-                // Centered day number
                 hCtx.fillStyle = wkndText; hCtx.font = '9px Segoe UI';
                 hCtx.textAlign = 'center';
                 if (PX >= 14) hCtx.fillText(inv.label, x + inv.w / 2, 29);
-                // Centered day letter
                 const days = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
                 if (PX >= 10) hCtx.fillText(days[inv.start.getDay()], x + inv.w / 2, 46);
                 hCtx.textAlign = 'left';
             });
-            // Horizontal separator between rows
             hCtx.strokeStyle = t.hdrBotBorder;
             hCtx.beginPath(); hCtx.moveTo(0, 33); hCtx.lineTo(W, 33); hCtx.stroke();
         } else {
             intervals.forEach(inv => {
                 const x = dayDiff(projStart, inv.start) * PX;
-                hCtx.fillStyle = inv.isWeekend ? t.hdrWeekend : t.hdrBotBg;
-                hCtx.fillRect(x, 17, inv.w, 19);
+                hCtx.fillStyle = t.hdrBotBg; hCtx.fillRect(x, 17, inv.w, 19);
                 hCtx.strokeStyle = t.hdrBotBorder;
                 hCtx.beginPath(); hCtx.moveTo(x, 17); hCtx.lineTo(x, hdrH); hCtx.stroke();
-                hCtx.fillStyle = inv.isWeekend ? (lightMode ? '#94a3b8' : '#374151') : t.hdrBotText;
-                hCtx.font = '9px Segoe UI';
+                hCtx.fillStyle = t.hdrBotText; hCtx.font = '9px Segoe UI';
                 hCtx.fillText(inv.label, x + 4, 30);
             });
         }
@@ -380,7 +424,7 @@ export default function TaskUsageGrid() {
             }
         }
 
-    }, [W, H, visRows, activities, activeZoom, PX, modes, projStart, totalDays, t, selIdx,
+    }, [W, H, visRows, activities, activeZoom, calScale, PX, modes, projStart, totalDays, t, selIdx,
         lightMode, getIntervals, statusDate, activeBaselineIdx, progressHistory, yOffsets]);
 
     useEffect(() => { draw(); }, [draw]);
@@ -430,6 +474,8 @@ export default function TaskUsageGrid() {
 
     // Header drag-zoom
     const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+    const [timeCtxMenu, setTimeCtxMenu] = useState<{ x: number; y: number } | null>(null);
+    const [showScaleMenu, setShowScaleMenu] = useState(false);
 
     const [headerDrag, setHeaderDrag] = useState<{ startX: number; startPX: number } | null>(null);
     const handleHeaderMouseDown = useCallback((e: React.MouseEvent) => { setHeaderDrag({ startX: e.clientX, startPX: PX }); }, [PX]);
@@ -460,6 +506,46 @@ export default function TaskUsageGrid() {
             {/* Context menu for metric selection */}
             {ctxMenu && <DetailContextMenu x={ctxMenu.x} y={ctxMenu.y} onClose={() => setCtxMenu(null)} />}
 
+            {/* Context menu for calendar scale */}
+            {timeCtxMenu && (
+                <div style={{
+                    position: 'fixed', left: timeCtxMenu.x, top: timeCtxMenu.y, zIndex: 1000,
+                    background: 'var(--bg-panel)', border: '1px solid var(--border-color)',
+                    boxShadow: '0 4px 6px rgba(0,0,0,0.15)', borderRadius: 4, padding: '4px 0', minWidth: 170
+                }} onMouseLeave={() => { setTimeCtxMenu(null); setShowScaleMenu(false); }}>
+                    <div
+                        style={{ position: 'relative' }}
+                        onMouseEnter={() => setShowScaleMenu(true)}
+                        onMouseLeave={() => setShowScaleMenu(false)}
+                    >
+                        <div style={{ padding: '8px 16px', cursor: 'pointer', fontSize: 13, color: 'var(--text-main)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                            onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                            <span>Escala Calendario</span>
+                            <span style={{ marginLeft: 8, opacity: 0.7 }}>▶</span>
+                        </div>
+                        {showScaleMenu && (
+                            <div style={{
+                                position: 'absolute', left: '100%', top: 0, zIndex: 1001,
+                                background: 'var(--bg-panel)', border: '1px solid var(--border-color)',
+                                boxShadow: '0 4px 6px rgba(0,0,0,0.15)', borderRadius: 4, padding: '4px 0', minWidth: 160
+                            }}>
+                                {([{key:'year-month',label:'Año / Mes'},{key:'month-week',label:'Mes / Semana'},{key:'week-day',label:'Semana / Día'},{key:'year-quarter',label:'Año / Trimestre'},{key:'quarter-month',label:'Trimestre / Mes'}] as {key:CalScale;label:string}[]).map(opt => (
+                                    <div key={opt.key}
+                                        style={{ padding: '8px 16px', cursor: 'pointer', fontSize: 13, color: 'var(--text-main)', fontWeight: calScale===opt.key?700:400, display:'flex', alignItems:'center', gap:6 }}
+                                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                                        onMouseDown={(e) => { e.stopPropagation(); dispatch({ type: 'SET_CAL_SCALE', calScale: opt.key }); setTimeCtxMenu(null); setShowScaleMenu(false); }}>
+                                        <span style={{ width:14, display:'inline-block', color:'var(--accent,#6366f1)', flexShrink:0 }}>{calScale===opt.key?'✓':''}</span>
+                                        {opt.label}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {/* Header row: fixed Detail header + scrollable time header */}
             <div style={{ height: hdrH, flexShrink: 0, display: 'flex', overflow: 'hidden' }}>
                 {/* Fixed "Detalles" header — clickable */}
@@ -472,7 +558,8 @@ export default function TaskUsageGrid() {
                     />
                 </div>
                 {/* Scrollable time header */}
-                <div id="usage-hdr-scroll" style={{ flex: 1, overflow: 'hidden' }}>
+                <div id="usage-hdr-scroll" style={{ flex: 1, overflow: 'hidden' }}
+                    onContextMenu={(e) => { e.preventDefault(); setTimeCtxMenu({ x: e.clientX, y: e.clientY }); }}>
                     <canvas ref={hdrRef}
                         style={{ display: 'block', cursor: 'ew-resize' }}
                         onMouseDown={handleHeaderMouseDown}
