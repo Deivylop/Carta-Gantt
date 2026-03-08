@@ -3,7 +3,7 @@ import { useGantt } from '../store/GanttContext';
 import { dayDiff, addDays, getUsageDailyValues } from '../utils/cpm';
 import type { ThemeColors, CalScale, UsageChartType } from '../types/gantt';
 import DetailContextMenu from './DetailContextMenu';
-import SCurveChart from './SCurveChart';
+
 
 const LINE_H = 16;      // height per metric line inside a row
 const MIN_ROW_H = 26;   // minimum row height (single line)
@@ -75,8 +75,7 @@ export default function ResourceUsageGrid() {
     const [timeCtxMenu, setTimeCtxMenu] = useState<{ x: number; y: number } | null>(null);
     const [showScaleMenu, setShowScaleMenu] = useState(false);
     const [showChartMenu, setShowChartMenu] = useState(false);
-    const [chartPanelH, setChartPanelH] = useState(180);
-    const [, setResizingChart] = useState(false);
+
 
     // Build render rows
     const normalActs = useMemo(() =>
@@ -673,30 +672,7 @@ export default function ResourceUsageGrid() {
                 </div>
             </div>
 
-            {/* Resize handle + Histogram/Curve panel */}
-            {usageChartType !== 'none' && (<>
-                <div
-                    style={{ height: 4, cursor: 'row-resize', background: lightMode ? '#e2e8f0' : '#1e293b', flexShrink: 0 }}
-                    onMouseDown={(e) => {
-                        e.preventDefault();
-                        setResizingChart(true);
-                        const startY = e.clientY;
-                        const startH = chartPanelH;
-                        const onMove = (ev: MouseEvent) => setChartPanelH(Math.max(80, startH + (startY - ev.clientY)));
-                        const onUp = () => { setResizingChart(false); window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
-                        window.addEventListener('mousemove', onMove);
-                        window.addEventListener('mouseup', onUp);
-                    }}
-                />
-                <div style={{ height: chartPanelH, flexShrink: 0, display: 'flex', overflow: 'hidden' }}>
-                    <div style={{ width: DETAIL_W, flexShrink: 0, background: lightMode ? '#f1f5f9' : '#0f172a', borderRight: `1px solid ${lightMode ? '#e2e8f0' : '#1e293b'}`, display: 'flex', alignItems: 'flex-start', padding: '6px 4px' }}>
-                        <span style={{ fontSize: 9, color: lightMode ? '#64748b' : '#475569', lineHeight: 1.3 }}>HH{usageChartType==='histogram'?' Histograma':usageChartType==='curve'?' Curva S':' Hist+Curva'}</span>
-                    </div>
-                    <div style={{ flex: 1, overflow: 'hidden' }}>
-                        <SCurveChart hideHeader exactWidth={Math.max(totalDays * pxPerDay, containerSize.w - DETAIL_W)} />
-                    </div>
-                </div>
-            </>)}
+
         </div>
     );
 }
