@@ -522,19 +522,24 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
     const showCurveLines = usageChartType !== 'histogram';
 
     const intervals = useMemo(() => {
+        const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
         const endD = addDays(projStart, totalDays);
         const cs = calScale as CalScale;
-        const result: { start: Date; end: Date; w: number }[] = [];
+        const result: { start: Date; end: Date; w: number; label: string; isWeekend: boolean }[] = [];
         if (cs === 'week-day') {
             let cur = new Date(projStart);
-            while (cur < endD) { result.push({ start: new Date(cur), end: addDays(cur, 1), w: PX }); cur.setDate(cur.getDate() + 1); }
+            while (cur < endD) {
+                result.push({ start: new Date(cur), end: addDays(cur, 1), w: PX, label: String(cur.getDate()), isWeekend: cur.getDay() === 0 || cur.getDay() === 6 });
+                cur.setDate(cur.getDate() + 1);
+            }
         } else if (cs === 'month-week') {
             let cur = new Date(projStart);
             const dow = cur.getDay(); cur.setDate(cur.getDate() - (dow === 0 ? 6 : dow - 1));
             while (cur < endD) {
                 const next = addDays(cur, 7);
                 const ds = cur < projStart ? new Date(projStart) : new Date(cur);
-                result.push({ start: ds, end: next > endD ? endD : next, w: 7 * PX });
+                const lbl = String(ds.getDate()).padStart(2, '0') + '-' + MESES[ds.getMonth()];
+                result.push({ start: ds, end: next > endD ? endD : next, w: 7 * PX, label: lbl, isWeekend: false });
                 cur = next;
             }
         } else if (cs === 'year-quarter') {
@@ -543,7 +548,8 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
                 const next = new Date(cur.getFullYear(), cur.getMonth() + 3, 1);
                 const ds = cur < projStart ? new Date(projStart) : new Date(cur);
                 const de = next > endD ? endD : next;
-                result.push({ start: ds, end: de, w: dayDiff(ds, de) * PX });
+                const q = Math.floor(cur.getMonth() / 3) + 1;
+                result.push({ start: ds, end: de, w: dayDiff(ds, de) * PX, label: `Q${q}`, isWeekend: false });
                 cur = next;
             }
         } else {
@@ -552,12 +558,59 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
                 const next = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
                 const ds = cur < projStart ? new Date(projStart) : new Date(cur);
                 const de = next > endD ? endD : next;
-                result.push({ start: ds, end: de, w: dayDiff(ds, de) * PX });
+                result.push({ start: ds, end: de, w: dayDiff(ds, de) * PX, label: MESES[cur.getMonth()], isWeekend: false });
                 cur = next;
             }
         }
         return result;
     }, [projStart, totalDays, calScale, PX]);
+
+    // Top-row header intervals (year/quarter/month spans matching TaskUsageGrid top header)
+    const topIntervals = useMemo(() => {
+        const MESES_H = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+        const endD = addDays(projStart, totalDays);
+        const cs = calScale as CalScale;
+        const result: { start: Date; end: Date; label: string }[] = [];
+        if (cs === 'year-month' || cs === 'year-quarter') {
+            for (let yr = projStart.getFullYear(); yr <= endD.getFullYear(); yr++) {
+                const yS = new Date(yr, 0, 1), yE = new Date(yr + 1, 0, 1);
+                const ds = yS < projStart ? new Date(projStart) : yS;
+                const de = yE > endD ? endD : yE;
+                result.push({ start: ds, end: de, label: String(yr) });
+            }
+        } else if (cs === 'quarter-month') {
+            for (let yr = projStart.getFullYear(); yr <= endD.getFullYear(); yr++) {
+                for (let q = 0; q < 4; q++) {
+                    const qS = new Date(yr, q * 3, 1), qE = new Date(yr, q * 3 + 3, 1);
+                    if (qE <= projStart || qS >= endD) continue;
+                    const ds = qS < projStart ? new Date(projStart) : qS;
+                    const de = qE > endD ? endD : qE;
+                    result.push({ start: ds, end: de, label: `Q${q + 1} ${yr}` });
+                }
+            }
+        } else if (cs === 'week-day') {
+            let cur = new Date(projStart);
+            const dow = cur.getDay(); cur.setDate(cur.getDate() - (dow === 0 ? 6 : dow - 1));
+            while (cur < endD) {
+                const wEnd = new Date(cur); wEnd.setDate(wEnd.getDate() + 7);
+                const ds = cur < projStart ? new Date(projStart) : new Date(cur);
+                const de = wEnd > endD ? endD : wEnd;
+                result.push({ start: ds, end: de, label: String(ds.getDate()).padStart(2, '0') + '-' + MESES_H[ds.getMonth()] });
+                cur.setDate(cur.getDate() + 7);
+            }
+        } else {
+            // month-week: top = months
+            let cur = new Date(projStart.getFullYear(), projStart.getMonth(), 1);
+            while (cur < endD) {
+                const nm = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+                const ds = cur < projStart ? new Date(projStart) : new Date(cur);
+                const de = nm > endD ? endD : nm;
+                result.push({ start: ds, end: de, label: cur.toLocaleDateString('es-CL', { month: 'short', year: '2-digit' }) });
+                cur = nm;
+            }
+        }
+        return result;
+    }, [projStart, totalDays, calScale]);
 
     const barData = useMemo(() => {
         const getCumAt = (ms: number): { planned: number; actual: number | null } => {
@@ -800,48 +853,38 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
             botBg: '#0f172a', botBorder: '#1e293b', botText: '#64748b', weekend: '#1a1040',
         };
 
-        // Month headers
-        cur = new Date(projStart);
-        while (cur < end) {
-            const x = dayDiff(projStart, cur) * PX;
-            const nm = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
-            const w = Math.min(dayDiff(cur, nm) * PX, width - x);
+        // Top row (calScale-aware, matching TaskUsageGrid top header)
+        topIntervals.forEach(inv => {
+            const x = dayDiff(projStart, inv.start) * PX;
+            const w = dayDiff(inv.start, inv.end) * PX;
             ctx.fillStyle = colors.topBg; ctx.fillRect(x, axisTop, w, 17);
             ctx.strokeStyle = colors.topBorder; ctx.strokeRect(x, axisTop, w, 17);
             ctx.fillStyle = colors.topText; ctx.font = 'bold 10px Segoe UI';
-            const lbl = cur.toLocaleDateString('es-CL', { month: 'short', year: '2-digit' });
-            if (w > 24) ctx.fillText(lbl, x + 4, axisTop + 12);
-            cur = nm;
-        }
+            if (w > 20) ctx.fillText(inv.label, x + 4, axisTop + 12);
+        });
 
-        // Sub-headers
-        cur = new Date(projStart);
-        while (cur < end) {
-            const x = dayDiff(projStart, cur) * PX;
-            if (zoom === 'month') {
-                const nm = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
-                const w = dayDiff(cur, nm) * PX;
-                ctx.fillStyle = colors.botBg; ctx.fillRect(x, axisTop + 17, w, 19);
-                ctx.strokeStyle = colors.botBorder; ctx.beginPath(); ctx.moveTo(x, axisTop + 17); ctx.lineTo(x, axisTop + HDR_H); ctx.stroke();
-                cur = nm;
-            } else if (zoom === 'week') {
-                const w = 7 * PX;
-                ctx.fillStyle = colors.botBg; ctx.fillRect(x, axisTop + 17, w, 19);
-                ctx.strokeStyle = colors.botBorder; ctx.beginPath(); ctx.moveTo(x, axisTop + 17); ctx.lineTo(x, axisTop + HDR_H); ctx.stroke();
-                const dd = 'S ' + String(cur.getDate()).padStart(2, '0') + '/' + String(cur.getMonth() + 1).padStart(2, '0');
+        // Bottom row (intervals — same format & alignment as TaskUsageGrid)
+        if (calScale === 'week-day') {
+            intervals.forEach(inv => {
+                const x = dayDiff(projStart, inv.start) * PX;
+                const wkndFill = inv.isWeekend ? colors.weekend : colors.botBg;
+                const wkndText = inv.isWeekend ? (lightMode ? '#94a3b8' : '#374151') : colors.botText;
+                ctx.fillStyle = wkndFill; ctx.fillRect(x, axisTop + 17, inv.w, 19);
+                ctx.strokeStyle = colors.botBorder;
+                ctx.beginPath(); ctx.moveTo(x, axisTop + 17); ctx.lineTo(x, axisTop + HDR_H); ctx.stroke();
+                ctx.fillStyle = wkndText; ctx.font = '9px Segoe UI'; ctx.textAlign = 'center';
+                if (PX >= 14) ctx.fillText(inv.label, x + inv.w / 2, axisTop + 29);
+                ctx.textAlign = 'left';
+            });
+        } else {
+            intervals.forEach(inv => {
+                const x = dayDiff(projStart, inv.start) * PX;
+                ctx.fillStyle = colors.botBg; ctx.fillRect(x, axisTop + 17, inv.w, 19);
+                ctx.strokeStyle = colors.botBorder;
+                ctx.beginPath(); ctx.moveTo(x, axisTop + 17); ctx.lineTo(x, axisTop + HDR_H); ctx.stroke();
                 ctx.fillStyle = colors.botText; ctx.font = '9px Segoe UI';
-                if (PX * 7 > 40) ctx.fillText(dd, x + 2, axisTop + 30);
-                cur.setDate(cur.getDate() + 7);
-            } else {
-                const isSun = cur.getDay() === 0, isSat = cur.getDay() === 6;
-                ctx.fillStyle = isSun || isSat ? colors.weekend : colors.botBg; ctx.fillRect(x, axisTop + 17, PX, 19);
-                ctx.strokeStyle = colors.botBorder; ctx.beginPath(); ctx.moveTo(x, axisTop + 17); ctx.lineTo(x, axisTop + HDR_H); ctx.stroke();
-                const days = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
-                ctx.fillStyle = isSun || isSat ? (lightMode ? '#94a3b8' : '#374151') : colors.botText; ctx.font = '9px Segoe UI';
-                if (PX >= 18) ctx.fillText(days[cur.getDay()], x + 2, axisTop + 30);
-                else if (PX >= 14) ctx.fillText(String(cur.getDate()), x + 2, axisTop + 30);
-                cur.setDate(cur.getDate() + 1);
-            }
+                if (inv.w > 24) ctx.fillText(inv.label, x + 4, axisTop + 30);
+            });
         }
 
         // Today & status date markers on axis
@@ -849,12 +892,12 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
             ctx.fillStyle = '#f59e0b'; ctx.fillRect(todayX, axisTop, 2, HDR_H);
         }
         if (statusDate) {
-            const sdx = (dayDiff(projStart, statusDate) + 1) * PX;  // end of status date, matching Gantt
+            const sdx = (dayDiff(projStart, statusDate) + 1) * PX;
             if (sdx >= 0 && sdx <= width) {
                 ctx.fillStyle = '#06b6d4'; ctx.fillRect(sdx, axisTop, 2, HDR_H);
             }
         }
-    }, [width, projStart, totalDays, PX, zoom, lightMode, statusDate, points, statusDateMs, showBars, showCurveLines, barData, intervals, calScale, usageChartType]);
+    }, [width, projStart, totalDays, PX, zoom, lightMode, statusDate, points, statusDateMs, showBars, showCurveLines, barData, intervals, topIntervals, calScale, usageChartType]);
 
     const [tooltip, setTooltip] = useState<{ visibleX: number; visibleY: number; date: string; planned: string; actual: string } | null>(null);
 
@@ -998,8 +1041,19 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
         return () => wrapper.removeEventListener('scroll', handler);
     }, []);
 
+    const chartTypeOptions: { key: UsageChartType; label: string }[] = [
+        { key: 'none', label: 'Ninguno' },
+        { key: 'histogram', label: 'Histograma' },
+        { key: 'curve', label: 'Curva S' },
+        { key: 'both', label: 'Histograma + Curva S' },
+    ];
+
     return (
-        <div style={{ flex: 1, minHeight: 0, position: 'relative', display: 'flex', flexDirection: 'column' }}>
+        <div
+            style={{ flex: 1, minHeight: 0, position: 'relative', display: 'flex', flexDirection: 'column' }}
+            onContextMenu={(e) => { e.preventDefault(); setChartCtxMenu({ x: e.clientX, y: e.clientY }); }}
+            onClick={() => setChartCtxMenu(null)}
+        >
             <div ref={containerRef} id="scurve-body" style={{ flex: 1, minHeight: 0, overflowX: 'auto', overflowY: 'hidden', position: 'relative' }}>
                 <canvas
                     ref={canvasRef}
@@ -1049,6 +1103,38 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
                     </div>
                     <div style={{ color: '#3b82f6', marginBottom: 2 }}>Programado: <strong>{tooltip.planned}</strong></div>
                     <div style={{ color: '#10b981' }}>Real: <strong>{tooltip.actual}</strong></div>
+                </div>
+            )}
+            {/* Right-click context menu — change chart type */}
+            {chartCtxMenu && (
+                <div
+                    style={{
+                        position: 'fixed', left: chartCtxMenu.x, top: chartCtxMenu.y,
+                        zIndex: 9999, minWidth: 170,
+                        background: lightMode ? '#fff' : '#1e293b',
+                        border: `1px solid ${lightMode ? '#cbd5e1' : '#334155'}`,
+                        borderRadius: 6, boxShadow: '0 4px 16px rgba(0,0,0,.35)',
+                        padding: '4px 0', fontSize: 12,
+                    }}
+                    onMouseLeave={() => setChartCtxMenu(null)}
+                >
+                    <div style={{ padding: '4px 12px 4px', fontSize: 10, fontWeight: 700, color: lightMode ? '#94a3b8' : '#475569', textTransform: 'uppercase', letterSpacing: 1 }}>Mostrar gráfico</div>
+                    {chartTypeOptions.map(opt => (
+                        <div
+                            key={opt.key}
+                            style={{
+                                padding: '5px 14px', cursor: 'pointer',
+                                color: lightMode ? '#1e293b' : '#e2e8f0',
+                                background: usageChartType === opt.key ? (lightMode ? '#eff6ff' : '#1e3a5f') : 'transparent',
+                                fontWeight: usageChartType === opt.key ? 600 : 400,
+                            }}
+                            onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = lightMode ? '#f1f5f9' : '#0f2744'; }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = usageChartType === opt.key ? (lightMode ? '#eff6ff' : '#1e3a5f') : 'transparent'; }}
+                            onMouseDown={e => { e.stopPropagation(); dispatch({ type: 'SET_USAGE_CHART_TYPE', chartType: opt.key }); setChartCtxMenu(null); }}
+                        >
+                            {usageChartType === opt.key ? '✓ ' : '   '}{opt.label}
+                        </div>
+                    ))}
                 </div>
             )}
         </div>
