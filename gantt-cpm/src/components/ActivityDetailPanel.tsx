@@ -7,6 +7,7 @@ import { useGantt } from '../store/GanttContext';
 import { isoDate, fmtDate, addDays } from '../utils/cpm';
 import type { Activity, ConstraintType } from '../types/gantt';
 import SCurveChart from './SCurveChart';
+import ScenarioAlertModal, { ScenarioAlert, validateProgressDataDate, validateOutOfSequence } from './modules/ScenarioAlertModal';
 
 type Tab = 'general' | 'estado' | 'recursos' | 'predecesores' | 'sucesores' | 'relaciones' | 'pasos' | 'curvas';
 
@@ -802,8 +803,11 @@ function TabRelaciones({ a: _a, activities, succs, preds, dispatch, selIdx, addP
    TAB: Pasos (WBS Steps / Notes placeholder)
    ════════════════════════════════════════════════════════════════ */
 function TabPasos({ a, dispatch, selIdx }: { a: Activity, dispatch: any, selIdx: number }) {
+    const { state } = useGantt();
     const steps = a.steps || [];
     const [selRow, setSelRow] = useState<number | null>(null);
+    const [alert, setAlert] = useState<ScenarioAlert | null>(null);
+    const pendingStepsRef = useRef<any[] | null>(null);
 
     const redistributeWeights = (list: any[]) => {
         if (list.length === 0) return list;
@@ -836,25 +840,44 @@ function TabPasos({ a, dispatch, selIdx }: { a: Activity, dispatch: any, selIdx:
     const totalWeight = steps.reduce((sum, s) => sum + (s.weight || 0), 0);
     const isWeightValid = steps.length === 0 || Math.abs(totalWeight - 100) < 0.1;
 
-    const applyPctToActivity = (currentSteps: any[] = steps) => {
+    const applyPctToActivity = (currentSteps: any[] = steps, forceBypassAlert = false) => {
         if (currentSteps.length === 0) return;
         const currentTotalWeight = currentSteps.reduce((sum, s) => sum + (s.weight || 0), 0);
         if (Math.abs(currentTotalWeight - 100) >= 0.1 && currentSteps.length > 0) return; // Only process if weights are valid (100)
 
         const earned = currentSteps.reduce((sum, s) => sum + ((s.weight || 0) * (s.pct || 0) / 100), 0);
         const newActivityPct = Math.round(earned);
+        
+        if (!forceBypassAlert && newActivityPct > 0 && (a.pct || 0) === 0) {
+            const statusDate = state.statusDate || state._cpmStatusDate;
+            const ddAlert = validateProgressDataDate(a, newActivityPct, statusDate, fmtDate);
+            if (ddAlert) {
+                pendingStepsRef.current = currentSteps;
+                setAlert(ddAlert);
+                return;
+            }
+            const oosAlert = validateOutOfSequence(a, newActivityPct, state.activities);
+            if (oosAlert) {
+                pendingStepsRef.current = currentSteps;
+                setAlert(oosAlert);
+                return;
+            }
+        }
 
-        // En lugar de COMMIT_EDIT que auto-asigna fechas, enviamos un UPDATE_ACTIVITY con un flag especial
-        dispatch({ type: 'UPDATE_ACTIVITY', index: selIdx, updates: { pct: newActivityPct }, _skipAutoDate: true });
+        // Apply Steps first
+        dispatch({ type: 'UPDATE_ACTIVITY', index: selIdx, updates: { steps: currentSteps } });
+        // Apply Pct
+        dispatch({ type: 'UPDATE_ACTIVITY', index: selIdx, updates: { pct: newActivityPct } });
     };
 
     const updateStep = (idx: number, key: string, value: any) => {
         const newSteps = [...steps];
         newSteps[idx] = { ...newSteps[idx], [key]: value };
-        dispatch({ type: 'UPDATE_ACTIVITY', index: selIdx, updates: { steps: newSteps } });
 
         if (key === 'pct' || key === 'weight') {
             applyPctToActivity(newSteps);
+        } else {
+            dispatch({ type: 'UPDATE_ACTIVITY', index: selIdx, updates: { steps: newSteps } });
         }
     };
 
@@ -862,9 +885,16 @@ function TabPasos({ a, dispatch, selIdx }: { a: Activity, dispatch: any, selIdx:
         if (selRow === null) return;
         const newSteps = redistributeWeights(steps.filter((_, i) => i !== selRow));
         dispatch({ type: 'PUSH_UNDO' });
-        dispatch({ type: 'UPDATE_ACTIVITY', index: selIdx, updates: { steps: newSteps } });
-        setSelRow(null);
         applyPctToActivity(newSteps);
+        setSelRow(null);
+    };
+
+    const handleAlertProceed = () => {
+        if (pendingStepsRef.current) {
+            applyPctToActivity(pendingStepsRef.current, true);
+        }
+        setAlert(null);
+        pendingStepsRef.current = null;
     };
 
     const inputStyle: React.CSSProperties = { border: '1px solid transparent', background: 'transparent', color: 'inherit', width: '100%', outline: 'none', fontSize: 12, padding: '2px 4px', borderRadius: 3 };
@@ -880,7 +910,7 @@ function TabPasos({ a, dispatch, selIdx }: { a: Activity, dispatch: any, selIdx:
                         className="adp-rel-btn" 
                         style={{ marginLeft: 8, opacity: isWeightValid ? 1 : 0.5 }}
                         disabled={!isWeightValid}
-                        onClick={() => { dispatch({ type: 'PUSH_UNDO' }); applyPctToActivity(); }}
+                        onClick={() => { dispatch({ type: 'PUSH_UNDO' }); applyPctToActivity(steps, true); }}
                         title="Calcula el % de Avance de la actividad basado en el peso de los pasos">
                         ↻ Forzar Recálculo
                     </button>
@@ -951,6 +981,12 @@ function TabPasos({ a, dispatch, selIdx }: { a: Activity, dispatch: any, selIdx:
                     </table>
                 )}
             </div>
+            
+            <ScenarioAlertModal
+                alert={alert}
+                onClose={() => { setAlert(null); pendingStepsRef.current = null; }}
+                onProceed={handleAlertProceed}
+            />
         </div>
     );
 }
