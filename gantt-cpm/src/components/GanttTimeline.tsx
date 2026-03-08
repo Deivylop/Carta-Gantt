@@ -5,7 +5,7 @@
 import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { useGantt, getBarColorsKey } from '../store/GanttContext';
 import { dayDiff, addDays, fmtDate, isoDate, normDate } from '../utils/cpm';
-import type { ThemeColors, LeanRestriction } from '../types/gantt';
+import type { ThemeColors, LeanRestriction, CalScale } from '../types/gantt';
 import BarColorsModal from './modals/BarColorsModal';
 
 const ROW_H = 26;
@@ -55,7 +55,7 @@ interface DragPreview {
 
 export default function GanttTimeline() {
     const { state, dispatch } = useGantt();
-    const { visRows, zoom, totalDays, timelineStart: projStart, statusDate, _cpmStatusDate, selIdx, selIndices, lightMode, activities, defCal, pxPerDay, showTodayLine, showStatusLine, showDependencies, mfpConfig, chainIds, chainTrace, spotlightEnabled, spotlightEnd, leanRestrictions, _scenarioMode, _masterActivities } = state;
+    const { visRows, zoom, calScale, totalDays, timelineStart: projStart, statusDate, _cpmStatusDate, selIdx, selIndices, lightMode, activities, defCal, pxPerDay, showTodayLine, showStatusLine, showDependencies, mfpConfig, chainIds, chainTrace, spotlightEnabled, spotlightEnd, leanRestrictions, _scenarioMode, _masterActivities } = state;
     // For bar rendering, use the statusDate from last CPM calc (not the live one from the picker)
     const barStatusDate = _cpmStatusDate || statusDate;
     const PX = pxPerDay;
@@ -71,7 +71,7 @@ export default function GanttTimeline() {
         });
         return m;
     }, [leanRestrictions]);
-    const hdrH = zoom === 'day' ? HDR_H_DAY : HDR_H;
+    const hdrH = calScale === 'week-day' ? HDR_H_DAY : HDR_H;
     const hdrRef = useRef<HTMLCanvasElement>(null);
     const barRef = useRef<HTMLCanvasElement>(null);
     const bodyRef = useRef<HTMLDivElement>(null);
@@ -96,6 +96,7 @@ export default function GanttTimeline() {
     // Context Menu and Bar Colors Modifier
     const [ctxMenu, setCtxMenu] = useState<{ x: number, y: number } | null>(null);
     const [showColorsModal, setShowColorsModal] = useState(false);
+    const [showScaleMenu, setShowScaleMenu] = useState(false);
 
     // Measure container
     useEffect(() => {
@@ -239,61 +240,117 @@ export default function GanttTimeline() {
         const hCtx = hdrC.getContext('2d')!;
         hCtx.clearRect(0, 0, W, hdrH);
 
-        // Month headers
-        let cur = new Date(projStart);
-        const end = addDays(projStart, totalDays);
-        while (cur < end) {
-            const x = dayDiff(projStart, cur) * PX;
-            const nm = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
-            const w = Math.min(dayDiff(cur, nm) * PX, W - x);
-            hCtx.fillStyle = t.hdrTopBg; hCtx.fillRect(x, 0, w, 17);
-            hCtx.strokeStyle = t.hdrTopBorder; hCtx.strokeRect(x, 0, w, 17);
-            hCtx.fillStyle = t.hdrTopText; hCtx.font = 'bold 10px Segoe UI';
-            const lbl = cur.toLocaleDateString('es-CL', { month: 'short', year: '2-digit' });
-            if (w > 24) hCtx.fillText(lbl, x + 4, 12);
-            cur = nm;
+        // ─── Calendar scale header (driven by calScale) ──────────────────
+        const cs = calScale;
+        const endD = addDays(projStart, totalDays);
+
+        // ── Top row (y: 0–17) ──────────────────────────────────────────
+        if (cs === 'year-month' || cs === 'year-quarter') {
+            // Year spans
+            for (let yr = projStart.getFullYear(); yr <= endD.getFullYear(); yr++) {
+                const yS = new Date(yr, 0, 1), yE = new Date(yr + 1, 0, 1);
+                const ds = yS < projStart ? projStart : yS, de = yE > endD ? endD : yE;
+                const x = dayDiff(projStart, ds) * PX, w = dayDiff(ds, de) * PX;
+                hCtx.fillStyle = t.hdrTopBg; hCtx.fillRect(x, 0, w, 17);
+                hCtx.strokeStyle = t.hdrTopBorder; hCtx.strokeRect(x, 0, w, 17);
+                hCtx.fillStyle = t.hdrTopText; hCtx.font = 'bold 10px Segoe UI';
+                if (w > 20) hCtx.fillText(String(yr), x + 4, 12);
+            }
+        } else if (cs === 'quarter-month') {
+            // Quarter spans
+            for (let yr = projStart.getFullYear(); yr <= endD.getFullYear(); yr++) {
+                for (let q = 0; q < 4; q++) {
+                    const qS = new Date(yr, q * 3, 1), qE = new Date(yr, q * 3 + 3, 1);
+                    if (qE <= projStart || qS >= endD) continue;
+                    const ds = qS < projStart ? projStart : qS, de = qE > endD ? endD : qE;
+                    const x = dayDiff(projStart, ds) * PX, w = dayDiff(ds, de) * PX;
+                    hCtx.fillStyle = t.hdrTopBg; hCtx.fillRect(x, 0, w, 17);
+                    hCtx.strokeStyle = t.hdrTopBorder; hCtx.strokeRect(x, 0, w, 17);
+                    hCtx.fillStyle = t.hdrTopText; hCtx.font = 'bold 10px Segoe UI';
+                    if (w > 20) hCtx.fillText(`Q${q + 1} ${yr}`, x + 4, 12);
+                }
+            }
+        } else {
+            // Month spans (for month-week, week-day)
+            let cur = new Date(projStart.getFullYear(), projStart.getMonth(), 1);
+            while (cur < endD) {
+                const nm = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+                const ds = cur < projStart ? projStart : cur;
+                const x = dayDiff(projStart, ds) * PX;
+                const w = Math.min(dayDiff(ds, nm) * PX, W - x);
+                hCtx.fillStyle = t.hdrTopBg; hCtx.fillRect(x, 0, w, 17);
+                hCtx.strokeStyle = t.hdrTopBorder; hCtx.strokeRect(x, 0, w, 17);
+                hCtx.fillStyle = t.hdrTopText; hCtx.font = 'bold 10px Segoe UI';
+                const lbl = cur.toLocaleDateString('es-CL', { month: 'short', year: '2-digit' });
+                if (w > 24) hCtx.fillText(lbl, x + 4, 12);
+                cur = nm;
+            }
         }
-        // Day/week/month sub-headers
-        cur = new Date(projStart);
-        while (cur < end) {
-            const x = dayDiff(projStart, cur) * PX;
-            if (zoom === 'month') {
-                const nm = new Date(cur.getFullYear(), cur.getMonth() + 1, 1); const w = dayDiff(cur, nm) * PX;
+
+        // ── Bottom row (y: 17–36 or 17–50 for week-day) ────────────────
+        if (cs === 'year-month' || cs === 'quarter-month') {
+            // Month sub-ticks
+            let cur = new Date(projStart.getFullYear(), projStart.getMonth(), 1);
+            while (cur < endD) {
+                const nm = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+                const ds = cur < projStart ? projStart : cur;
+                const x = dayDiff(projStart, ds) * PX;
+                const w = Math.min(dayDiff(ds, nm) * PX, W - x);
                 hCtx.fillStyle = t.hdrBotBg; hCtx.fillRect(x, 17, w, 19);
                 hCtx.strokeStyle = t.hdrBotBorder; hCtx.beginPath(); hCtx.moveTo(x, 17); hCtx.lineTo(x, hdrH); hCtx.stroke();
+                hCtx.fillStyle = t.hdrBotText; hCtx.font = '9px Segoe UI';
+                if (w > 20) hCtx.fillText(cur.toLocaleDateString('es-CL', { month: 'short' }), x + 4, 30);
                 cur = nm;
-            } else if (zoom === 'week') {
-                const w = 7 * PX; hCtx.fillStyle = t.hdrBotBg; hCtx.fillRect(x, 17, w, 19);
-                hCtx.strokeStyle = t.hdrBotBorder; hCtx.beginPath(); hCtx.moveTo(x, 17); hCtx.lineTo(x, hdrH); hCtx.stroke();
+            }
+        } else if (cs === 'year-quarter') {
+            // Quarter sub-ticks
+            for (let yr = projStart.getFullYear(); yr <= endD.getFullYear(); yr++) {
+                for (let q = 0; q < 4; q++) {
+                    const qS = new Date(yr, q * 3, 1), qE = new Date(yr, q * 3 + 3, 1);
+                    if (qE <= projStart || qS >= endD) continue;
+                    const ds = qS < projStart ? projStart : qS, de = qE > endD ? endD : qE;
+                    const x = dayDiff(projStart, ds) * PX, w = dayDiff(ds, de) * PX;
+                    hCtx.fillStyle = t.hdrBotBg; hCtx.fillRect(x, 17, w, 19);
+                    hCtx.strokeStyle = t.hdrBotBorder; hCtx.beginPath(); hCtx.moveTo(x, 17); hCtx.lineTo(x, hdrH); hCtx.stroke();
+                    hCtx.fillStyle = t.hdrBotText; hCtx.font = '9px Segoe UI';
+                    if (w > 20) hCtx.fillText(`Q${q + 1}`, x + 4, 30);
+                }
+            }
+        } else if (cs === 'month-week') {
+            // Week sub-ticks – align to Monday
+            let cur = new Date(projStart);
+            const dow = cur.getDay(); cur.setDate(cur.getDate() - (dow === 0 ? 6 : dow - 1));
+            while (cur < endD) {
+                const x = Math.max(0, dayDiff(projStart, cur) * PX);
+                const w = 7 * PX;
                 const dd = 'S ' + String(cur.getDate()).padStart(2, '0') + '/' + String(cur.getMonth() + 1).padStart(2, '0');
+                hCtx.fillStyle = t.hdrBotBg; hCtx.fillRect(x, 17, w, 19);
+                hCtx.strokeStyle = t.hdrBotBorder; hCtx.beginPath(); hCtx.moveTo(x, 17); hCtx.lineTo(x, hdrH); hCtx.stroke();
                 hCtx.fillStyle = t.hdrBotText; hCtx.font = '9px Segoe UI';
                 if (PX * 7 > 40) hCtx.fillText(dd, x + 2, 30);
                 cur.setDate(cur.getDate() + 7);
-            } else {
-                // Day zoom: 3-row header — day number (row 2) + day letter (row 3)
+            }
+        } else {
+            // week-day: 3-row header — day number (row 2) + day letter (row 3)
+            let cur = new Date(projStart);
+            while (cur < endD) {
+                const x = dayDiff(projStart, cur) * PX;
                 const isSun = cur.getDay() === 0, isSat = cur.getDay() === 6;
                 const wkndFill = isSun || isSat ? t.hdrWeekend : t.hdrBotBg;
                 const wkndText = isSun || isSat ? (lightMode ? '#94a3b8' : '#374151') : t.hdrBotText;
-                // Row 2: day of month (17-33)
                 hCtx.fillStyle = wkndFill; hCtx.fillRect(x, 17, PX, 16);
-                // Row 3: day of week letter (33-50)
                 hCtx.fillStyle = wkndFill; hCtx.fillRect(x, 33, PX, 17);
-                // Vertical grid line
                 hCtx.strokeStyle = t.hdrBotBorder;
                 hCtx.beginPath(); hCtx.moveTo(x, 17); hCtx.lineTo(x, hdrH); hCtx.stroke();
-                // Centered day number
                 hCtx.fillStyle = wkndText; hCtx.font = '9px Segoe UI';
                 hCtx.textAlign = 'center';
                 if (PX >= 14) hCtx.fillText(String(cur.getDate()), x + PX / 2, 29);
-                // Centered day letter
                 const days = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
                 if (PX >= 10) hCtx.fillText(days[cur.getDay()], x + PX / 2, 46);
                 hCtx.textAlign = 'left';
                 cur.setDate(cur.getDate() + 1);
             }
-        }
-        // Horizontal separator between day-number and day-letter rows
-        if (zoom === 'day') {
+            // Separator between day-number and day-letter rows
             hCtx.strokeStyle = t.hdrBotBorder;
             hCtx.beginPath(); hCtx.moveTo(0, 33); hCtx.lineTo(W, 33); hCtx.stroke();
         }
@@ -1048,15 +1105,70 @@ export default function GanttTimeline() {
                 <div style={{
                     position: 'fixed', left: ctxMenu.x, top: ctxMenu.y, zIndex: 1000,
                     background: 'var(--bg-panel)', border: '1px solid var(--border-color)',
-                    boxShadow: '0 4px 6px rgba(0,0,0,0.1)', borderRadius: 4, padding: '4px 0', minWidth: 150
+                    boxShadow: '0 4px 6px rgba(0,0,0,0.1)', borderRadius: 4, padding: '4px 0', minWidth: 170
                 }}>
+                    {/* Barras */}
                     <div
                         style={{ padding: '8px 16px', cursor: 'pointer', fontSize: 13, color: 'var(--text-main)' }}
                         onMouseDown={(e) => { e.stopPropagation(); setCtxMenu(null); setShowColorsModal(true); }}
-                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                        onMouseEnter={e => { (e.currentTarget.style.background = 'var(--bg-hover)'); setShowScaleMenu(false); }}
                         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                     >
                         Barras...
+                    </div>
+                    <div style={{ margin: '2px 0', borderTop: '1px solid var(--border-color)' }} />
+                    {/* Escala Calendario with flyout */}
+                    <div
+                        style={{ position: 'relative' }}
+                        onMouseEnter={() => setShowScaleMenu(true)}
+                        onMouseLeave={() => setShowScaleMenu(false)}
+                    >
+                        <div
+                            style={{ padding: '8px 16px', cursor: 'pointer', fontSize: 13, color: 'var(--text-main)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                            onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                        >
+                            <span>Escala Calendario</span>
+                            <span style={{ marginLeft: 8, opacity: 0.7 }}>▶</span>
+                        </div>
+                        {showScaleMenu && (
+                            <div style={{
+                                position: 'absolute', left: '100%', top: 0, zIndex: 1001,
+                                background: 'var(--bg-panel)', border: '1px solid var(--border-color)',
+                                boxShadow: '0 4px 6px rgba(0,0,0,0.15)', borderRadius: 4, padding: '4px 0', minWidth: 160
+                            }}>
+                                {([
+                                    { key: 'year-month',    label: 'Año / Mes' },
+                                    { key: 'month-week',    label: 'Mes / Semana' },
+                                    { key: 'week-day',      label: 'Semana / Día' },
+                                    { key: 'year-quarter',  label: 'Año / Trimestre' },
+                                    { key: 'quarter-month', label: 'Trimestre / Mes' },
+                                ] as { key: CalScale; label: string }[]).map(opt => (
+                                    <div
+                                        key={opt.key}
+                                        style={{
+                                            padding: '8px 16px', cursor: 'pointer', fontSize: 13,
+                                            color: 'var(--text-main)',
+                                            fontWeight: calScale === opt.key ? 700 : 400,
+                                            display: 'flex', alignItems: 'center', gap: 6,
+                                        }}
+                                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                                        onMouseDown={(e) => {
+                                            e.stopPropagation();
+                                            dispatch({ type: 'SET_CAL_SCALE', calScale: opt.key });
+                                            setCtxMenu(null);
+                                            setShowScaleMenu(false);
+                                        }}
+                                    >
+                                        <span style={{ width: 14, display: 'inline-block', color: 'var(--accent, #6366f1)', flexShrink: 0 }}>
+                                            {calScale === opt.key ? '✓' : ''}
+                                        </span>
+                                        {opt.label}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

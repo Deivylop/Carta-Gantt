@@ -3,7 +3,7 @@
 // All state management matching HTML globals + actions
 // ═══════════════════════════════════════════════════════════════════
 import React, { createContext, useContext, useReducer, type ReactNode } from 'react';
-import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, VisibleRow, ProgressHistoryEntry, BaselineEntry, CustomCalendar, CustomFilter, MFPConfig, LeanRestriction, PPCWeekRecord, CNCEntry, WhatIfScenario, SavedGlobalChange } from '../types/gantt';
+import type { Activity, PoolResource, CalendarType, ColumnDef, ZoomLevel, CalScale, VisibleRow, ProgressHistoryEntry, BaselineEntry, CustomCalendar, CustomFilter, MFPConfig, LeanRestriction, PPCWeekRecord, CNCEntry, WhatIfScenario, SavedGlobalChange } from '../types/gantt';
 import type { DurationDistribution, RiskEvent, SimulationParams, SimulationResult, RiskAnalysisState, RiskScoringConfig } from '../types/risk';
 import { DEFAULT_RISK_STATE } from '../types/risk';
 
@@ -148,6 +148,7 @@ export interface GanttState {
     showTodayLine: boolean;
     showStatusLine: boolean;
     showDependencies: boolean;
+    calScale: CalScale;
     barColors: {
         normal: string;
         critical: string;
@@ -225,6 +226,7 @@ export type Action =
     | { type: 'COMMIT_EDIT'; index: number; key: string; value: string }
     | { type: 'SET_SELECTION'; index: number; shift?: boolean; ctrl?: boolean }
     | { type: 'SET_ZOOM'; zoom: ZoomLevel }
+    | { type: 'SET_CAL_SCALE'; calScale: CalScale }
     | { type: 'SET_PX_PER_DAY'; px: number }
     | { type: 'TOGGLE_THEME' }
     | { type: 'TOGGLE_TODAY_LINE' }
@@ -1193,6 +1195,9 @@ function reducer(state: GanttState, action: Action): GanttState {
             
             return { ...state, zoom: action.zoom, pxPerDay: fitPx };
         }
+
+        case 'SET_CAL_SCALE':
+            return { ...state, calScale: action.calScale };
 
         case 'SET_PX_PER_DAY':
             return { ...state, pxPerDay: action.px };
@@ -2172,6 +2177,7 @@ const initialState: GanttState = {
     resourcePool: [],
     visRows: [],
     zoom: 'week',
+    calScale: 'month-week' as CalScale,
     pxPerDay: 8,
     totalDays: 400,
     timelineStart: now,
