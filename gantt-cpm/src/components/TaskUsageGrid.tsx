@@ -583,7 +583,8 @@ export default function TaskUsageGrid() {
                 <div ref={bodyDivRef} id="gr-body"
                     style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', position: 'relative' }}
                     onClick={handleClick}
-                    onDoubleClick={handleDblClick}>
+                    onDoubleClick={handleDblClick}
+                    onContextMenu={(e) => { e.preventDefault(); setTimeCtxMenu({ x: e.clientX, y: e.clientY }); }}>
                     <canvas ref={bodyCanvasRef} style={{ display: 'block' }} />
                 </div>
             </div>

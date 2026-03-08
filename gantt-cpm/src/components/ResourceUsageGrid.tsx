@@ -631,7 +631,8 @@ export default function ResourceUsageGrid() {
                 {/* Scrollable time grid */}
                 <div ref={bodyDivRef} id="res-gr-body"
                     style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', position: 'relative' }}
-                    onClick={handleClick}>
+                    onClick={handleClick}
+                    onContextMenu={(e) => { e.preventDefault(); setTimeCtxMenu({ x: e.clientX, y: e.clientY }); }}>
                     <canvas ref={bodyCanvasRef} style={{ display: 'block' }} />
                 </div>
             </div>
