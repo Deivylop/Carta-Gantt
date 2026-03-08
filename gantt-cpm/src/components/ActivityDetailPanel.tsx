@@ -7,7 +7,7 @@ import { useGantt } from '../store/GanttContext';
 import { isoDate, fmtDate, addDays } from '../utils/cpm';
 import type { Activity, ConstraintType } from '../types/gantt';
 import SCurveChart from './SCurveChart';
-import ScenarioAlertModal, { ScenarioAlert, validateProgressDataDate, validateOutOfSequence } from './modules/ScenarioAlertModal';
+import ScenarioAlertModal, { type ScenarioAlert, validateProgressDataDate, validateOutOfSequence } from './modules/ScenarioAlertModal';
 
 type Tab = 'general' | 'estado' | 'recursos' | 'predecesores' | 'sucesores' | 'relaciones' | 'pasos' | 'curvas';
 
