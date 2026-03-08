@@ -557,6 +557,12 @@ function AppInner() {
     const proj = pState.projects.find(p => p.id === projectId);
 
     // Load the target project
+
+    // ── Set active project + module FIRST, before loading data ──
+    pDispatch({ type: 'SET_ACTIVE_PROJECT', id: projectId });
+    setActiveModule('gantt');
+    localStorage.setItem('gantt_active_module', 'gantt');
+
     const saved = loadProjectState(projectId);
     if (saved) {
       // Set Supabase ID BEFORE dispatching to prevent auto-save race
@@ -567,7 +573,20 @@ function AppInner() {
       }
       restoreDatesFromSaved(saved);
       saved.durationType = proj?.durationType; // Inject setting from portfolio
-      dispatch({ type: 'LOAD_STATE', state: saved });
+      // ── Use explicit dispatches (not LOAD_STATE merge) to fully replace state ──
+      dispatch({ type: 'SET_PROJECT_CONFIG', config: {
+        projName: saved.projName, projStart: saved.projStart, defCal: saved.defCal,
+        statusDate: saved.statusDate || undefined, durationType: saved.durationType || undefined,
+        customFilters: saved.customFilters || [], filtersMatchAll: saved.filtersMatchAll !== undefined ? saved.filtersMatchAll : true,
+      }});
+      dispatch({ type: 'SET_ACTIVITIES', activities: saved.activities || [] });
+      dispatch({ type: 'SET_RESOURCES', resources: saved.resourcePool || [] });
+      dispatch({ type: 'SET_PROGRESS_HISTORY', history: saved.progressHistory || [] });
+      dispatch({ type: 'SET_PPC_HISTORY', history: saved.ppcHistory || [] });
+      dispatch({ type: 'SET_LEAN_RESTRICTIONS', restrictions: saved.leanRestrictions || [] });
+      dispatch({ type: 'SET_SCENARIOS', scenarios: saved.scenarios || [] });
+      if (saved.riskState) dispatch({ type: 'LOAD_RISK_STATE', riskState: saved.riskState });
+      console.log('[handleOpenProject] BRANCH 1: localStorage loaded via explicit dispatches, defCal=', saved.defCal);
     } else if (proj?.supabaseId) {
       // Set Supabase ID BEFORE dispatching to prevent auto-save race
       localStorage.setItem('sb_current_project_id', proj.supabaseId);
@@ -630,9 +649,6 @@ function AppInner() {
       }
     }
 
-    pDispatch({ type: 'SET_ACTIVE_PROJECT', id: projectId });
-    setActiveModule('gantt');
-    localStorage.setItem('gantt_active_module', 'gantt');
 
     // ── Release auto-save guard after a short delay to let React batched dispatches settle ──
     setTimeout(() => { switchingProjectRef.current = false; }, 1200);
