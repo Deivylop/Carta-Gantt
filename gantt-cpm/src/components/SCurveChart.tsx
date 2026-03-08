@@ -385,6 +385,7 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                     totalDays={state.totalDays}
                     pxPerDay={state.pxPerDay}
                     zoom={state.currentView === 'usage' || state.currentView === 'resUsage' ? (state.usageZoom || 'week') : state.zoom}
+                    calScale={state.calScale}
                     lightMode={state.lightMode}
                     statusDate={state.statusDate}
                     points={data.points}
@@ -496,7 +497,8 @@ interface SCurveCanvasProps {
     projStart: Date;
     totalDays: number;
     pxPerDay: number;
-    zoom: ZoomLevel;
+    zoom?: ZoomLevel;
+    calScale?: CalScale;
     lightMode: boolean;
     statusDate?: Date;
     points: any[];
@@ -505,12 +507,12 @@ interface SCurveCanvasProps {
     isHours?: boolean;
 }
 
-function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, statusDate, points, statusDateMs, maxValue, isHours }: SCurveCanvasProps) {
+function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, calScale, lightMode, statusDate, points, statusDateMs, maxValue, isHours }: SCurveCanvasProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const yAxisCanvasRef = useRef<HTMLCanvasElement>(null);
     const PX = pxPerDay;
-    const HDR_H = 36; // timeline axis height
+    const HDR_H = calScale === 'week-day' ? 50 : 36; // timeline axis height
     const LEGEND_H = 24;
     const PADDING_T = 10; // padding top for chart area
     const PADDING_B = 5;  // padding bottom for chart area
@@ -681,40 +683,125 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
             topBg: '#0a0f1a', topBorder: '#1f2937', topText: '#94a3b8',
             botBg: '#0f172a', botBorder: '#1e293b', botText: '#64748b', weekend: '#1a1040',
         };
+        const cs = calScale || zoom;
+        const MESES_H = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
-        // Month headers
-        cur = new Date(projStart);
-        while (cur < end) {
-            const x = dayDiff(projStart, cur) * PX;
-            const nm = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
-            const w = Math.min(dayDiff(cur, nm) * PX, width - x);
-            ctx.fillStyle = colors.topBg; ctx.fillRect(x, axisTop, w, 17);
-            ctx.strokeStyle = colors.topBorder; ctx.strokeRect(x, axisTop, w, 17);
-            ctx.fillStyle = colors.topText; ctx.font = 'bold 10px Segoe UI';
-            const lbl = cur.toLocaleDateString('es-CL', { month: 'short', year: '2-digit' });
-            if (w > 24) ctx.fillText(lbl, x + 4, axisTop + 12);
-            cur = nm;
+        // Top header row (Month, Quarter, Year, or Week)
+        if (cs === 'year-month' || cs === 'year-quarter') {
+            for (let yr = projStart.getFullYear(); yr <= end.getFullYear(); yr++) {
+                const yS = new Date(yr, 0, 1), yE = new Date(yr + 1, 0, 1);
+                const ds = yS < projStart ? projStart : yS, de = yE > end ? end : yE;
+                const x = dayDiff(projStart, ds) * PX, w = dayDiff(ds, de) * PX;
+                ctx.fillStyle = colors.topBg; ctx.fillRect(x, axisTop, w, 17);
+                ctx.strokeStyle = colors.topBorder; ctx.strokeRect(x, axisTop, w, 17);
+                ctx.fillStyle = colors.topText; ctx.font = 'bold 10px Segoe UI';
+                if (w > 20) ctx.fillText(String(yr), x + 4, axisTop + 12);
+            }
+        } else if (cs === 'quarter-month') {
+            for (let yr = projStart.getFullYear(); yr <= end.getFullYear(); yr++) {
+                for (let q = 0; q < 4; q++) {
+                    const qS = new Date(yr, q * 3, 1), qE = new Date(yr, q * 3 + 3, 1);
+                    if (qE <= projStart || qS >= end) continue;
+                    const ds = qS < projStart ? projStart : qS, de = qE > end ? end : qE;
+                    const x = dayDiff(projStart, ds) * PX, w = dayDiff(ds, de) * PX;
+                    ctx.fillStyle = colors.topBg; ctx.fillRect(x, axisTop, w, 17);
+                    ctx.strokeStyle = colors.topBorder; ctx.strokeRect(x, axisTop, w, 17);
+                    ctx.fillStyle = colors.topText; ctx.font = 'bold 10px Segoe UI';
+                    if (w > 20) ctx.fillText(`Q${q + 1} ${yr}`, x + 4, axisTop + 12);
+                }
+            }
+        } else if (cs === 'week-day') {
+            let curW = new Date(projStart);
+            const dow = curW.getDay(); curW.setDate(curW.getDate() - (dow === 0 ? 6 : dow - 1));
+            while (curW < end) {
+                const wEnd = new Date(curW); wEnd.setDate(wEnd.getDate() + 7);
+                const ds = curW < projStart ? projStart : curW;
+                const x = dayDiff(projStart, ds) * PX, w = dayDiff(ds, wEnd > end ? end : wEnd) * PX;
+                ctx.fillStyle = colors.topBg; ctx.fillRect(x, axisTop, w, 17);
+                ctx.strokeStyle = colors.topBorder; ctx.strokeRect(x, axisTop, w, 17);
+                ctx.fillStyle = colors.topText; ctx.font = 'bold 10px Segoe UI';
+                const lbl = String(ds.getDate()).padStart(2, '0') + '-' + MESES_H[ds.getMonth()];
+                if (w > 24) ctx.fillText(lbl, x + 4, axisTop + 12);
+                curW.setDate(curW.getDate() + 7);
+            }
+        } else {
+            let curM = new Date(projStart.getFullYear(), projStart.getMonth(), 1);
+            while (curM < end) {
+                const nm = new Date(curM.getFullYear(), curM.getMonth() + 1, 1);
+                const ds = curM < projStart ? projStart : curM;
+                const x = dayDiff(projStart, ds) * PX, w = Math.min(dayDiff(ds, nm) * PX, width - x);
+                ctx.fillStyle = colors.topBg; ctx.fillRect(x, axisTop, w, 17);
+                ctx.strokeStyle = colors.topBorder; ctx.strokeRect(x, axisTop, w, 17);
+                ctx.fillStyle = colors.topText; ctx.font = 'bold 10px Segoe UI';
+                const lbl = curM.toLocaleDateString('es-CL', { month: 'short', year: '2-digit' });
+                if (w > 24) ctx.fillText(lbl, x + 4, axisTop + 12);
+                curM = nm;
+            }
         }
 
-        // Sub-headers
-        cur = new Date(projStart);
-        while (cur < end) {
-            const x = dayDiff(projStart, cur) * PX;
-            if (zoom === 'month') {
+        // Sub-headers (Bottom header)
+        if (cs === 'year-month' || cs === 'quarter-month') {
+            let cur = new Date(projStart);
+            while (cur < end) {
+                const x = dayDiff(projStart, cur) * PX;
                 const nm = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
-                const w = dayDiff(cur, nm) * PX;
+                const w = Math.min(dayDiff(cur, nm) * PX, width - x);
                 ctx.fillStyle = colors.botBg; ctx.fillRect(x, axisTop + 17, w, 19);
                 ctx.strokeStyle = colors.botBorder; ctx.beginPath(); ctx.moveTo(x, axisTop + 17); ctx.lineTo(x, axisTop + HDR_H); ctx.stroke();
+                ctx.fillStyle = colors.botText; ctx.font = '9px Segoe UI';
+                if (w > 20) ctx.fillText(MESES_H[cur.getMonth()], x + 4, axisTop + 30);
                 cur = nm;
-            } else if (zoom === 'week') {
+            }
+        } else if (cs === 'year-quarter') {
+            let cur = new Date(projStart);
+            while (cur < end) {
+                const x = dayDiff(projStart, cur) * PX;
+                const nq = new Date(cur.getFullYear(), cur.getMonth() + 3, 1);
+                const w = Math.min(dayDiff(cur, nq) * PX, width - x);
+                ctx.fillStyle = colors.botBg; ctx.fillRect(x, axisTop + 17, w, 19);
+                ctx.strokeStyle = colors.botBorder; ctx.beginPath(); ctx.moveTo(x, axisTop + 17); ctx.lineTo(x, axisTop + HDR_H); ctx.stroke();
+                const q = Math.floor(cur.getMonth() / 3) + 1;
+                ctx.fillStyle = colors.botText; ctx.font = '9px Segoe UI';
+                if (w > 20) ctx.fillText(`Q${q}`, x + 4, axisTop + 30);
+                cur = nq;
+            }
+        } else if (cs === 'month-week') {
+            // Week sub-ticks – align to Monday
+            let cur = new Date(projStart);
+            const dow = cur.getDay(); cur.setDate(cur.getDate() - (dow === 0 ? 6 : dow - 1));
+            while (cur < end) {
+                const x = dayDiff(projStart, cur) * PX;
                 const w = 7 * PX;
                 ctx.fillStyle = colors.botBg; ctx.fillRect(x, axisTop + 17, w, 19);
                 ctx.strokeStyle = colors.botBorder; ctx.beginPath(); ctx.moveTo(x, axisTop + 17); ctx.lineTo(x, axisTop + HDR_H); ctx.stroke();
-                const dd = 'S ' + String(cur.getDate()).padStart(2, '0') + '/' + String(cur.getMonth() + 1).padStart(2, '0');
+                const dd = String(cur.getDate()).padStart(2, '0') + '-' + MESES_H[cur.getMonth()];
                 ctx.fillStyle = colors.botText; ctx.font = '9px Segoe UI';
-                if (PX * 7 > 40) ctx.fillText(dd, x + 2, axisTop + 30);
+                if (PX * 7 > 20) ctx.fillText(dd, x + 2, axisTop + 30);
                 cur.setDate(cur.getDate() + 7);
-            } else {
+            }
+        } else if (cs === 'week-day') {
+            let cur = new Date(projStart);
+            while (cur < end) {
+                const x = dayDiff(projStart, cur) * PX;
+                const isSun = cur.getDay() === 0, isSat = cur.getDay() === 6;
+                const wkndFill = isSun || isSat ? colors.weekend : colors.botBg;
+                const wkndText = isSun || isSat ? (lightMode ? '#94a3b8' : '#374151') : colors.botText;
+                ctx.fillStyle = wkndFill; ctx.fillRect(x, axisTop + 17, PX, 16);
+                ctx.fillStyle = wkndFill; ctx.fillRect(x, axisTop + 33, PX, 17);
+                ctx.strokeStyle = colors.botBorder; ctx.beginPath(); ctx.moveTo(x, axisTop + 17); ctx.lineTo(x, axisTop + HDR_H); ctx.stroke();
+                ctx.fillStyle = wkndText; ctx.font = '9px Segoe UI';
+                ctx.textAlign = 'center';
+                if (PX >= 14) ctx.fillText(String(cur.getDate()), x + PX / 2, axisTop + 29);
+                const days = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
+                if (PX >= 10) ctx.fillText(days[cur.getDay()], x + PX / 2, axisTop + 46);
+                ctx.textAlign = 'left';
+                cur.setDate(cur.getDate() + 1);
+            }
+        } else {
+            // Default fallback (day)
+            let cur = new Date(projStart);
+            while (cur < end) {
+                const x = dayDiff(projStart, cur) * PX;
                 const isSun = cur.getDay() === 0, isSat = cur.getDay() === 6;
                 ctx.fillStyle = isSun || isSat ? colors.weekend : colors.botBg; ctx.fillRect(x, axisTop + 17, PX, 19);
                 ctx.strokeStyle = colors.botBorder; ctx.beginPath(); ctx.moveTo(x, axisTop + 17); ctx.lineTo(x, axisTop + HDR_H); ctx.stroke();
@@ -736,7 +823,7 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
                 ctx.fillStyle = '#06b6d4'; ctx.fillRect(sdx, axisTop, 2, HDR_H);
             }
         }
-    }, [width, projStart, totalDays, PX, zoom, lightMode, statusDate, points, statusDateMs]);
+    }, [width, projStart, totalDays, PX, zoom, lightMode, statusDate, points, statusDateMs, calScale, HDR_H, maxValue, isHours]);
 
     const [tooltip, setTooltip] = useState<{ visibleX: number; visibleY: number; date: string; planned: string; actual: string } | null>(null);
 
