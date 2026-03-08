@@ -270,8 +270,25 @@ export default function GanttTimeline() {
                     if (w > 20) hCtx.fillText(`Q${q + 1} ${yr}`, x + 4, 12);
                 }
             }
+        } else if (cs === 'week-day') {
+            // Top row: week spans (aligned to Monday)
+            let cur = new Date(projStart);
+            const dow = cur.getDay(); cur.setDate(cur.getDate() - (dow === 0 ? 6 : dow - 1));
+            while (cur < endD) {
+                const wEnd = new Date(cur); wEnd.setDate(wEnd.getDate() + 7);
+                const ds = cur < projStart ? projStart : cur;
+                const de = wEnd > endD ? endD : wEnd;
+                const x = dayDiff(projStart, ds) * PX;
+                const w = dayDiff(ds, de) * PX;
+                hCtx.fillStyle = t.hdrTopBg; hCtx.fillRect(x, 0, w, 17);
+                hCtx.strokeStyle = t.hdrTopBorder; hCtx.strokeRect(x, 0, w, 17);
+                hCtx.fillStyle = t.hdrTopText; hCtx.font = 'bold 10px Segoe UI';
+                const lbl = 'S ' + String(cur.getDate()).padStart(2, '0') + '/' + String(cur.getMonth() + 1).padStart(2, '0');
+                if (w > 24) hCtx.fillText(lbl, x + 4, 12);
+                cur.setDate(cur.getDate() + 7);
+            }
         } else {
-            // Month spans (for month-week, week-day)
+            // Month spans (for month-week)
             let cur = new Date(projStart.getFullYear(), projStart.getMonth(), 1);
             while (cur < endD) {
                 const nm = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
