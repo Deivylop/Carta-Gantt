@@ -849,7 +849,8 @@ function TabPasos({ a, dispatch, selIdx }: { a: Activity, dispatch: any, selIdx:
         const newActivityPct = Math.round(earned);
         
         if (!forceBypassAlert && newActivityPct > 0 && (a.pct || 0) === 0) {
-            const statusDate = state.statusDate || state._cpmStatusDate;
+            const rawStatusDate = state.statusDate || state._cpmStatusDate;
+            const statusDate = rawStatusDate ? new Date(rawStatusDate) : null;
             const ddAlert = validateProgressDataDate(a, newActivityPct, statusDate, fmtDate);
             if (ddAlert) {
                 pendingStepsRef.current = currentSteps;
