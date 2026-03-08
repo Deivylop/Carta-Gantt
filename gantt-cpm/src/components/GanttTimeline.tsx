@@ -382,7 +382,8 @@ export default function GanttTimeline() {
         });
 
         // Grid lines
-        cur = new Date(projStart);
+        let cur = new Date(projStart);
+        const end = endD;
         while (cur < end) {
             const x = dayDiff(projStart, cur) * PX; const isM = cur.getDate() === 1;
             ctx.strokeStyle = isM ? t.gridMonth : t.gridLine; ctx.lineWidth = isM ? 1 : 0.4;
@@ -725,7 +726,7 @@ export default function GanttTimeline() {
 
         // Draw drag overlay if active
         if (dragPreviewRef.current) drawDragOverlay();
-    }, [visRows, zoom, totalDays, projStart, statusDate, selIdx, selIndices, lightMode, activities, W, H, t, PX, defCal, drawDragOverlay, state.activeBaselineIdx, showTodayLine, showStatusLine, showDependencies, restrMap, state.barColors]);
+    }, [visRows, zoom, calScale, totalDays, projStart, statusDate, selIdx, selIndices, lightMode, activities, W, H, t, PX, defCal, drawDragOverlay, state.activeBaselineIdx, showTodayLine, showStatusLine, showDependencies, restrMap, state.barColors]);
 
     // ─── Spotlight drag handler ───────────────────────────────────
     const handleSpotlightDragStart = useCallback((e: React.MouseEvent) => {
