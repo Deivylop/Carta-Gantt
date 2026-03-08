@@ -207,10 +207,29 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
             return 0;
         };
 
+        const cs = state.calScale || state.zoom;
         const datesToEvaluate = new Set<number>();
         while (current <= end) {
             datesToEvaluate.add(current.getTime());
-            current.setDate(current.getDate() + 7);
+            if (cs === 'week-day') {
+                current.setDate(current.getDate() + 1);
+            } else if (cs === 'month-week') {
+                // Ensure alignment with Monday
+                const dow = current.getDay();
+                if (datesToEvaluate.size === 1 && dow !== 1) {
+                    current.setDate(current.getDate() + (dow === 0 ? 1 : 8 - dow));
+                } else {
+                    current.setDate(current.getDate() + 7);
+                }
+            } else if (cs === 'year-month' || cs === 'quarter-month') {
+                current.setMonth(current.getMonth() + 1);
+                current.setDate(1);
+            } else if (cs === 'year-quarter') {
+                current.setMonth(current.getMonth() + 3);
+                current.setDate(1);
+            } else {
+                current.setDate(current.getDate() + 7);
+            }
         }
 
         history.forEach(h => {
@@ -637,6 +656,63 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, calScale, l
             ctx.fillStyle = '#f59e0b';
             ctx.fillRect(todayX, chartTop, 2, chartH);
         }
+
+        // ─── Histogram (Progreso por periodo) ──────────
+        const getValAtMs = (msTarget: number, key: 'planned' | 'actual' = 'planned') => {
+            const exact = points.find(p => p.dateMs === msTarget);
+            if (exact) return exact[key] ?? 0;
+            const pastPoints = points.filter(p => p.dateMs <= msTarget);
+            if (pastPoints.length === 0) return 0;
+            return pastPoints[pastPoints.length - 1][key] ?? 0;
+        };
+
+        const histPeriods = [];
+        const cs = state.calScale || state.zoom;
+        let iter = new Date(projStart);
+        while (iter <= end) {
+            const startMs = iter.getTime();
+            if (cs === 'week-day') {
+                iter.setDate(iter.getDate() + 1);
+            } else if (cs === 'month-week') {
+                const dow = iter.getDay();
+                if (histPeriods.length === 0 && dow !== 1) {
+                    iter.setDate(iter.getDate() + (dow === 0 ? 1 : 8 - dow));
+                } else {
+                    iter.setDate(iter.getDate() + 7);
+                }
+            } else if (cs === 'year-month' || cs === 'quarter-month') {
+                iter.setMonth(iter.getMonth() + 1);
+                iter.setDate(1);
+            } else if (cs === 'year-quarter') {
+                iter.setMonth(iter.getMonth() + 3);
+                iter.setDate(1);
+            } else {
+                iter.setDate(iter.getDate() + 7);
+            }
+            const endMs = iter.getTime();
+            histPeriods.push({ startMs, endMs });
+        }
+
+        // Draw histogram bars
+        const maxValInHist = Math.max(...histPeriods.map(p => getValAtMs(p.endMs, 'planned') - getValAtMs(p.startMs, 'planned')), 1);
+        const yMaxHist = maxValInHist * 1.5; // Scale for histogram to not touch top
+        const histToY = (val: number) => chartBot - (val / yMaxHist) * (chartH / 2); // occupy bottom half
+
+        histPeriods.forEach(p => {
+            const perProg = getValAtMs(p.endMs, 'planned') - getValAtMs(p.startMs, 'planned');
+            if (perProg > 0) {
+                const xStart = msToX(p.startMs);
+                const xEnd = msToX(p.endMs);
+                const barW = Math.max(1, xEnd - xStart - 1); // 1px padding
+                const barH = (perProg / yMaxHist) * (chartH / 2);
+                
+                // Draw bar
+                ctx.fillStyle = 'rgba(100, 149, 237, 0.4)'; // CornflowerBlue with transparency
+                ctx.fillRect(xStart + 0.5, chartBot - barH, barW, barH);
+                ctx.strokeStyle = '#4169e1';
+                ctx.strokeRect(xStart + 0.5, chartBot - barH, barW, barH);
+            }
+        });
 
         // ─── Value → y pixel ───────────────────────────────
         const valToY = (val: number) => chartBot - (val / yMax) * chartH;
