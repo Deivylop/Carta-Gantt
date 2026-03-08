@@ -558,10 +558,10 @@ export default function TaskUsageGrid() {
                     />
                 </div>
                 {/* Scrollable time header */}
-                <div id="usage-hdr-scroll" style={{ flex: 1, overflow: 'hidden' }}
-                    onContextMenu={(e) => { e.preventDefault(); setTimeCtxMenu({ x: e.clientX, y: e.clientY }); }}>
+                <div id="usage-hdr-scroll" style={{ flex: 1, overflow: 'hidden' }}>
                     <canvas ref={hdrRef}
                         style={{ display: 'block', cursor: 'ew-resize' }}
+                        onContextMenu={(e) => { e.preventDefault(); setTimeCtxMenu({ x: e.clientX, y: e.clientY }); }}
                         onMouseDown={handleHeaderMouseDown}
                         onMouseMove={handleHeaderMouseMove}
                         onMouseUp={handleHeaderMouseUpOrLeave}
