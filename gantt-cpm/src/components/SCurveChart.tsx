@@ -657,7 +657,7 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
 
         // â”€â”€â”€ Background â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         ctx.fillStyle = bgColor;
-        ctx.fillRect(0, 0, width, totalH - HDR_H);
+        ctx.fillRect(0, 0, width, totalH); // full canvas — axis area painted on top
 
         // â”€â”€â”€ Legend (dynamic based on chart type) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         ctx.font = '11px Segoe UI'; ctx.textBaseline = 'middle';
@@ -667,13 +667,13 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
             // Planned bar
             ctx.fillStyle = lightMode ? 'rgba(59,130,246,0.55)' : 'rgba(96,165,250,0.55)';
             ctx.fillRect(lx, lgY - 5, 10, 10); lx += 13;
-            ctx.fillStyle = textColor; ctx.fillText(isHours ? 'HH Prev. (perÃ­odo)' : 'Av.Prog. (perÃ­odo)', lx, lgY);
-            lx += ctx.measureText(isHours ? 'HH Prev. (perÃ­odo)' : 'Av.Prog. (perÃ­odo)').width + 10;
+            ctx.fillStyle = textColor; ctx.fillText(isHours ? 'HH Prev. (período)' : 'Av.Prog. (período)', lx, lgY);
+            lx += ctx.measureText(isHours ? 'HH Prev. (período)' : 'Av.Prog. (período)').width + 10;
             // Actual bar
             ctx.fillStyle = lightMode ? 'rgba(16,185,129,0.65)' : 'rgba(52,211,153,0.65)';
             ctx.fillRect(lx, lgY - 5, 10, 10); lx += 13;
-            ctx.fillStyle = textColor; ctx.fillText(isHours ? 'HH Real (perÃ­odo)' : 'Av.Real (perÃ­odo)', lx, lgY);
-            lx += ctx.measureText(isHours ? 'HH Real (perÃ­odo)' : 'Av.Real (perÃ­odo)').width + 14;
+            ctx.fillStyle = textColor; ctx.fillText(isHours ? 'HH Real (período)' : 'Av.Real (período)', lx, lgY);
+            lx += ctx.measureText(isHours ? 'HH Real (período)' : 'Av.Real (período)').width + 14;
         }
         if (showCurveLines) {
             ctx.fillStyle = plannedColor;
@@ -897,7 +897,7 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
                 ctx.fillStyle = '#06b6d4'; ctx.fillRect(sdx, axisTop, 2, HDR_H);
             }
         }
-    }, [width, projStart, totalDays, PX, zoom, lightMode, statusDate, points, statusDateMs, showBars, showCurveLines, barData, intervals, topIntervals, calScale, usageChartType]);
+    }, [width, projStart, totalDays, PX, zoom, lightMode, statusDate, points, statusDateMs, isHours, maxValue, showBars, showCurveLines, barData, intervals, topIntervals, calScale, usageChartType]);
 
     const [tooltip, setTooltip] = useState<{ visibleX: number; visibleY: number; date: string; planned: string; actual: string } | null>(null);
 
