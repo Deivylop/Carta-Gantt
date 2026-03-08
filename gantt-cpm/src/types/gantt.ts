@@ -41,6 +41,9 @@ export type ZoomLevel = 'day' | 'week' | 'month';
 /** Calendar header scale: what tiers appear in the two header rows */
 export type CalScale = 'year-month' | 'month-week' | 'week-day' | 'year-quarter' | 'quarter-month';
 
+/** Chart type for usage histogram panel */
+export type UsageChartType = 'none' | 'curve' | 'histogram' | 'both';
+
 // ─── Predecessor Link ───────────────────────────────────────────
 export interface PredecessorLink {
     id: string;       // activity local_id of the predecessor

@@ -3,8 +3,8 @@ import { useGantt } from '../store/GanttContext';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine
 } from 'recharts';
-import { isoDate, getExactElapsedRatio, getExactWorkDays, dayDiff, addDays } from '../utils/cpm';
-import type { ZoomLevel } from '../types/gantt';
+import { isoDate, getExactElapsedRatio, getExactWorkDays, dayDiff, addDays, getUsageDailyValues } from '../utils/cpm';
+import type { ZoomLevel, CalScale, UsageChartType } from '../types/gantt';
 
 interface SCurveChartProps {
     hideHeader?: boolean;
@@ -933,6 +933,384 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
                     <div style={{ color: '#10b981' }}>Real: <strong>{tooltip.actual}</strong></div>
                 </div>
             )}
+        </div>
+    );
+}
+
+// ─── Usage Histogram / Curve Panel ───────────────────────────────────────────
+// Renders histogram bars (per calScale interval) and/or cumulative S-curves
+// for the TaskUsageGrid and ResourceUsageGrid views.
+interface UsageHistogramProps {
+    width: number;
+    gridBodyId: string;   // e.g. 'gr-body' | 'res-gr-body'
+    gridHdrId: string;    // e.g. 'usage-hdr-scroll' | 'res-usage-hdr-scroll'
+}
+
+export function UsageHistogramCanvas({ width, gridBodyId, gridHdrId }: UsageHistogramProps) {
+    const { state } = useGantt();
+    const { activities, totalDays, timelineStart: projStart, lightMode, pxPerDay,
+        defCal, statusDate, activeBaselineIdx, progressHistory, calScale, usageChartType } = state;
+
+    const PX = pxPerDay;
+    const containerRef = useRef<HTMLDivElement>(null);
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const yAxisRef = useRef<HTMLCanvasElement>(null);
+
+    // ── Build intervals from calScale (mirrors TaskUsageGrid.getIntervals) ──────
+    const intervals = useMemo(() => {
+        const result: { start: Date; end: Date; label: string; w: number }[] = [];
+        const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+        const endD = addDays(projStart, totalDays);
+        const cs: CalScale = calScale;
+        if (cs === 'week-day') {
+            let cur = new Date(projStart);
+            while (cur < endD) {
+                result.push({ start: new Date(cur), end: addDays(cur, 1), label: String(cur.getDate()), w: PX });
+                cur.setDate(cur.getDate() + 1);
+            }
+        } else if (cs === 'month-week') {
+            let cur = new Date(projStart);
+            const dow = cur.getDay(); cur.setDate(cur.getDate() - (dow === 0 ? 6 : dow - 1));
+            while (cur < endD) {
+                const next = addDays(cur, 7);
+                const ds = cur < projStart ? new Date(projStart) : new Date(cur);
+                const lbl = String(ds.getDate()).padStart(2,'0') + '-' + MESES[ds.getMonth()];
+                result.push({ start: ds, end: next > endD ? endD : next, label: lbl, w: 7 * PX });
+                cur = next;
+            }
+        } else if (cs === 'year-quarter') {
+            let cur = new Date(projStart.getFullYear(), Math.floor(projStart.getMonth() / 3) * 3, 1);
+            while (cur < endD) {
+                const next = new Date(cur.getFullYear(), cur.getMonth() + 3, 1);
+                const ds = cur < projStart ? new Date(projStart) : new Date(cur);
+                const de = next > endD ? endD : next;
+                result.push({ start: ds, end: de, label: `Q${Math.floor(cur.getMonth()/3)+1}`, w: dayDiff(ds, de) * PX });
+                cur = next;
+            }
+        } else {
+            // year-month / quarter-month → monthly columns
+            let cur = new Date(projStart.getFullYear(), projStart.getMonth(), 1);
+            while (cur < endD) {
+                const next = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+                const ds = cur < projStart ? new Date(projStart) : new Date(cur);
+                const de = next > endD ? endD : next;
+                result.push({ start: ds, end: de, label: MESES[cur.getMonth()], w: dayDiff(ds, de) * PX });
+                cur = next;
+            }
+        }
+        return result;
+    }, [projStart, totalDays, calScale, PX]);
+
+    // ── Aggregate daily values per interval (all leaf tasks) ─────────────────
+    const tasks = useMemo(() =>
+        activities.filter(a => !a._isProjRow && a.type === 'task'),
+        [activities]
+    );
+
+    const aggData = useMemo(() => {
+        // Build per-task daily maps once to avoid redundant computation
+        const maps = tasks.map(a => ({
+            prev: getUsageDailyValues(a, 'Trabajo previsto' as any, false, defCal, undefined, activeBaselineIdx, statusDate, progressHistory),
+            real: getUsageDailyValues(a, 'Trabajo real' as any,     false, defCal, undefined, activeBaselineIdx, statusDate, progressHistory),
+            rest: getUsageDailyValues(a, 'Trabajo restante' as any, false, defCal, undefined, activeBaselineIdx, statusDate, progressHistory),
+        }));
+        return intervals.map(inv => {
+            let previsto = 0, real_ = 0, restante = 0;
+            let cd = new Date(inv.start);
+            while (cd < inv.end) {
+                const t = cd.getTime();
+                maps.forEach(m => {
+                    previsto += m.prev.get(t) || 0;
+                    real_    += m.real.get(t) || 0;
+                    restante += m.rest.get(t) || 0;
+                });
+                cd.setDate(cd.getDate() + 1);
+            }
+            return { previsto, real: real_, restante };
+        });
+    }, [intervals, tasks, defCal, activeBaselineIdx, statusDate, progressHistory]);
+
+    // ── Canvas drawing ────────────────────────────────────────────────────────
+    const draw = useCallback((containerH: number) => {
+        const c = canvasRef.current; if (!c) return;
+        const LEGEND_H = 22;
+        const PADDING_T = 6;
+        const PADDING_B = 4;
+        const HDR_H_C = 36;
+        const N_TICKS = 4;
+        const totalH = Math.max(120, containerH);
+        const chartH = totalH - HDR_H_C - LEGEND_H - PADDING_T - PADDING_B;
+
+        c.width = width; c.height = totalH;
+        c.style.width = width + 'px'; c.style.height = totalH + 'px';
+        const ctx = c.getContext('2d')!;
+        ctx.clearRect(0, 0, width, totalH);
+
+        const bgColor   = lightMode ? '#ffffff' : '#0f172a';
+        const gridColor = lightMode ? '#e2e8f0' : '#1e293b';
+        const textColor = lightMode ? '#334155' : '#94a3b8';
+
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, width, totalH - HDR_H_C);
+
+        const chartTop = LEGEND_H + PADDING_T;
+        const chartBot = chartTop + chartH;
+
+        const showBars   = (usageChartType as UsageChartType) === 'histogram' || (usageChartType as UsageChartType) === 'both';
+        const showCurves = (usageChartType as UsageChartType) === 'curve'     || (usageChartType as UsageChartType) === 'both';
+
+        // Y scale
+        const maxBarVal = Math.max(1, ...aggData.map(d => Math.max(d.previsto, d.real + d.restante)));
+        const cumPrevTotal = aggData.reduce((s, d) => s + d.previsto, 0);
+        const cumRealTotal = aggData.reduce((s, d) => s + d.real, 0);
+        const yMax = (showCurves
+            ? Math.max(maxBarVal, cumPrevTotal, cumRealTotal)
+            : maxBarVal) * 1.08 || 1;
+        const valToY = (v: number) => chartBot - (v / yMax) * chartH;
+
+        // Horizontal gridlines
+        for (let i = 0; i <= N_TICKS; i++) {
+            const y = chartBot - (i / N_TICKS) * chartH;
+            ctx.strokeStyle = gridColor; ctx.setLineDash([3,3]);
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        // Status date line
+        if (statusDate) {
+            const sdX = (dayDiff(projStart, statusDate) + 1) * PX;
+            if (sdX >= 0 && sdX <= width) { ctx.fillStyle = '#06b6d4'; ctx.fillRect(sdX, chartTop, 2, chartH); }
+        }
+
+        // ── Histogram bars ────────────────────────────────────────────────────
+        if (showBars) {
+            intervals.forEach((inv, i) => {
+                const x = dayDiff(projStart, inv.start) * PX;
+                const iw = inv.w;
+                const d = aggData[i] || { previsto: 0, real: 0, restante: 0 };
+                const gap = Math.max(1, iw * 0.06);
+                const barW = Math.max(1, (iw - gap * 4) / 3);
+
+                // Previsto (blue)
+                if (d.previsto > 0) {
+                    const bh = (d.previsto / yMax) * chartH;
+                    ctx.fillStyle = lightMode ? 'rgba(59,130,246,0.65)' : 'rgba(96,165,250,0.65)';
+                    ctx.fillRect(x + gap, chartBot - bh, barW, bh);
+                }
+                // Real (green)
+                if (d.real > 0) {
+                    const bh = (d.real / yMax) * chartH;
+                    ctx.fillStyle = lightMode ? 'rgba(16,185,129,0.80)' : 'rgba(52,211,153,0.80)';
+                    ctx.fillRect(x + gap * 2 + barW, chartBot - bh, barW, bh);
+                }
+                // Restante (amber)
+                if (d.restante > 0) {
+                    const bh = (d.restante / yMax) * chartH;
+                    ctx.fillStyle = lightMode ? 'rgba(245,158,11,0.65)' : 'rgba(251,191,36,0.65)';
+                    ctx.fillRect(x + gap * 3 + barW * 2, chartBot - bh, barW, bh);
+                }
+            });
+        }
+
+        // ── Cumulative curves ─────────────────────────────────────────────────
+        if (showCurves) {
+            let cumP = 0, cumR = 0;
+            const prevPts: { x: number; y: number }[] = [];
+            const realPts: { x: number; y: number }[] = [];
+            intervals.forEach((inv, i) => {
+                const xRight = dayDiff(projStart, inv.end) * PX;
+                const d = aggData[i] || { previsto: 0, real: 0, restante: 0 };
+                cumP += d.previsto;
+                cumR += d.real;
+                prevPts.push({ x: xRight, y: valToY(cumP) });
+                realPts.push({ x: xRight, y: valToY(cumR) });
+            });
+            if (prevPts.length > 1) {
+                ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 2; ctx.setLineDash([]);
+                drawSmoothCurve(ctx, prevPts);
+                ctx.fillStyle = '#3b82f6';
+                prevPts.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 2.5, 0, Math.PI*2); ctx.fill(); });
+                ctx.lineWidth = 1;
+            }
+            const realTrimmed = realPts.filter((_, i) => {
+                let sum = 0; for (let j = 0; j <= i; j++) sum += aggData[j]?.real || 0; return sum > 0;
+            });
+            if (realTrimmed.length > 1) {
+                ctx.strokeStyle = '#10b981'; ctx.lineWidth = 2; ctx.setLineDash([]);
+                drawSmoothCurve(ctx, realTrimmed);
+                ctx.fillStyle = '#10b981';
+                realTrimmed.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 2.5, 0, Math.PI*2); ctx.fill(); });
+                ctx.lineWidth = 1;
+            }
+        }
+
+        // ── Y-Axis overlay ────────────────────────────────────────────────────
+        const yc = yAxisRef.current;
+        if (yc) {
+            const yw = 50;
+            yc.width = yw; yc.height = totalH;
+            yc.style.width = yw + 'px'; yc.style.height = totalH + 'px';
+            const yCtx = yc.getContext('2d')!;
+            yCtx.clearRect(0, 0, yw, totalH);
+            const rgb = lightMode ? '255,255,255' : '15,23,42';
+            yCtx.fillStyle = `rgb(${rgb})`; yCtx.fillRect(0, 0, yw - 8, totalH);
+            const grad = yCtx.createLinearGradient(yw-8, 0, yw, 0);
+            grad.addColorStop(0, `rgba(${rgb},1)`); grad.addColorStop(1, `rgba(${rgb},0)`);
+            yCtx.fillStyle = grad; yCtx.fillRect(yw-8, 0, 8, totalH);
+            yCtx.fillStyle = textColor; yCtx.font = '9px Segoe UI'; yCtx.textAlign = 'left'; yCtx.textBaseline = 'bottom';
+            for (let i = 0; i <= N_TICKS; i++) {
+                const v = (yMax / N_TICKS) * i;
+                const y = chartBot - (v / yMax) * chartH;
+                const lbl = v >= 10000 ? (v/1000).toFixed(0)+'k' : v >= 1000 ? (v/1000).toFixed(1)+'k' : v >= 100 ? Math.round(v)+'h' : v.toFixed(v < 10 ? 1 : 0)+'h';
+                yCtx.fillText(lbl, 2, y - 2);
+            }
+            yCtx.textBaseline = 'alphabetic';
+        }
+
+        // ── Legend ────────────────────────────────────────────────────────────
+        ctx.font = '10px Segoe UI'; ctx.textBaseline = 'middle';
+        let lx = 8; const ly = 11;
+        if (showBars) {
+            ctx.fillStyle = lightMode ? 'rgba(59,130,246,0.65)' : 'rgba(96,165,250,0.65)';
+            ctx.fillRect(lx, ly-5, 10, 10); lx += 13;
+            ctx.fillStyle = textColor; ctx.fillText('Previsto', lx, ly); lx += ctx.measureText('Previsto').width + 8;
+            ctx.fillStyle = lightMode ? 'rgba(16,185,129,0.80)' : 'rgba(52,211,153,0.80)';
+            ctx.fillRect(lx, ly-5, 10, 10); lx += 13;
+            ctx.fillStyle = textColor; ctx.fillText('Real', lx, ly); lx += ctx.measureText('Real').width + 8;
+            ctx.fillStyle = lightMode ? 'rgba(245,158,11,0.65)' : 'rgba(251,191,36,0.65)';
+            ctx.fillRect(lx, ly-5, 10, 10); lx += 13;
+            ctx.fillStyle = textColor; ctx.fillText('Restante', lx, ly); lx += ctx.measureText('Restante').width + 14;
+        }
+        if (showCurves) {
+            ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx+14, ly); ctx.stroke(); lx += 17;
+            ctx.fillStyle = textColor; ctx.fillText('Curva Prev.', lx, ly); lx += ctx.measureText('Curva Prev.').width + 8;
+            ctx.strokeStyle = '#10b981'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx+14, ly); ctx.stroke(); lx += 17;
+            ctx.fillStyle = textColor; ctx.fillText('Curva Real', lx, ly);
+            ctx.lineWidth = 1;
+        }
+        ctx.textBaseline = 'alphabetic';
+
+        // ── Timeline header at the bottom ────────────────────────────────────
+        const axisTop = totalH - HDR_H_C;
+        const colors = lightMode ? {
+            topBg:'#e2e8f0', topBorder:'#cbd5e1', topText:'#334155',
+            botBg:'#f1f5f9', botBorder:'#e2e8f0', botText:'#334155',
+        } : {
+            topBg:'#0a0f1a', topBorder:'#1f2937', topText:'#94a3b8',
+            botBg:'#0f172a', botBorder:'#1e293b', botText:'#64748b',
+        };
+        const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+        const endD = addDays(projStart, totalDays);
+        const cs: CalScale = calScale;
+
+        // Top row
+        if (cs === 'year-month' || cs === 'year-quarter') {
+            for (let yr = projStart.getFullYear(); yr <= endD.getFullYear(); yr++) {
+                const ds = new Date(yr,0,1) < projStart ? projStart : new Date(yr,0,1);
+                const de = new Date(yr+1,0,1) > endD ? endD : new Date(yr+1,0,1);
+                const x = dayDiff(projStart, ds)*PX, w2 = dayDiff(ds,de)*PX;
+                ctx.fillStyle=colors.topBg; ctx.fillRect(x,axisTop,w2,17);
+                ctx.strokeStyle=colors.topBorder; ctx.strokeRect(x,axisTop,w2,17);
+                ctx.fillStyle=colors.topText; ctx.font='bold 10px Segoe UI';
+                if(w2>20) ctx.fillText(String(yr),x+4,axisTop+12);
+            }
+        } else if (cs === 'quarter-month') {
+            for (let yr = projStart.getFullYear(); yr <= endD.getFullYear(); yr++) {
+                for (let q=0;q<4;q++) {
+                    const qS=new Date(yr,q*3,1), qE=new Date(yr,q*3+3,1);
+                    if(qE<=projStart||qS>=endD) continue;
+                    const ds=qS<projStart?projStart:qS, de=qE>endD?endD:qE;
+                    const x=dayDiff(projStart,ds)*PX, w2=dayDiff(ds,de)*PX;
+                    ctx.fillStyle=colors.topBg; ctx.fillRect(x,axisTop,w2,17);
+                    ctx.strokeStyle=colors.topBorder; ctx.strokeRect(x,axisTop,w2,17);
+                    ctx.fillStyle=colors.topText; ctx.font='bold 10px Segoe UI';
+                    if(w2>20) ctx.fillText(`Q${q+1} ${yr}`,x+4,axisTop+12);
+                }
+            }
+        } else if (cs === 'week-day') {
+            let curW=new Date(projStart); const dow=curW.getDay(); curW.setDate(curW.getDate()-(dow===0?6:dow-1));
+            while(curW<endD){
+                const wEnd=new Date(curW); wEnd.setDate(wEnd.getDate()+7);
+                const ds=curW<projStart?projStart:curW;
+                const x=dayDiff(projStart,ds)*PX, w2=dayDiff(ds,wEnd>endD?endD:wEnd)*PX;
+                ctx.fillStyle=colors.topBg; ctx.fillRect(x,axisTop,w2,17);
+                ctx.strokeStyle=colors.topBorder; ctx.strokeRect(x,axisTop,w2,17);
+                ctx.fillStyle=colors.topText; ctx.font='bold 10px Segoe UI';
+                const lbl=String(ds.getDate()).padStart(2,'0')+'-'+MESES[ds.getMonth()];
+                if(w2>24) ctx.fillText(lbl,x+4,axisTop+12);
+                curW.setDate(curW.getDate()+7);
+            }
+        } else {
+            let curM=new Date(projStart.getFullYear(),projStart.getMonth(),1);
+            while(curM<endD){
+                const nm=new Date(curM.getFullYear(),curM.getMonth()+1,1);
+                const ds=curM<projStart?projStart:curM;
+                const x=dayDiff(projStart,ds)*PX, w2=Math.min(dayDiff(ds,nm)*PX,width-x);
+                ctx.fillStyle=colors.topBg; ctx.fillRect(x,axisTop,w2,17);
+                ctx.strokeStyle=colors.topBorder; ctx.strokeRect(x,axisTop,w2,17);
+                ctx.fillStyle=colors.topText; ctx.font='bold 10px Segoe UI';
+                if(w2>24) ctx.fillText(curM.toLocaleDateString('es-CL',{month:'short',year:'2-digit'}),x+4,axisTop+12);
+                curM=nm;
+            }
+        }
+        // Bottom row (intervals)
+        intervals.forEach(inv => {
+            const x=dayDiff(projStart,inv.start)*PX;
+            ctx.fillStyle=colors.botBg; ctx.fillRect(x,axisTop+17,inv.w,19);
+            ctx.strokeStyle=colors.botBorder;
+            ctx.beginPath(); ctx.moveTo(x,axisTop+17); ctx.lineTo(x,axisTop+36); ctx.stroke();
+            ctx.fillStyle=colors.botText; ctx.font='9px Segoe UI';
+            if(inv.w>20) ctx.fillText(inv.label,x+4,axisTop+30);
+        });
+        // Today + status line on axis
+        const todayX=dayDiff(projStart,new Date())*PX;
+        if(todayX>=0&&todayX<=width){ctx.fillStyle='#f59e0b';ctx.fillRect(todayX,axisTop,2,HDR_H_C);}
+        if(statusDate){const sdx=(dayDiff(projStart,statusDate)+1)*PX;if(sdx>=0&&sdx<=width){ctx.fillStyle='#06b6d4';ctx.fillRect(sdx,axisTop,2,HDR_H_C);}}
+
+    }, [width, projStart, totalDays, PX, lightMode, statusDate, aggData, intervals, calScale, usageChartType]);
+
+    useEffect(() => {
+        const el = containerRef.current; if (!el) return;
+        const ro = new ResizeObserver(() => draw(el.getBoundingClientRect().height));
+        ro.observe(el);
+        draw(el.getBoundingClientRect().height);
+        return () => ro.disconnect();
+    }, [draw]);
+
+    // Send scroll from this panel to the grid
+    useEffect(() => {
+        const wrapper = containerRef.current; if (!wrapper) return;
+        const handler = () => {
+            const body = document.getElementById(gridBodyId);
+            if (body) body.scrollLeft = wrapper.scrollLeft;
+            const hdr = document.getElementById(gridHdrId);
+            if (hdr) hdr.scrollLeft = wrapper.scrollLeft;
+        };
+        wrapper.addEventListener('scroll', handler);
+        return () => wrapper.removeEventListener('scroll', handler);
+    }, [gridBodyId, gridHdrId]);
+
+    // Receive scroll from grid body
+    useEffect(() => {
+        const body = document.getElementById(gridBodyId); if (!body) return;
+        const handler = () => {
+            const wrapper = containerRef.current;
+            if (wrapper) wrapper.scrollLeft = body.scrollLeft;
+        };
+        body.addEventListener('scroll', handler);
+        return () => body.removeEventListener('scroll', handler);
+    }, [gridBodyId]);
+
+    return (
+        <div style={{ flex: 1, minHeight: 0, position: 'relative', display: 'flex', flexDirection: 'column' }}>
+            <div ref={containerRef}
+                style={{ flex: 1, minHeight: 0, overflowX: 'auto', overflowY: 'hidden', position: 'relative' }}>
+                <canvas ref={canvasRef} style={{ display: 'block' }} />
+            </div>
+            <canvas ref={yAxisRef}
+                style={{ position: 'absolute', left: 0, top: 0, width: '50px', height: '100%', pointerEvents: 'none', zIndex: 5 }} />
         </div>
     );
 }
