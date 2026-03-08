@@ -149,7 +149,8 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
             let fallbackEarned = 0;
 
             const evalDate = new Date(date);
-            evalDate.setDate(evalDate.getDate() + 1);
+            // Removed +1 day offset so that the evaluation aligns exactly 
+            // with the X-axis points plotted (start-of-day), avoiding a 1-day leftward shift.
 
             tasks.forEach(t => {
                 const rawStart = t.blES || t.ES;
