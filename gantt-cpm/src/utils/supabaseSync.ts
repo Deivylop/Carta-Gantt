@@ -230,7 +230,7 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
                     blef: a.blEF ? a.blEF.toISOString() : null,
                     encargado: a.encargado || '',
                     duration_type: (a as any).durationType || null,
-                    txt1: a.txt1 || '', txt2: a.txt2 || '', txt3: a.txt3 || '',
+                    txt1: a.txt1 || '', txt2: a.txt2 || '', txt3: (a.steps && a.steps.length) ? '__STEPS__' + JSON.stringify(a.steps) : (a.txt3 || ''),
                     txt4: (a.actualStart || a.actualFinish || a.suspendDate || a.resumeDate) ? ('__AS__' + (a.actualStart || '') + '|' + (a.actualFinish || '') + '|' + (a.suspendDate || '') + '|' + (a.resumeDate || '')) : (a.txt4 || ''),
                     txt5: (a.baselines && a.baselines.some((b: any) => b))
                         ? '__BL__' + JSON.stringify(a.baselines.map((bl: any) => bl ? { d: bl.dur, s: bl.ES ? bl.ES.toISOString() : null, e: bl.EF ? bl.EF.toISOString() : null, c: bl.cal, t: bl.savedAt, n: bl.name || '', desc: bl.description || '', p: bl.pct || 0, w: bl.work || 0, wt: bl.weight, sd: bl.statusDate || '' } : null))
@@ -656,7 +656,15 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
         na.manual = !!a.manual;
         na.blDur = a.bldur != null ? parseFloat(a.bldur) : null;
         na.blES = normDate(a.bles); na.blEF = normDate(a.blef);
-        na.txt1 = a.txt1 || ''; na.txt2 = a.txt2 || ''; na.txt3 = a.txt3 || '';
+        na.txt1 = a.txt1 || ''; na.txt2 = a.txt2 || '';
+          const rawTxt3 = a.txt3 || '';
+          if (rawTxt3.startsWith('__STEPS__')) {
+              try { na.steps = JSON.parse(rawTxt3.slice(9)); } catch { na.steps = []; }
+              na.txt3 = '';
+          } else {
+              na.txt3 = rawTxt3;
+              na.steps = [];
+          }
         // Restore actualStart and actualFinish from txt4 if encoded
         const rawTxt4 = a.txt4 || '';
         if (rawTxt4.startsWith('__AS__')) {

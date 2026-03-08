@@ -222,7 +222,7 @@ export type Action =
     | { type: 'SET_ACTIVITIES'; activities: Activity[] }
     | { type: 'ADD_ACTIVITY'; activity: Activity; atIndex?: number }
     | { type: 'DELETE_ACTIVITY'; index: number }
-    | { type: 'UPDATE_ACTIVITY'; index: number; updates: Partial<Activity> }
+    | { type: 'UPDATE_ACTIVITY'; index: number; updates: Partial<Activity>; _skipAutoDate?: boolean }
     | { type: 'COMMIT_EDIT'; index: number; key: string; value: string }
     | { type: 'SET_SELECTION'; index: number; shift?: boolean; ctrl?: boolean }
     | { type: 'SET_ZOOM'; zoom: ZoomLevel }
@@ -921,28 +921,32 @@ function reducer(state: GanttState, action: Action): GanttState {
             // Track actualStart: when pct goes from 0 to >0, record the current start date
             const oldPct = orig.pct || 0;
             const newPct = updated.pct || 0;
-            if (oldPct === 0 && newPct > 0 && !updated.actualStart) {
-                if (orig.ES) {
-                    updated.actualStart = isoDate(orig.ES);
-                } else if (orig.constraintDate) {
-                    updated.actualStart = orig.constraintDate;
+            
+            if (!action._skipAutoDate) {
+                if (oldPct === 0 && newPct > 0 && !updated.actualStart) {
+                    if (orig.ES) {
+                        updated.actualStart = isoDate(orig.ES);
+                    } else if (orig.constraintDate) {
+                        updated.actualStart = orig.constraintDate;
+                    }
+                }
+                if (newPct === 0) {
+                    updated.actualStart = null;
+                    updated.actualFinish = null;
+                    updated.suspendDate = null;
+                    updated.resumeDate = null;
+                }
+                // Track actualFinish: when pct reaches 100, record the current EF
+                if (newPct === 100 && !updated.actualFinish) {
+                    if (orig.EF) {
+                        updated.actualFinish = isoDate(addDays(orig.EF, -1));
+                    }
+                }
+                if (newPct < 100) {
+                    updated.actualFinish = null;
                 }
             }
-            if (newPct === 0) {
-                updated.actualStart = null;
-                updated.actualFinish = null;
-                updated.suspendDate = null;
-                updated.resumeDate = null;
-            }
-            // Track actualFinish: when pct reaches 100, record the current EF
-            if (newPct === 100 && !updated.actualFinish) {
-                if (orig.EF) {
-                    updated.actualFinish = isoDate(addDays(orig.EF, -1));
-                }
-            }
-            if (newPct < 100) {
-                updated.actualFinish = null;
-            }
+
             if (newPct >= 100) {
                 updated.suspendDate = null;
                 updated.resumeDate = null;

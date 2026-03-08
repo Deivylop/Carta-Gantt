@@ -41,6 +41,14 @@ export type ZoomLevel = 'day' | 'week' | 'month';
 /** Calendar header scale: what tiers appear in the two header rows */
 export type CalScale = 'year-month' | 'month-week' | 'week-day' | 'year-quarter' | 'quarter-month';
 
+// ─── Activity Step ──────────────────────────────────────────────
+export interface ActivityStep {
+    id: string;      // local unique id
+    name: string;    // step description
+    weight: number;  // relative weight for progress calculation
+    pct: number;     // 0-100% complete of this step
+}
+
 // ─── Predecessor Link ───────────────────────────────────────────
 export interface PredecessorLink {
     id: string;       // activity local_id of the predecessor
@@ -150,6 +158,7 @@ export interface Activity {
     work: number;         // total work hours
     weight: number | null; // weighted value for pct rollup
     resources: ActivityResource[];
+    steps?: ActivityStep[]; // WBS steps / sub-tasks
     lv: number;           // WBS / outline level (0-5)
     constraint: ConstraintType;
     constraintDate: string; // ISO date string
