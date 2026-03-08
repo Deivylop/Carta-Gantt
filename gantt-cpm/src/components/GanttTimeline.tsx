@@ -3,7 +3,7 @@
 // bar drag (move/resize/link), tooltips, and full visual parity
 // ═══════════════════════════════════════════════════════════════════
 import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
-import { useGantt } from '../store/GanttContext';
+import { useGantt, getBarColorsKey } from '../store/GanttContext';
 import { dayDiff, addDays, fmtDate, isoDate, normDate } from '../utils/cpm';
 import type { ThemeColors, LeanRestriction } from '../types/gantt';
 import BarColorsModal from './modals/BarColorsModal';
@@ -1066,7 +1066,13 @@ export default function GanttTimeline() {
                 <BarColorsModal
                     colors={state.barColors}
                     onClose={() => setShowColorsModal(false)}
-                    onSave={(colors) => dispatch({ type: 'SET_BAR_COLORS', colors })}
+                    onSave={(colors) => {
+                        dispatch({ type: 'SET_BAR_COLORS', colors });
+                        try {
+                            const merged = { ...state.barColors, ...colors };
+                            localStorage.setItem(getBarColorsKey(), JSON.stringify(merged));
+                        } catch { /* ignore */ }
+                    }}
                 />
             )}
         </div>

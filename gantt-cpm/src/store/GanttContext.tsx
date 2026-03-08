@@ -11,6 +11,37 @@ import { createScenario, deepCloneActivities, rebaseScenario, recalcScenarioCPM,
 import { calcCPM, calcMultipleFloatPaths, traceChain, newActivity, isoDate, parseDate, addDays, calWorkDays, fmtDate, normDate } from '../utils/cpm';
 import { autoId, computeOutlineNumbers, syncResFromString, deriveResString, distributeWork, strToPreds, predsToStr, newPoolResource } from '../utils/helpers';
 
+// ─── Bar Colors per-user localStorage helpers ───────────────────────────────
+const DEFAULT_BAR_COLORS = {
+    normal: '#4ade80',
+    critical: '#ef4444',
+    progress: '#3b82f6',
+    baseline: '#eab308',
+    summary: '#1e293b',
+    milestone: '#000000',
+};
+
+export function getBarColorsKey(): string {
+    try {
+        const sbSessionKey = Object.keys(localStorage).find(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
+        if (sbSessionKey) {
+            const session = JSON.parse(localStorage.getItem(sbSessionKey) || '{}');
+            const uid = session?.user?.id || session?.session?.user?.id;
+            if (uid) return `gantt_bar_colors_${uid}`;
+        }
+    } catch { /* ignore */ }
+    return 'gantt_bar_colors';
+}
+
+function loadBarColors(): typeof DEFAULT_BAR_COLORS {
+    try {
+        const stored = localStorage.getItem(getBarColorsKey());
+        if (stored) return { ...DEFAULT_BAR_COLORS, ...JSON.parse(stored) };
+    } catch { /* ignore */ }
+    return { ...DEFAULT_BAR_COLORS };
+}
+// ────────────────────────────────────────────────────────────────────────────
+
 export interface SavedView {
     name: string;
     columns: string[];   // ordered keys
@@ -2149,14 +2180,7 @@ const initialState: GanttState = {
     showTodayLine: true,
     showStatusLine: true,
     showDependencies: true,
-    barColors: {
-        normal: '#4ade80',  // Light green 
-        critical: '#ef4444', // Red
-        progress: '#3b82f6', // Blue for Actual Work
-        baseline: '#eab308', // Yellow
-        summary: '#1e293b',  // Dark slate for summary
-        milestone: '#000000' // Black for Milestone
-    },
+    barColors: loadBarColors(),
     currentView: 'gantt',
     collapsed: new Set(),
     expResources: new Set(),
