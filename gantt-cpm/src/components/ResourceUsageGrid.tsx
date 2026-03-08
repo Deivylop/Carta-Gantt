@@ -3,7 +3,7 @@ import { useGantt } from '../store/GanttContext';
 import { dayDiff, addDays, getUsageDailyValues } from '../utils/cpm';
 import type { ThemeColors, CalScale, UsageChartType } from '../types/gantt';
 import DetailContextMenu from './DetailContextMenu';
-import { UsageHistogramCanvas } from './SCurveChart';
+import SCurveChart from './SCurveChart';
 
 const LINE_H = 16;      // height per metric line inside a row
 const MIN_ROW_H = 26;   // minimum row height (single line)
@@ -692,11 +692,9 @@ export default function ResourceUsageGrid() {
                     <div style={{ width: DETAIL_W, flexShrink: 0, background: lightMode ? '#f1f5f9' : '#0f172a', borderRight: `1px solid ${lightMode ? '#e2e8f0' : '#1e293b'}`, display: 'flex', alignItems: 'flex-start', padding: '6px 4px' }}>
                         <span style={{ fontSize: 9, color: lightMode ? '#64748b' : '#475569', lineHeight: 1.3 }}>HH{usageChartType==='histogram'?' Histograma':usageChartType==='curve'?' Curva S':' Hist+Curva'}</span>
                     </div>
-                    <UsageHistogramCanvas
-                        width={Math.max(totalDays * pxPerDay, containerSize.w - DETAIL_W)}
-                        gridBodyId="res-gr-body"
-                        gridHdrId="res-usage-hdr-scroll"
-                    />
+                    <div style={{ flex: 1, overflow: 'hidden' }}>
+                        <SCurveChart hideHeader exactWidth={Math.max(totalDays * pxPerDay, containerSize.w - DETAIL_W)} />
+                    </div>
                 </div>
             </>)}
         </div>

@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
+﻿import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { useGantt } from '../store/GanttContext';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine
@@ -430,7 +430,7 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
         </div>
     );
 }
-// ─── Monotone cubic Hermite spline (Fritsch–Carlson) ─────────────
+// â”€â”€â”€ Monotone cubic Hermite spline (Fritschâ€“Carlson) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Same algorithm as Recharts type="monotone" / D3 curveMonotoneX
 function drawSmoothCurve(ctx: CanvasRenderingContext2D, pts: { x: number; y: number }[], _minY?: number, _maxY?: number) {
     if (pts.length < 2) { if (pts.length === 1) { ctx.beginPath(); ctx.arc(pts[0].x, pts[0].y, 2, 0, Math.PI * 2); ctx.fill(); } return; }
@@ -457,10 +457,10 @@ function drawSmoothCurve(ctx: CanvasRenderingContext2D, pts: { x: number; y: num
         }
         m.push(slope[n - 2]);
 
-        // 3) Fritsch–Carlson: ensure monotonicity
+        // 3) Fritschâ€“Carlson: ensure monotonicity
         for (let i = 0; i < n - 1; i++) {
             if (Math.abs(slope[i]) < 1e-12) {
-                // Flat segment → zero tangent at both endpoints
+                // Flat segment â†’ zero tangent at both endpoints
                 m[i] = 0;
                 m[i + 1] = 0;
             } else {
@@ -490,7 +490,7 @@ function drawSmoothCurve(ctx: CanvasRenderingContext2D, pts: { x: number; y: num
     ctx.stroke();
 }
 
-// ─── Pure canvas S-Curve for pixel-perfect Gantt alignment ──────────
+// â”€â”€â”€ Pure canvas S-Curve for pixel-perfect Gantt alignment â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface SCurveCanvasProps {
     width: number;
     projStart: Date;
@@ -515,6 +515,77 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
     const PADDING_T = 10; // padding top for chart area
     const PADDING_B = 5;  // padding bottom for chart area
 
+    // â”€â”€ Histogram integration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    const { state: _gsState } = useGantt();
+    const { calScale, usageChartType } = _gsState;
+    const showBars       = usageChartType === 'histogram' || usageChartType === 'both';
+    const showCurveLines = usageChartType !== 'histogram';
+
+    const intervals = useMemo(() => {
+        const endD = addDays(projStart, totalDays);
+        const cs = calScale as CalScale;
+        const result: { start: Date; end: Date; w: number }[] = [];
+        if (cs === 'week-day') {
+            let cur = new Date(projStart);
+            while (cur < endD) { result.push({ start: new Date(cur), end: addDays(cur, 1), w: PX }); cur.setDate(cur.getDate() + 1); }
+        } else if (cs === 'month-week') {
+            let cur = new Date(projStart);
+            const dow = cur.getDay(); cur.setDate(cur.getDate() - (dow === 0 ? 6 : dow - 1));
+            while (cur < endD) {
+                const next = addDays(cur, 7);
+                const ds = cur < projStart ? new Date(projStart) : new Date(cur);
+                result.push({ start: ds, end: next > endD ? endD : next, w: 7 * PX });
+                cur = next;
+            }
+        } else if (cs === 'year-quarter') {
+            let cur = new Date(projStart.getFullYear(), Math.floor(projStart.getMonth() / 3) * 3, 1);
+            while (cur < endD) {
+                const next = new Date(cur.getFullYear(), cur.getMonth() + 3, 1);
+                const ds = cur < projStart ? new Date(projStart) : new Date(cur);
+                const de = next > endD ? endD : next;
+                result.push({ start: ds, end: de, w: dayDiff(ds, de) * PX });
+                cur = next;
+            }
+        } else {
+            let cur = new Date(projStart.getFullYear(), projStart.getMonth(), 1);
+            while (cur < endD) {
+                const next = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+                const ds = cur < projStart ? new Date(projStart) : new Date(cur);
+                const de = next > endD ? endD : next;
+                result.push({ start: ds, end: de, w: dayDiff(ds, de) * PX });
+                cur = next;
+            }
+        }
+        return result;
+    }, [projStart, totalDays, calScale, PX]);
+
+    const barData = useMemo(() => {
+        const getCumAt = (ms: number): { planned: number; actual: number | null } => {
+            if (points.length === 0) return { planned: 0, actual: null };
+            if (ms <= points[0].dateMs) return { planned: 0, actual: 0 };
+            if (ms >= points[points.length - 1].dateMs) return { planned: points[points.length - 1].planned, actual: points[points.length - 1].actual };
+            for (let i = 0; i < points.length - 1; i++) {
+                const p1 = points[i], p2 = points[i + 1];
+                if (ms >= p1.dateMs && ms <= p2.dateMs) {
+                    const t2 = (ms - p1.dateMs) / (p2.dateMs - p1.dateMs);
+                    return {
+                        planned: p1.planned + t2 * (p2.planned - p1.planned),
+                        actual: p1.actual != null && p2.actual != null ? p1.actual + t2 * (p2.actual - p1.actual) : null,
+                    };
+                }
+            }
+            return { planned: 0, actual: null };
+        };
+        return intervals.map(inv => {
+            const s = getCumAt(inv.start.getTime());
+            const e = getCumAt(inv.end.getTime());
+            return {
+                planned: Math.max(0, e.planned - s.planned),
+                actual:  e.actual != null && s.actual != null ? Math.max(0, e.actual - s.actual) : null,
+            };
+        });
+    }, [intervals, points]);
+
     const draw = useCallback((containerH: number) => {
         const c = canvasRef.current; if (!c) return;
         const totalH = Math.max(150, containerH);
@@ -524,38 +595,59 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
         const ctx = c.getContext('2d')!;
         ctx.clearRect(0, 0, width, totalH);
 
-        // ─── Colors ──────────────────────────────────────
+        // â”€â”€â”€ Colors â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         const bgColor = lightMode ? '#ffffff' : '#0f172a';
         const gridColor = lightMode ? '#e2e8f0' : '#1e293b';
         const textColor = lightMode ? '#334155' : '#94a3b8';
         const plannedColor = '#3b82f6';
         const actualColor = '#10b981';
 
-        // ─── Background ──────────────────────────────────
+        // â”€â”€â”€ Background â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         ctx.fillStyle = bgColor;
         ctx.fillRect(0, 0, width, totalH - HDR_H);
 
-        // ─── Legend ──────────────────────────────────────
-        ctx.font = '11px Segoe UI';
-        const lgY = 14;
-        // Planned
-        ctx.fillStyle = plannedColor;
-        ctx.fillRect(width / 2 - 140, lgY - 6, 14, 3);
-        ctx.beginPath(); ctx.arc(width / 2 - 133, lgY - 5, 3, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = textColor;
-        ctx.fillText('Avance Programado', width / 2 - 122, lgY);
-        // Actual
-        ctx.fillStyle = actualColor;
-        ctx.fillRect(width / 2 + 30, lgY - 6, 14, 3);
-        ctx.beginPath(); ctx.arc(width / 2 + 37, lgY - 5, 3, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = textColor;
-        ctx.fillText('Avance Real', width / 2 + 50, lgY);
+        // â”€â”€â”€ Legend (dynamic based on chart type) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        ctx.font = '11px Segoe UI'; ctx.textBaseline = 'middle';
+        const lgY = 12;
+        let lx = Math.max(8, width / 2 - 220);
+        if (showBars) {
+            // Planned bar
+            ctx.fillStyle = lightMode ? 'rgba(59,130,246,0.55)' : 'rgba(96,165,250,0.55)';
+            ctx.fillRect(lx, lgY - 5, 10, 10); lx += 13;
+            ctx.fillStyle = textColor; ctx.fillText(isHours ? 'HH Prev. (perÃ­odo)' : 'Av.Prog. (perÃ­odo)', lx, lgY);
+            lx += ctx.measureText(isHours ? 'HH Prev. (perÃ­odo)' : 'Av.Prog. (perÃ­odo)').width + 10;
+            // Actual bar
+            ctx.fillStyle = lightMode ? 'rgba(16,185,129,0.65)' : 'rgba(52,211,153,0.65)';
+            ctx.fillRect(lx, lgY - 5, 10, 10); lx += 13;
+            ctx.fillStyle = textColor; ctx.fillText(isHours ? 'HH Real (perÃ­odo)' : 'Av.Real (perÃ­odo)', lx, lgY);
+            lx += ctx.measureText(isHours ? 'HH Real (perÃ­odo)' : 'Av.Real (perÃ­odo)').width + 14;
+        }
+        if (showCurveLines) {
+            ctx.fillStyle = plannedColor;
+            ctx.fillRect(lx, lgY - 3, 14, 3); ctx.beginPath(); ctx.arc(lx + 7, lgY - 2, 3, 0, Math.PI * 2); ctx.fill();
+            lx += 17; ctx.fillStyle = textColor;
+            ctx.fillText(isHours ? 'HH Prog. (acum.)' : 'Avance Programado', lx, lgY);
+            lx += ctx.measureText(isHours ? 'HH Prog. (acum.)' : 'Avance Programado').width + 10;
+            ctx.fillStyle = actualColor;
+            ctx.fillRect(lx, lgY - 3, 14, 3); ctx.beginPath(); ctx.arc(lx + 7, lgY - 2, 3, 0, Math.PI * 2); ctx.fill();
+            lx += 17; ctx.fillStyle = textColor;
+            ctx.fillText(isHours ? 'HH Real (acum.)' : 'Avance Real', lx, lgY);
+        }
+        ctx.textBaseline = 'alphabetic';
 
         const chartTop = LEGEND_H + PADDING_T;
         const chartBot = chartTop + chartH;
 
-        // ─── Y Axis labels + horizontal grid ─────────────
-        const yMax = maxValue && maxValue > 0 ? maxValue : 100;
+        // â”€â”€â”€ Y scale (adapts to bars when histogram-only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        const rawMax = maxValue && maxValue > 0 ? maxValue : 100;
+        const maxBarH = showBars && barData.length > 0
+            ? Math.max(0, ...barData.map(d => d.planned), ...barData.map(d => d.actual ?? 0))
+            : 0;
+        const yMax = showBars && !showCurveLines
+            ? Math.max(rawMax, maxBarH) * 1.15
+            : Math.max(rawMax, maxBarH);
+
+        // â”€â”€â”€ Y Axis labels + horizontal grid â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         const yTicks = [0, yMax * 0.25, yMax * 0.5, yMax * 0.75, yMax];
         ctx.font = '10px Segoe UI';
         const formatY = (v: number) => isHours ? v.toLocaleString('es-CL', { maximumFractionDigits: 0 }) + 'h' : Math.round(v) + '%';
@@ -568,7 +660,7 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
             ctx.setLineDash([]);
         });
 
-        // ─── Fixed Y-Axis overlay ───────────────────────
+        // â”€â”€â”€ Fixed Y-Axis overlay â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         const yc = yAxisCanvasRef.current;
         if (yc) {
             const yw = 55;
@@ -596,7 +688,7 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
             });
         }
 
-        // ─── Vertical month grid lines ───────────────────
+        // â”€â”€â”€ Vertical month grid lines â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         let cur = new Date(projStart);
         const end = addDays(projStart, totalDays);
         while (cur < end) {
@@ -610,13 +702,13 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
             cur = nm;
         }
 
-        // ─── Helper: date ms → x pixel (same as Gantt!) ──
+        // â”€â”€â”€ Helper: date ms â†’ x pixel (same as Gantt!) â”€â”€
         const msToX = (ms: number) => {
             const date = new Date(ms);
             return dayDiff(projStart, date) * PX;
         };
 
-        // ─── Status Date line (cyan solid, matching Gantt) ───────────
+        // â”€â”€â”€ Status Date line (cyan solid, matching Gantt) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if (statusDateMs) {
             const sdX = msToX(statusDateMs);
             if (sdX >= 0 && sdX <= width) {
@@ -629,18 +721,44 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
             }
         }
 
-        // ─── Today line (amber) ──────────────────────────
+        // â”€â”€â”€ Today line (amber) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         const todayX = dayDiff(projStart, new Date()) * PX;
         if (todayX >= 0 && todayX <= width) {
             ctx.fillStyle = '#f59e0b';
             ctx.fillRect(todayX, chartTop, 2, chartH);
         }
 
-        // ─── Value → y pixel ───────────────────────────────
+        // â”€â”€â”€ Value â†’ y pixel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         const valToY = (val: number) => chartBot - (val / yMax) * chartH;
 
-        // ─── Draw planned curve (smooth bezier) ──────────────
-        if (points.length > 0) {
+        // â”€â”€â”€ Histogram bars (drawn first, behind curves) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        if (showBars) {
+            intervals.forEach((inv, i) => {
+                const x = dayDiff(projStart, inv.start) * PX;
+                const iw = Math.max(2, inv.w);
+                const d = barData[i];
+                if (!d) return;
+                const gap = Math.max(1, iw * 0.06);
+                const barW = Math.max(1, (iw - gap * 3) / 2);
+                if (d.planned > 0) {
+                    const bh = (d.planned / yMax) * chartH;
+                    ctx.fillStyle = lightMode ? 'rgba(59,130,246,0.50)' : 'rgba(96,165,250,0.50)';
+                    ctx.fillRect(x + gap, chartBot - bh, barW, bh);
+                    ctx.strokeStyle = lightMode ? 'rgba(59,130,246,0.85)' : 'rgba(96,165,250,0.85)';
+                    ctx.lineWidth = 0.5; ctx.strokeRect(x + gap, chartBot - bh, barW, bh); ctx.lineWidth = 1;
+                }
+                if (d.actual != null && d.actual > 0) {
+                    const bh2 = (d.actual / yMax) * chartH;
+                    ctx.fillStyle = lightMode ? 'rgba(16,185,129,0.60)' : 'rgba(52,211,153,0.60)';
+                    ctx.fillRect(x + gap * 2 + barW, chartBot - bh2, barW, bh2);
+                    ctx.strokeStyle = lightMode ? 'rgba(16,185,129,0.90)' : 'rgba(52,211,153,0.90)';
+                    ctx.lineWidth = 0.5; ctx.strokeRect(x + gap * 2 + barW, chartBot - bh2, barW, bh2); ctx.lineWidth = 1;
+                }
+            });
+        }
+
+        // â”€â”€â”€ Draw planned curve (smooth bezier) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        if (showCurveLines && points.length > 0) {
             ctx.strokeStyle = plannedColor;
             ctx.lineWidth = 2.5;
             drawSmoothCurve(ctx, points.map(p => ({ x: msToX(p.dateMs), y: valToY(p.planned) })), chartTop, chartBot);
@@ -655,9 +773,9 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
             });
         }
 
-        // ─── Draw actual curve (smooth bezier) ───────────────
+        // â”€â”€â”€ Draw actual curve (smooth bezier) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         const actualPoints = points.filter(p => p.actual !== null && p.actual !== undefined);
-        if (actualPoints.length > 0) {
+        if (showCurveLines && actualPoints.length > 0) {
             ctx.strokeStyle = actualColor;
             ctx.lineWidth = 2.5;
             drawSmoothCurve(ctx, actualPoints.map(p => ({ x: msToX(p.dateMs), y: valToY(p.actual!) })), chartTop, chartBot);
@@ -672,7 +790,7 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
             });
         }
 
-        // ─── Timeline Axis (footer) ────────────────────
+        // â”€â”€â”€ Timeline Axis (footer) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         const axisTop = totalH - HDR_H;
         const colors = lightMode ? {
             topBg: '#e2e8f0', topBorder: '#cbd5e1', topText: '#334155',
@@ -736,7 +854,7 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
                 ctx.fillStyle = '#06b6d4'; ctx.fillRect(sdx, axisTop, 2, HDR_H);
             }
         }
-    }, [width, projStart, totalDays, PX, zoom, lightMode, statusDate, points, statusDateMs]);
+    }, [width, projStart, totalDays, PX, zoom, lightMode, statusDate, points, statusDateMs, showBars, showCurveLines, barData, intervals, calScale, usageChartType]);
 
     const [tooltip, setTooltip] = useState<{ visibleX: number; visibleY: number; date: string; planned: string; actual: string } | null>(null);
 
@@ -766,7 +884,7 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
             return;
         }
 
-        // 2. Interpolate Y using same Fritsch–Carlson monotone cubic as drawSmoothCurve
+        // 2. Interpolate Y using same Fritschâ€“Carlson monotone cubic as drawSmoothCurve
         const interpolateY = (key: 'planned' | 'actual', _p0: any, p1: any, p2: any, _p3: any) => {
             if (p1[key] == null || p2[key] == null) return null;
 
@@ -789,7 +907,7 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
             const h = b.x - a.x;
             if (h === 0) return a.y;
 
-            // Compute tangent slopes (Fritsch–Carlson)
+            // Compute tangent slopes (Fritschâ€“Carlson)
             const n = allPts.length;
             const dxArr: number[] = [];
             const slopeArr: number[] = [];
@@ -838,7 +956,7 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
         }
 
         const hoveredDate = new Date(projStart.getTime() + (mx / PX) * 86400000);
-        const formatT = (v: number | null) => v == null ? '—' : (isHours ? v.toLocaleString('es-CL', { maximumFractionDigits: 0 }) + ' h' : v.toFixed(1) + '%');
+        const formatT = (v: number | null) => v == null ? 'â€”' : (isHours ? v.toLocaleString('es-CL', { maximumFractionDigits: 0 }) + ' h' : v.toFixed(1) + '%');
 
         setTooltip({
             visibleX,
@@ -933,384 +1051,6 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, lightMode, 
                     <div style={{ color: '#10b981' }}>Real: <strong>{tooltip.actual}</strong></div>
                 </div>
             )}
-        </div>
-    );
-}
-
-// ─── Usage Histogram / Curve Panel ───────────────────────────────────────────
-// Renders histogram bars (per calScale interval) and/or cumulative S-curves
-// for the TaskUsageGrid and ResourceUsageGrid views.
-interface UsageHistogramProps {
-    width: number;
-    gridBodyId: string;   // e.g. 'gr-body' | 'res-gr-body'
-    gridHdrId: string;    // e.g. 'usage-hdr-scroll' | 'res-usage-hdr-scroll'
-}
-
-export function UsageHistogramCanvas({ width, gridBodyId, gridHdrId }: UsageHistogramProps) {
-    const { state } = useGantt();
-    const { activities, totalDays, timelineStart: projStart, lightMode, pxPerDay,
-        defCal, statusDate, activeBaselineIdx, progressHistory, calScale, usageChartType } = state;
-
-    const PX = pxPerDay;
-    const containerRef = useRef<HTMLDivElement>(null);
-    const canvasRef = useRef<HTMLCanvasElement>(null);
-    const yAxisRef = useRef<HTMLCanvasElement>(null);
-
-    // ── Build intervals from calScale (mirrors TaskUsageGrid.getIntervals) ──────
-    const intervals = useMemo(() => {
-        const result: { start: Date; end: Date; label: string; w: number }[] = [];
-        const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
-        const endD = addDays(projStart, totalDays);
-        const cs: CalScale = calScale;
-        if (cs === 'week-day') {
-            let cur = new Date(projStart);
-            while (cur < endD) {
-                result.push({ start: new Date(cur), end: addDays(cur, 1), label: String(cur.getDate()), w: PX });
-                cur.setDate(cur.getDate() + 1);
-            }
-        } else if (cs === 'month-week') {
-            let cur = new Date(projStart);
-            const dow = cur.getDay(); cur.setDate(cur.getDate() - (dow === 0 ? 6 : dow - 1));
-            while (cur < endD) {
-                const next = addDays(cur, 7);
-                const ds = cur < projStart ? new Date(projStart) : new Date(cur);
-                const lbl = String(ds.getDate()).padStart(2,'0') + '-' + MESES[ds.getMonth()];
-                result.push({ start: ds, end: next > endD ? endD : next, label: lbl, w: 7 * PX });
-                cur = next;
-            }
-        } else if (cs === 'year-quarter') {
-            let cur = new Date(projStart.getFullYear(), Math.floor(projStart.getMonth() / 3) * 3, 1);
-            while (cur < endD) {
-                const next = new Date(cur.getFullYear(), cur.getMonth() + 3, 1);
-                const ds = cur < projStart ? new Date(projStart) : new Date(cur);
-                const de = next > endD ? endD : next;
-                result.push({ start: ds, end: de, label: `Q${Math.floor(cur.getMonth()/3)+1}`, w: dayDiff(ds, de) * PX });
-                cur = next;
-            }
-        } else {
-            // year-month / quarter-month → monthly columns
-            let cur = new Date(projStart.getFullYear(), projStart.getMonth(), 1);
-            while (cur < endD) {
-                const next = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
-                const ds = cur < projStart ? new Date(projStart) : new Date(cur);
-                const de = next > endD ? endD : next;
-                result.push({ start: ds, end: de, label: MESES[cur.getMonth()], w: dayDiff(ds, de) * PX });
-                cur = next;
-            }
-        }
-        return result;
-    }, [projStart, totalDays, calScale, PX]);
-
-    // ── Aggregate daily values per interval (all leaf tasks) ─────────────────
-    const tasks = useMemo(() =>
-        activities.filter(a => !a._isProjRow && a.type === 'task'),
-        [activities]
-    );
-
-    const aggData = useMemo(() => {
-        // Build per-task daily maps once to avoid redundant computation
-        const maps = tasks.map(a => ({
-            prev: getUsageDailyValues(a, 'Trabajo previsto' as any, false, defCal, undefined, activeBaselineIdx, statusDate, progressHistory),
-            real: getUsageDailyValues(a, 'Trabajo real' as any,     false, defCal, undefined, activeBaselineIdx, statusDate, progressHistory),
-            rest: getUsageDailyValues(a, 'Trabajo restante' as any, false, defCal, undefined, activeBaselineIdx, statusDate, progressHistory),
-        }));
-        return intervals.map(inv => {
-            let previsto = 0, real_ = 0, restante = 0;
-            let cd = new Date(inv.start);
-            while (cd < inv.end) {
-                const t = cd.getTime();
-                maps.forEach(m => {
-                    previsto += m.prev.get(t) || 0;
-                    real_    += m.real.get(t) || 0;
-                    restante += m.rest.get(t) || 0;
-                });
-                cd.setDate(cd.getDate() + 1);
-            }
-            return { previsto, real: real_, restante };
-        });
-    }, [intervals, tasks, defCal, activeBaselineIdx, statusDate, progressHistory]);
-
-    // ── Canvas drawing ────────────────────────────────────────────────────────
-    const draw = useCallback((containerH: number) => {
-        const c = canvasRef.current; if (!c) return;
-        const LEGEND_H = 22;
-        const PADDING_T = 6;
-        const PADDING_B = 4;
-        const HDR_H_C = 36;
-        const N_TICKS = 4;
-        const totalH = Math.max(120, containerH);
-        const chartH = totalH - HDR_H_C - LEGEND_H - PADDING_T - PADDING_B;
-
-        c.width = width; c.height = totalH;
-        c.style.width = width + 'px'; c.style.height = totalH + 'px';
-        const ctx = c.getContext('2d')!;
-        ctx.clearRect(0, 0, width, totalH);
-
-        const bgColor   = lightMode ? '#ffffff' : '#0f172a';
-        const gridColor = lightMode ? '#e2e8f0' : '#1e293b';
-        const textColor = lightMode ? '#334155' : '#94a3b8';
-
-        ctx.fillStyle = bgColor;
-        ctx.fillRect(0, 0, width, totalH - HDR_H_C);
-
-        const chartTop = LEGEND_H + PADDING_T;
-        const chartBot = chartTop + chartH;
-
-        const showBars   = (usageChartType as UsageChartType) === 'histogram' || (usageChartType as UsageChartType) === 'both';
-        const showCurves = (usageChartType as UsageChartType) === 'curve'     || (usageChartType as UsageChartType) === 'both';
-
-        // Y scale
-        const maxBarVal = Math.max(1, ...aggData.map(d => Math.max(d.previsto, d.real + d.restante)));
-        const cumPrevTotal = aggData.reduce((s, d) => s + d.previsto, 0);
-        const cumRealTotal = aggData.reduce((s, d) => s + d.real, 0);
-        const yMax = (showCurves
-            ? Math.max(maxBarVal, cumPrevTotal, cumRealTotal)
-            : maxBarVal) * 1.08 || 1;
-        const valToY = (v: number) => chartBot - (v / yMax) * chartH;
-
-        // Horizontal gridlines
-        for (let i = 0; i <= N_TICKS; i++) {
-            const y = chartBot - (i / N_TICKS) * chartH;
-            ctx.strokeStyle = gridColor; ctx.setLineDash([3,3]);
-            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
-            ctx.setLineDash([]);
-        }
-
-        // Status date line
-        if (statusDate) {
-            const sdX = (dayDiff(projStart, statusDate) + 1) * PX;
-            if (sdX >= 0 && sdX <= width) { ctx.fillStyle = '#06b6d4'; ctx.fillRect(sdX, chartTop, 2, chartH); }
-        }
-
-        // ── Histogram bars ────────────────────────────────────────────────────
-        if (showBars) {
-            intervals.forEach((inv, i) => {
-                const x = dayDiff(projStart, inv.start) * PX;
-                const iw = inv.w;
-                const d = aggData[i] || { previsto: 0, real: 0, restante: 0 };
-                const gap = Math.max(1, iw * 0.06);
-                const barW = Math.max(1, (iw - gap * 4) / 3);
-
-                // Previsto (blue)
-                if (d.previsto > 0) {
-                    const bh = (d.previsto / yMax) * chartH;
-                    ctx.fillStyle = lightMode ? 'rgba(59,130,246,0.65)' : 'rgba(96,165,250,0.65)';
-                    ctx.fillRect(x + gap, chartBot - bh, barW, bh);
-                }
-                // Real (green)
-                if (d.real > 0) {
-                    const bh = (d.real / yMax) * chartH;
-                    ctx.fillStyle = lightMode ? 'rgba(16,185,129,0.80)' : 'rgba(52,211,153,0.80)';
-                    ctx.fillRect(x + gap * 2 + barW, chartBot - bh, barW, bh);
-                }
-                // Restante (amber)
-                if (d.restante > 0) {
-                    const bh = (d.restante / yMax) * chartH;
-                    ctx.fillStyle = lightMode ? 'rgba(245,158,11,0.65)' : 'rgba(251,191,36,0.65)';
-                    ctx.fillRect(x + gap * 3 + barW * 2, chartBot - bh, barW, bh);
-                }
-            });
-        }
-
-        // ── Cumulative curves ─────────────────────────────────────────────────
-        if (showCurves) {
-            let cumP = 0, cumR = 0;
-            const prevPts: { x: number; y: number }[] = [];
-            const realPts: { x: number; y: number }[] = [];
-            intervals.forEach((inv, i) => {
-                const xRight = dayDiff(projStart, inv.end) * PX;
-                const d = aggData[i] || { previsto: 0, real: 0, restante: 0 };
-                cumP += d.previsto;
-                cumR += d.real;
-                prevPts.push({ x: xRight, y: valToY(cumP) });
-                realPts.push({ x: xRight, y: valToY(cumR) });
-            });
-            if (prevPts.length > 1) {
-                ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 2; ctx.setLineDash([]);
-                drawSmoothCurve(ctx, prevPts);
-                ctx.fillStyle = '#3b82f6';
-                prevPts.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 2.5, 0, Math.PI*2); ctx.fill(); });
-                ctx.lineWidth = 1;
-            }
-            const realTrimmed = realPts.filter((_, i) => {
-                let sum = 0; for (let j = 0; j <= i; j++) sum += aggData[j]?.real || 0; return sum > 0;
-            });
-            if (realTrimmed.length > 1) {
-                ctx.strokeStyle = '#10b981'; ctx.lineWidth = 2; ctx.setLineDash([]);
-                drawSmoothCurve(ctx, realTrimmed);
-                ctx.fillStyle = '#10b981';
-                realTrimmed.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 2.5, 0, Math.PI*2); ctx.fill(); });
-                ctx.lineWidth = 1;
-            }
-        }
-
-        // ── Y-Axis overlay ────────────────────────────────────────────────────
-        const yc = yAxisRef.current;
-        if (yc) {
-            const yw = 50;
-            yc.width = yw; yc.height = totalH;
-            yc.style.width = yw + 'px'; yc.style.height = totalH + 'px';
-            const yCtx = yc.getContext('2d')!;
-            yCtx.clearRect(0, 0, yw, totalH);
-            const rgb = lightMode ? '255,255,255' : '15,23,42';
-            yCtx.fillStyle = `rgb(${rgb})`; yCtx.fillRect(0, 0, yw - 8, totalH);
-            const grad = yCtx.createLinearGradient(yw-8, 0, yw, 0);
-            grad.addColorStop(0, `rgba(${rgb},1)`); grad.addColorStop(1, `rgba(${rgb},0)`);
-            yCtx.fillStyle = grad; yCtx.fillRect(yw-8, 0, 8, totalH);
-            yCtx.fillStyle = textColor; yCtx.font = '9px Segoe UI'; yCtx.textAlign = 'left'; yCtx.textBaseline = 'bottom';
-            for (let i = 0; i <= N_TICKS; i++) {
-                const v = (yMax / N_TICKS) * i;
-                const y = chartBot - (v / yMax) * chartH;
-                const lbl = v >= 10000 ? (v/1000).toFixed(0)+'k' : v >= 1000 ? (v/1000).toFixed(1)+'k' : v >= 100 ? Math.round(v)+'h' : v.toFixed(v < 10 ? 1 : 0)+'h';
-                yCtx.fillText(lbl, 2, y - 2);
-            }
-            yCtx.textBaseline = 'alphabetic';
-        }
-
-        // ── Legend ────────────────────────────────────────────────────────────
-        ctx.font = '10px Segoe UI'; ctx.textBaseline = 'middle';
-        let lx = 8; const ly = 11;
-        if (showBars) {
-            ctx.fillStyle = lightMode ? 'rgba(59,130,246,0.65)' : 'rgba(96,165,250,0.65)';
-            ctx.fillRect(lx, ly-5, 10, 10); lx += 13;
-            ctx.fillStyle = textColor; ctx.fillText('Previsto', lx, ly); lx += ctx.measureText('Previsto').width + 8;
-            ctx.fillStyle = lightMode ? 'rgba(16,185,129,0.80)' : 'rgba(52,211,153,0.80)';
-            ctx.fillRect(lx, ly-5, 10, 10); lx += 13;
-            ctx.fillStyle = textColor; ctx.fillText('Real', lx, ly); lx += ctx.measureText('Real').width + 8;
-            ctx.fillStyle = lightMode ? 'rgba(245,158,11,0.65)' : 'rgba(251,191,36,0.65)';
-            ctx.fillRect(lx, ly-5, 10, 10); lx += 13;
-            ctx.fillStyle = textColor; ctx.fillText('Restante', lx, ly); lx += ctx.measureText('Restante').width + 14;
-        }
-        if (showCurves) {
-            ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx+14, ly); ctx.stroke(); lx += 17;
-            ctx.fillStyle = textColor; ctx.fillText('Curva Prev.', lx, ly); lx += ctx.measureText('Curva Prev.').width + 8;
-            ctx.strokeStyle = '#10b981'; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx+14, ly); ctx.stroke(); lx += 17;
-            ctx.fillStyle = textColor; ctx.fillText('Curva Real', lx, ly);
-            ctx.lineWidth = 1;
-        }
-        ctx.textBaseline = 'alphabetic';
-
-        // ── Timeline header at the bottom ────────────────────────────────────
-        const axisTop = totalH - HDR_H_C;
-        const colors = lightMode ? {
-            topBg:'#e2e8f0', topBorder:'#cbd5e1', topText:'#334155',
-            botBg:'#f1f5f9', botBorder:'#e2e8f0', botText:'#334155',
-        } : {
-            topBg:'#0a0f1a', topBorder:'#1f2937', topText:'#94a3b8',
-            botBg:'#0f172a', botBorder:'#1e293b', botText:'#64748b',
-        };
-        const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
-        const endD = addDays(projStart, totalDays);
-        const cs: CalScale = calScale;
-
-        // Top row
-        if (cs === 'year-month' || cs === 'year-quarter') {
-            for (let yr = projStart.getFullYear(); yr <= endD.getFullYear(); yr++) {
-                const ds = new Date(yr,0,1) < projStart ? projStart : new Date(yr,0,1);
-                const de = new Date(yr+1,0,1) > endD ? endD : new Date(yr+1,0,1);
-                const x = dayDiff(projStart, ds)*PX, w2 = dayDiff(ds,de)*PX;
-                ctx.fillStyle=colors.topBg; ctx.fillRect(x,axisTop,w2,17);
-                ctx.strokeStyle=colors.topBorder; ctx.strokeRect(x,axisTop,w2,17);
-                ctx.fillStyle=colors.topText; ctx.font='bold 10px Segoe UI';
-                if(w2>20) ctx.fillText(String(yr),x+4,axisTop+12);
-            }
-        } else if (cs === 'quarter-month') {
-            for (let yr = projStart.getFullYear(); yr <= endD.getFullYear(); yr++) {
-                for (let q=0;q<4;q++) {
-                    const qS=new Date(yr,q*3,1), qE=new Date(yr,q*3+3,1);
-                    if(qE<=projStart||qS>=endD) continue;
-                    const ds=qS<projStart?projStart:qS, de=qE>endD?endD:qE;
-                    const x=dayDiff(projStart,ds)*PX, w2=dayDiff(ds,de)*PX;
-                    ctx.fillStyle=colors.topBg; ctx.fillRect(x,axisTop,w2,17);
-                    ctx.strokeStyle=colors.topBorder; ctx.strokeRect(x,axisTop,w2,17);
-                    ctx.fillStyle=colors.topText; ctx.font='bold 10px Segoe UI';
-                    if(w2>20) ctx.fillText(`Q${q+1} ${yr}`,x+4,axisTop+12);
-                }
-            }
-        } else if (cs === 'week-day') {
-            let curW=new Date(projStart); const dow=curW.getDay(); curW.setDate(curW.getDate()-(dow===0?6:dow-1));
-            while(curW<endD){
-                const wEnd=new Date(curW); wEnd.setDate(wEnd.getDate()+7);
-                const ds=curW<projStart?projStart:curW;
-                const x=dayDiff(projStart,ds)*PX, w2=dayDiff(ds,wEnd>endD?endD:wEnd)*PX;
-                ctx.fillStyle=colors.topBg; ctx.fillRect(x,axisTop,w2,17);
-                ctx.strokeStyle=colors.topBorder; ctx.strokeRect(x,axisTop,w2,17);
-                ctx.fillStyle=colors.topText; ctx.font='bold 10px Segoe UI';
-                const lbl=String(ds.getDate()).padStart(2,'0')+'-'+MESES[ds.getMonth()];
-                if(w2>24) ctx.fillText(lbl,x+4,axisTop+12);
-                curW.setDate(curW.getDate()+7);
-            }
-        } else {
-            let curM=new Date(projStart.getFullYear(),projStart.getMonth(),1);
-            while(curM<endD){
-                const nm=new Date(curM.getFullYear(),curM.getMonth()+1,1);
-                const ds=curM<projStart?projStart:curM;
-                const x=dayDiff(projStart,ds)*PX, w2=Math.min(dayDiff(ds,nm)*PX,width-x);
-                ctx.fillStyle=colors.topBg; ctx.fillRect(x,axisTop,w2,17);
-                ctx.strokeStyle=colors.topBorder; ctx.strokeRect(x,axisTop,w2,17);
-                ctx.fillStyle=colors.topText; ctx.font='bold 10px Segoe UI';
-                if(w2>24) ctx.fillText(curM.toLocaleDateString('es-CL',{month:'short',year:'2-digit'}),x+4,axisTop+12);
-                curM=nm;
-            }
-        }
-        // Bottom row (intervals)
-        intervals.forEach(inv => {
-            const x=dayDiff(projStart,inv.start)*PX;
-            ctx.fillStyle=colors.botBg; ctx.fillRect(x,axisTop+17,inv.w,19);
-            ctx.strokeStyle=colors.botBorder;
-            ctx.beginPath(); ctx.moveTo(x,axisTop+17); ctx.lineTo(x,axisTop+36); ctx.stroke();
-            ctx.fillStyle=colors.botText; ctx.font='9px Segoe UI';
-            if(inv.w>20) ctx.fillText(inv.label,x+4,axisTop+30);
-        });
-        // Today + status line on axis
-        const todayX=dayDiff(projStart,new Date())*PX;
-        if(todayX>=0&&todayX<=width){ctx.fillStyle='#f59e0b';ctx.fillRect(todayX,axisTop,2,HDR_H_C);}
-        if(statusDate){const sdx=(dayDiff(projStart,statusDate)+1)*PX;if(sdx>=0&&sdx<=width){ctx.fillStyle='#06b6d4';ctx.fillRect(sdx,axisTop,2,HDR_H_C);}}
-
-    }, [width, projStart, totalDays, PX, lightMode, statusDate, aggData, intervals, calScale, usageChartType]);
-
-    useEffect(() => {
-        const el = containerRef.current; if (!el) return;
-        const ro = new ResizeObserver(() => draw(el.getBoundingClientRect().height));
-        ro.observe(el);
-        draw(el.getBoundingClientRect().height);
-        return () => ro.disconnect();
-    }, [draw]);
-
-    // Send scroll from this panel to the grid
-    useEffect(() => {
-        const wrapper = containerRef.current; if (!wrapper) return;
-        const handler = () => {
-            const body = document.getElementById(gridBodyId);
-            if (body) body.scrollLeft = wrapper.scrollLeft;
-            const hdr = document.getElementById(gridHdrId);
-            if (hdr) hdr.scrollLeft = wrapper.scrollLeft;
-        };
-        wrapper.addEventListener('scroll', handler);
-        return () => wrapper.removeEventListener('scroll', handler);
-    }, [gridBodyId, gridHdrId]);
-
-    // Receive scroll from grid body
-    useEffect(() => {
-        const body = document.getElementById(gridBodyId); if (!body) return;
-        const handler = () => {
-            const wrapper = containerRef.current;
-            if (wrapper) wrapper.scrollLeft = body.scrollLeft;
-        };
-        body.addEventListener('scroll', handler);
-        return () => body.removeEventListener('scroll', handler);
-    }, [gridBodyId]);
-
-    return (
-        <div style={{ flex: 1, minHeight: 0, position: 'relative', display: 'flex', flexDirection: 'column' }}>
-            <div ref={containerRef}
-                style={{ flex: 1, minHeight: 0, overflowX: 'auto', overflowY: 'hidden', position: 'relative' }}>
-                <canvas ref={canvasRef} style={{ display: 'block' }} />
-            </div>
-            <canvas ref={yAxisRef}
-                style={{ position: 'absolute', left: 0, top: 0, width: '50px', height: '100%', pointerEvents: 'none', zIndex: 5 }} />
         </div>
     );
 }
