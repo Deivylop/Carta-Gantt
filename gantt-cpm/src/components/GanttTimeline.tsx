@@ -283,7 +283,8 @@ export default function GanttTimeline() {
                 hCtx.fillStyle = t.hdrTopBg; hCtx.fillRect(x, 0, w, 17);
                 hCtx.strokeStyle = t.hdrTopBorder; hCtx.strokeRect(x, 0, w, 17);
                 hCtx.fillStyle = t.hdrTopText; hCtx.font = 'bold 10px Segoe UI';
-                const lbl = 'S ' + String(cur.getDate()).padStart(2, '0') + '/' + String(cur.getMonth() + 1).padStart(2, '0');
+                const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+                const lbl = String(cur.getDate()).padStart(2, '0') + '-' + MESES[cur.getMonth()];
                 if (w > 24) hCtx.fillText(lbl, x + 4, 12);
                 cur.setDate(cur.getDate() + 7);
             }
@@ -340,7 +341,8 @@ export default function GanttTimeline() {
             while (cur < endD) {
                 const x = Math.max(0, dayDiff(projStart, cur) * PX);
                 const w = 7 * PX;
-                const dd = 'S ' + String(cur.getDate()).padStart(2, '0') + '/' + String(cur.getMonth() + 1).padStart(2, '0');
+                const MESES2 = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+                const dd = String(cur.getDate()).padStart(2, '0') + '-' + MESES2[cur.getMonth()];
                 hCtx.fillStyle = t.hdrBotBg; hCtx.fillRect(x, 17, w, 19);
                 hCtx.strokeStyle = t.hdrBotBorder; hCtx.beginPath(); hCtx.moveTo(x, 17); hCtx.lineTo(x, hdrH); hCtx.stroke();
                 hCtx.fillStyle = t.hdrBotText; hCtx.font = '9px Segoe UI';
