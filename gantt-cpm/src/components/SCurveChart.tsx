@@ -656,11 +656,9 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, calScale, l
 
         // ─── Histogram (Progreso por periodo) ──────────
         const getValAtMs = (msTarget: number, key: 'planned' | 'actual' = 'planned') => {
-            const exact = points.find(p => p.dateMs === msTarget);
-            if (exact) return exact[key] ?? 0;
-            const pastPoints = points.filter(p => p.dateMs <= msTarget);
+            const pastPoints = points.filter(p => p.dateMs <= msTarget && p[key] !== null && p[key] !== undefined);
             if (pastPoints.length === 0) return 0;
-            return pastPoints[pastPoints.length - 1][key] ?? 0;
+            return pastPoints[pastPoints.length - 1][key];
         };
 
         const histPeriods = [];
@@ -716,7 +714,7 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, calScale, l
             }
             
             // Draw actual bar
-            if (actProg > 0 && statusDateMs && p.endMs <= statusDateMs + 86400000) {
+            if (actProg > 0 && statusDateMs) {
                 const barW = rawBarW / 2; // Half width
                 const barH = (actProg / yMaxHist) * (chartH / 2);
                 ctx.fillStyle = 'rgba(16, 185, 129, 0.4)'; // Green transparent

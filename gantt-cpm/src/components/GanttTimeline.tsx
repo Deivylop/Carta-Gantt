@@ -132,10 +132,10 @@ export default function GanttTimeline() {
             // Check segment 1
             const seg1x = Math.max(0, dayDiff(projStart, r.ES) * PX);
             const seg1EndX = r.suspendDate
-                ? dayDiff(projStart, r._actualEnd!) * PX
+                ? (dayDiff(projStart, r._actualEnd!) + 1) * PX
                 : (barStatusDate
                     ? (dayDiff(projStart, barStatusDate) + 1) * PX
-                    : dayDiff(projStart, r._actualEnd!) * PX);
+                    : (dayDiff(projStart, r._actualEnd!) + 1) * PX);
             const seg1w = Math.max(4, seg1EndX - seg1x);
             if (mx >= seg1x - 3 && mx <= seg1x + seg1w + 3) return { visIdx: vi, zone: 'move' as const };
             // Check segment 2 (remaining work)
@@ -176,10 +176,10 @@ export default function GanttTimeline() {
         if (isSplit) {
             const seg1x = Math.max(0, dayDiff(projStart, r.ES) * PX);
             const seg1EndX = r.suspendDate
-                ? dayDiff(projStart, r._actualEnd!) * PX
+                ? (dayDiff(projStart, r._actualEnd!) + 1) * PX
                 : (barStatusDate
                     ? (dayDiff(projStart, barStatusDate) + 1) * PX
-                    : dayDiff(projStart, r._actualEnd!) * PX);
+                    : (dayDiff(projStart, r._actualEnd!) + 1) * PX);
             const seg2x = dayDiff(projStart, r._remES!) * PX;
             const seg2EndX = dayDiff(projStart, r._remEF!) * PX;
             if ((mx >= seg1x - 6 && mx <= seg1EndX + 6) ||
@@ -527,10 +527,10 @@ export default function GanttTimeline() {
                     // otherwise to barStatusDate (retained logic split).
                     const seg1x = bx;
                     const seg1EndX = isSuspend
-                        ? dayDiff(projStart, r._actualEnd!) * PX   // _actualEnd = suspendDate
+                        ? (dayDiff(projStart, r._actualEnd!) + 1) * PX   // _actualEnd = suspendDate
                         : (barStatusDate
                             ? (dayDiff(projStart, barStatusDate) + 1) * PX
-                            : dayDiff(projStart, r._actualEnd!) * PX);
+                            : (dayDiff(projStart, r._actualEnd!) + 1) * PX);
                     const seg1w = Math.max(4, seg1EndX - seg1x);
 
                     // Segment 2: remaining work (_remES → _remEF)
@@ -552,8 +552,8 @@ export default function GanttTimeline() {
                     // Progress fill on segment 1:
                     // For suspended: progress covers only up to statusDate (done work portion)
                     // For normal split: entire segment 1 is done work
-                    if (isSuspend && barStatusDate) {
-                        const progEndX = Math.min((dayDiff(projStart, barStatusDate) + 1) * PX, seg1EndX);
+                    if (isSuspend && statusDate) {
+                        const progEndX = Math.min((dayDiff(projStart, statusDate) + 1) * PX, seg1EndX);
                         const progW = Math.max(0, progEndX - seg1x);
                         if (progW > 0) {
                             ctx.fillStyle = state.barColors.progress + (lightMode ? 'aa' : '99');
@@ -619,8 +619,8 @@ export default function GanttTimeline() {
                     ctx.lineWidth = isRestrN ? 2.5 : 1;
                     rrect(ctx, bx, by, bw, bh, 3); ctx.stroke();
                     // Progress fill
-                    if (pct > 0 && barStatusDate && r.ES) {
-                        const sdX = (dayDiff(projStart, barStatusDate) + 1) * PX;
+                    if (pct > 0 && statusDate && r.ES) {
+                        const sdX = (dayDiff(projStart, statusDate) + 1) * PX;
                         const progressW = Math.min(Math.max(0, sdX - bx), bw);
                         if (progressW > 0) { ctx.fillStyle = state.barColors.progress + (lightMode ? 'aa' : '99'); rrect(ctx, bx, by, progressW, bh, 3); ctx.fill(); }
                     } else if (pct > 0) {
