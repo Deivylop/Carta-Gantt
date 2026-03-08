@@ -346,9 +346,8 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
             });
         });
 
-        // Shift status-date data point to end-of-day so actual curve reaches the Fecha de Corte line
-        const sdPt = points.find(p => p.dateMs === sTime);
-        if (sdPt) sdPt.dateMs = sTimeEndOfDay;
+        // DO NOT mutate points here to avoid breaking histogram lookups.
+        // We will just draw the status date points correctly in the render section.
 
         return { points, statusDateMs: sTimeEndOfDay, maxValue: totalWeight, isHoursMode };
 
@@ -667,23 +666,23 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, calScale, l
         };
 
         const histPeriods = [];
-        const cs = state.calScale || state.zoom;
+        const histCs = calScale || zoom;
         let iter = new Date(projStart);
         while (iter <= end) {
             const startMs = iter.getTime();
-            if (cs === 'week-day') {
+            if (histCs === 'week-day') {
                 iter.setDate(iter.getDate() + 1);
-            } else if (cs === 'month-week') {
+            } else if (histCs === 'month-week') {
                 const dow = iter.getDay();
                 if (histPeriods.length === 0 && dow !== 1) {
                     iter.setDate(iter.getDate() + (dow === 0 ? 1 : 8 - dow));
                 } else {
                     iter.setDate(iter.getDate() + 7);
                 }
-            } else if (cs === 'year-month' || cs === 'quarter-month') {
+            } else if (histCs === 'year-month' || histCs === 'quarter-month') {
                 iter.setMonth(iter.getMonth() + 1);
                 iter.setDate(1);
-            } else if (cs === 'year-quarter') {
+            } else if (histCs === 'year-quarter') {
                 iter.setMonth(iter.getMonth() + 3);
                 iter.setDate(1);
             } else {
@@ -718,35 +717,42 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, calScale, l
         const valToY = (val: number) => chartBot - (val / yMax) * chartH;
 
         // ─── Draw planned curve (smooth bezier) ──────────────
+        const mappedPlanned = points.map(p => {
+            const isStatusDate = p.dateMs === statusDateMs - 86400000;
+            return { x: msToX(isStatusDate ? statusDateMs : p.dateMs), y: valToY(p.planned) };
+        });
+
         if (points.length > 0) {
             ctx.strokeStyle = plannedColor;
             ctx.lineWidth = 2.5;
-            drawSmoothCurve(ctx, points.map(p => ({ x: msToX(p.dateMs), y: valToY(p.planned) })), chartTop, chartBot);
+            drawSmoothCurve(ctx, mappedPlanned, chartTop, chartBot);
             ctx.lineWidth = 1;
 
             // Dots
             ctx.fillStyle = plannedColor;
-            points.forEach(p => {
-                const x = msToX(p.dateMs);
-                const y = valToY(p.planned);
-                ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+            mappedPlanned.forEach(p => {
+                ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI * 2); ctx.fill();
             });
         }
 
         // ─── Draw actual curve (smooth bezier) ───────────────
         const actualPoints = points.filter(p => p.actual !== null && p.actual !== undefined);
+        // Map visual points to reach the status date line correctly without altering the data logic
+        const mappedActual = actualPoints.map(p => {
+            const isStatusDate = p.dateMs === statusDateMs - 86400000;
+            return { x: msToX(isStatusDate ? statusDateMs : p.dateMs), y: valToY(p.actual!) };
+        });
+
         if (actualPoints.length > 0) {
             ctx.strokeStyle = actualColor;
             ctx.lineWidth = 2.5;
-            drawSmoothCurve(ctx, actualPoints.map(p => ({ x: msToX(p.dateMs), y: valToY(p.actual!) })), chartTop, chartBot);
+            drawSmoothCurve(ctx, mappedActual, chartTop, chartBot);
             ctx.lineWidth = 1;
 
             // Dots
             ctx.fillStyle = actualColor;
-            actualPoints.forEach(p => {
-                const x = msToX(p.dateMs);
-                const y = valToY(p.actual!);
-                ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
+            mappedActual.forEach(p => {
+                ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI * 2); ctx.fill();
             });
         }
 
