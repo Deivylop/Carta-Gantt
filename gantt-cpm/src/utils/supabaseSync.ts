@@ -1,12 +1,9 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable no-constant-binary-expression */
 import { supabase } from '../lib/supabase';
 import type { GanttState } from '../store/GanttContext';
 import { BUILTIN_FILTERS } from '../store/GanttContext';
-import { newActivity, isoDate, parseDate, normDate } from './cpm';
+import { newActivity, isoDate, parseDate, normDate, addDays } from './cpm';
 import { deriveResString } from './helpers';
 import type { RiskAnalysisState, RiskScoringConfig, SimulationResult, DurationDistribution, RiskEvent, RiskTaskImpact, SimulationParams } from '../types/risk';
-
 
 // Maps Calendar factors directly as in original HTML
 let isSaving = false;
@@ -25,14 +22,8 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
         const projName = state.projName || 'Mi Proyecto';
         const _projStart = isoDate(state.projStart) || null;
         const _statusDate = isoDate(state.statusDate) || null;
-        const defCal = state.defCal || 7;
+        const defCal = state.defCal != null ? state.defCal : 6;
         let currentId = projectId;
-
-        // Get User ID from Supabase
-        const { data: { session } } = await supabase.auth.getSession();
-        const userId = session?.user?.id || 'anonymous';
-
-        if (state.activities.length <= 1 && currentId) { console.warn('Abortando'); return currentId; }
 
         // 1. Upsert Project
         if (currentId) {
@@ -56,20 +47,6 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
         }
 
         if (!currentId) throw new Error('Failed to get project ID');
-
-        try { await supabase.from('project_backups').insert({ project_id: currentId, user_id: session?.user?.id || null, activity_count: state.activities.length, snapshot: JSON.parse(JSON.stringify(state)) }); console.log('✅ Backup saving successful'); } catch(e) { console.warn('Backup saving failed', e); }
-
-                try {
-            await supabase.from('project_backups').insert({
-                project_id: currentId,
-                user_id: session?.user?.id || null,
-                activity_count: state.activities.length,
-                snapshot: JSON.parse(JSON.stringify(state))
-            });
-            console.log('✅ Backup del proyecto guardado');
-        } catch(e) { 
-            console.warn('Backup falló', e); 
-        }
 
         // 2. Clear old data (cascade-safe order)
         const d1 = await supabase.from('gantt_activity_resources').delete().eq('project_id', currentId);
@@ -102,12 +79,17 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
         {
             const latestEF = state.activities.filter(a => (a.type === 'task' || a.type === 'milestone') && !a._isProjRow)
                 .reduce<string | null>((max, a) => {
-                    const ef = a.EF ? a.EF.toISOString() : null;
+                    const ef = a.EF ? isoDate(a.EF) : null;
                     if (ef && (!max || ef > max)) return ef;
                     return max;
                 }, null);
             // EF is exclusive (day after last work day), subtract 1 day for display endDate
-            const endDateISO = latestEF ? new Date(new Date(latestEF).getTime() - 86400000).toISOString() : null;
+            const endDateISO = latestEF ? isoDate(addDays(new Date(latestEF + 'T00:00:00'), -1)) : null;
+            // Build map of per-activity durationType (only if non-default)
+            const actDurationTypes: Record<string, string> = {};
+            state.activities.forEach(a => {
+                if (!a._isProjRow && a.durationType) actDurationTypes[a.id] = a.durationType;
+            });
             const historyPayload: any = {
                 history: state.progressHistory || [],
                 projMeta: {
@@ -116,10 +98,12 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
                     remDur: projRow?.remDur ?? null,
                     work: projRow?.work || 0,
                     pct: projRow?.pct || 0,
-                    startDate: state.projStart ? state.projStart.toISOString() : null,
+                    startDate: state.projStart ? isoDate(state.projStart) : null,
                     endDate: endDateISO,
-                    statusDate: state.statusDate ? state.statusDate.toISOString() : null,
+                    statusDate: state.statusDate ? isoDate(state.statusDate) : null,
+                    durationType: state.durationType || 'Fija Duración y Unidades',
                 },
+                actDurationTypes,
             };
             acts.push({
                 ...newActivity('__HISTORY__', defCal),
@@ -161,37 +145,12 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
                 lv: -1,
             } as any);
         }
-        // Inject Column Views as a hidden activity
-        if (state.columnViews && state.columnViews.length > 0) {
-            acts.push({
-                ...newActivity(`__VIEWS__${userId}`, defCal),
-                name: '__COLUMN_VIEWS__',
-                type: 'milestone',
-                notes: JSON.stringify(state.columnViews),
-                lv: -1,
-            } as any);
-        }
-        // Inject Saved Global Changes as a hidden activity
-        if (state.savedGlobalChanges && state.savedGlobalChanges.length > 0) {
-            acts.push({
-                ...newActivity(`__GCHANGES__${userId}`, defCal),
-                name: '__GLOBAL_CHANGES__',
-                type: 'milestone',
-                notes: JSON.stringify(state.savedGlobalChanges),
-                lv: -1,
-            } as any);
-        }
-
-        // Restore other users' views and hidden data that we shouldn't overwrite
-        if (state._hiddenOtherData && state._hiddenOtherData.length > 0) {
-            acts.push(...state._hiddenOtherData);
-        }
         // Inject What-If scenarios as a hidden activity
         if (state.scenarios && state.scenarios.length > 0) {
             // Serialize scenarios – strip Date objects, keep ISO strings
             const safeISO = (v: any): string | null => {
                 if (!v) return null;
-                if (v instanceof Date) return isNaN(v.getTime()) ? null : v.toISOString();
+                if (v instanceof Date) return isNaN(v.getTime()) ? null : isoDate(v);
                 if (typeof v === 'string') return v; // already an ISO string
                 return null;
             };
@@ -239,17 +198,16 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
                     dur: a.dur != null ? a.dur : 0, remdur: a.remDur != null ? a.remDur : null, cal: a.cal || defCal,
                     pct: a.pct || 0, notes: a.notes || '', res: a.res || '', work: a.work || 0, weight: a.weight != null ? a.weight : null,
                     lv: a.lv || 0, constraint_type: a.constraint || null, constraintdate: cd ? cd : null,
-                    manual: !!a.manual, ES: a.ES ? a.ES.toISOString() : null, EF: a.EF ? a.EF.toISOString() : null,
-                    LS: a.LS ? a.LS.toISOString() : null, LF: a.LF ? a.LF.toISOString() : null,
+                    manual: !!a.manual, ES: a.ES ? isoDate(a.ES) : null, EF: a.EF ? isoDate(a.EF) : null,
+                    LS: a.LS ? isoDate(a.LS) : null, LF: a.LF ? isoDate(a.LF) : null,
                     TF: a.TF != null ? a.TF : null, crit: !!a.crit,
-                    bldur: a.blDur != null ? a.blDur : null, bles: a.blES ? a.blES.toISOString() : null,
-                    blef: a.blEF ? a.blEF.toISOString() : null,
+                    bldur: a.blDur != null ? a.blDur : null, bles: a.blES ? isoDate(a.blES) : null,
+                    blef: a.blEF ? isoDate(a.blEF) : null,
                     encargado: a.encargado || '',
-                    duration_type: (a as any).durationType || null,
-                    txt1: a.txt1 || '', txt2: a.txt2 || '', txt3: (a.steps && a.steps.length) ? '__STEPS__' + JSON.stringify(a.steps) : (a.txt3 || ''),
+                    txt1: a.txt1 || '', txt2: a.txt2 || '', txt3: a.txt3 || '',
                     txt4: (a.actualStart || a.actualFinish || a.suspendDate || a.resumeDate) ? ('__AS__' + (a.actualStart || '') + '|' + (a.actualFinish || '') + '|' + (a.suspendDate || '') + '|' + (a.resumeDate || '')) : (a.txt4 || ''),
                     txt5: (a.baselines && a.baselines.some((b: any) => b))
-                        ? '__BL__' + JSON.stringify(a.baselines.map((bl: any) => bl ? { d: bl.dur, s: bl.ES ? bl.ES.toISOString() : null, e: bl.EF ? bl.EF.toISOString() : null, c: bl.cal, t: bl.savedAt, n: bl.name || '', desc: bl.description || '', p: bl.pct || 0, w: bl.work || 0, wt: bl.weight, sd: bl.statusDate || '' } : null))
+                        ? '__BL__' + JSON.stringify(a.baselines.map((bl: any) => bl ? { d: bl.dur, s: bl.ES ? isoDate(bl.ES) : null, e: bl.EF ? isoDate(bl.EF) : null, c: bl.cal, t: bl.savedAt, n: bl.name || '', desc: bl.description || '', p: bl.pct || 0, w: bl.work || 0, wt: bl.weight, sd: bl.statusDate || '' } : null))
                         : (a.txt5 || '')
                 };
             });
@@ -598,12 +556,9 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
 
     const projName = proj.projname || 'Mi Proyecto';
     const projStart = proj.projstart ? (parseDate(proj.projstart) || new Date()) : new Date();
-    const defCal = proj.defcal || 7;
+    const defCal = proj.defcal != null ? proj.defcal : 6;
+    console.log('[loadFromSupabase] raw proj.defcal=', proj.defcal, 'resolved defCal=', defCal);
     const statusDate = proj.statusdate ? (parseDate(proj.statusdate) || new Date()) : new Date();
-
-    // Get User ID from Supabase
-    const { data: { session } } = await supabase.auth.getSession();
-    const userId = session?.user?.id || 'anonymous';
 
     // Resources
     const { data: resData, error: re } = await supabase.from('gantt_resources').select('*').eq('project_id', projectId).order('rid');
@@ -655,9 +610,8 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
     let leanRestrictions: any[] = [];
     let depsBackup: Record<string, { id: string; type: string; lag: number }[]> = {};
     let scenarios: any[] = [];
-    let columnViews: any[] = [];
-    let savedGlobalChanges: any[] = [];
-    let hiddenOtherData: any[] = [];
+    let projDurationType: string = 'Fija Duración y Unidades';
+    let actDurationTypes: Record<string, string> = {};
 
     // Build activities
     const activities = (actData as any[]).map(a => {
@@ -672,15 +626,7 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
         na.manual = !!a.manual;
         na.blDur = a.bldur != null ? parseFloat(a.bldur) : null;
         na.blES = normDate(a.bles); na.blEF = normDate(a.blef);
-        na.txt1 = a.txt1 || ''; na.txt2 = a.txt2 || '';
-          const rawTxt3 = a.txt3 || '';
-          if (rawTxt3.startsWith('__STEPS__')) {
-              try { na.steps = JSON.parse(rawTxt3.slice(9)); } catch { na.steps = []; }
-              na.txt3 = '';
-          } else {
-              na.txt3 = rawTxt3;
-              na.steps = [];
-          }
+        na.txt1 = a.txt1 || ''; na.txt2 = a.txt2 || ''; na.txt3 = a.txt3 || '';
         // Restore actualStart and actualFinish from txt4 if encoded
         const rawTxt4 = a.txt4 || '';
         if (rawTxt4.startsWith('__AS__')) {
@@ -702,23 +648,18 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
         if (rawTxt5.startsWith('__BL__')) {
             try {
                 const blArr = JSON.parse(rawTxt5.slice(6));
-                na.baselines = (blArr as any[]).map((bl: any) => bl ? { dur: bl.d, ES: normDate(bl.s), EF: normDate(bl.e), cal: bl.c, savedAt: bl.t || '', name: bl.n || '', description: bl.desc || '', pct: bl.p || 0, work: bl.w || 0, weight: bl.wt != null ? bl.wt : null, statusDate: bl.sd || '' } : null) as any;
+                na.baselines = (blArr as any[]).map((bl: any) => bl ? { dur: bl.d, ES: normDate(bl.s), EF: normDate(bl.e), cal: bl.c, savedAt: bl.t || '', name: bl.n || '', description: bl.desc || '', pct: bl.p || 0, work: bl.w || 0, weight: bl.wt != null ? bl.wt : null, statusDate: bl.sd || '' } : null).filter((b): b is NonNullable<typeof b> => b !== null);
             } catch { na.baselines = []; }
             na.txt5 = '';
         } else {
             na.txt5 = rawTxt5;
             na.baselines = [];
         }
-        // Restore blWork from active baseline (index 0 by default)
-        const activeBl0 = (na.baselines || [])[0];
-        na.blWork = activeBl0 ? (activeBl0.work ?? null) : null;
         na.preds = depMap[a.local_id] || [];
         const actRes = arMap[a.id] || [];
         actRes.forEach(ar => { const pr = getPoolResource(ar.rid); if (pr) ar.name = pr.name; });
         na.resources = actRes;
         if (actRes.length) deriveResString(na, resourcePool);
-        // Restore durationType if saved
-        if (a.duration_type) (na as any).durationType = a.duration_type;
         return na;
     }).filter(na => {
         // Extract hidden progress history if found (backward compat: old format is plain array, new format is { history, projMeta })
@@ -726,7 +667,10 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
             try {
                 const parsed = JSON.parse(na.notes);
                 progressHistory = Array.isArray(parsed) ? parsed : (parsed.history || []);
-            } catch { /* ignore */ }
+                // Restore durationType from projMeta and per-activity map
+                if (parsed.projMeta?.durationType) projDurationType = parsed.projMeta.durationType;
+                if (parsed.actDurationTypes) actDurationTypes = parsed.actDurationTypes;
+            } catch (e) { }
             return false;
         }
         // Extract hidden custom filters if found
@@ -739,42 +683,17 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
                 const builtins = BUILTIN_FILTERS.map(bf => ({ ...bf, active: builtinActive.includes(bf.id) }));
                 customFilters = [...builtins, ...userFilters];
                 if (filterData.filtersMatchAll !== undefined) filtersMatchAll = filterData.filtersMatchAll;
-            } catch { /* ignore */ }
+            } catch (e) { }
             return false;
         }
         // Extract hidden PPC history if found
         if (na.id === '__PPC__') {
-            try { ppcHistory = JSON.parse(na.notes); } catch { /* ignore */ }
+            try { ppcHistory = JSON.parse(na.notes); } catch (e) { }
             return false;
         }
         // Extract hidden Lean restrictions if found
         if (na.id === '__RESTRICTIONS__') {
-            try { leanRestrictions = JSON.parse(na.notes); } catch { /* ignore */ }
-            return false;
-        }
-        // Extract hidden Column Views if found (handle both old format and new user-specific format)
-        if (na.id.startsWith('__VIEWS__')) {
-            const isOldFormat = na.id === '__VIEWS__';
-            const isMyView = na.id === `__VIEWS__${userId}`;
-
-            if (isMyView || (isOldFormat && columnViews.length === 0)) {
-                try { columnViews = JSON.parse(na.notes); } catch { /* ignore */ }
-            }
-
-            // If it's a view belonging to another user, preserve it!
-            if (!isMyView && !isOldFormat) {
-                hiddenOtherData.push(na);
-            }
-            return false;
-        }
-        // Extract hidden Saved Global Changes if found
-        if (na.id.startsWith('__GCHANGES__')) {
-            const isMyChanges = na.id === `__GCHANGES__${userId}`;
-            if (isMyChanges) {
-                try { savedGlobalChanges = JSON.parse(na.notes); } catch { /* ignore */ }
-            } else {
-                hiddenOtherData.push(na);
-            }
+            try { leanRestrictions = JSON.parse(na.notes); } catch (e) { }
             return false;
         }
         // Extract hidden What-If scenarios if found
@@ -789,20 +708,20 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
                         EF: a.EF ? new Date(a.EF) : null,
                         LS: a.LS ? new Date(a.LS) : null,
                         LF: a.LF ? new Date(a.LF) : null,
-                        blES: a.blES ? new Date(a.blES) : null,
-                        blEF: a.blEF ? new Date(a.blEF) : null,
+                        blES: normDate(a.blES),
+                        blEF: normDate(a.blEF),
                         preds: a.preds || [],
                         resources: a.resources || [],
                         baselines: a.baselines || [],
                     })),
                     changes: sc.changes || [],
                 }));
-            } catch { /* ignore malformed scenarios */ }
+            } catch (e) { }
             return false;
         }
         // Extract hidden deps backup if found
         if (na.id === '__DEPS__') {
-            try { depsBackup = JSON.parse(na.notes); } catch { /* ignore */ }
+            try { depsBackup = JSON.parse(na.notes); } catch (e) { }
             return false;
         }
         return true;
@@ -818,11 +737,19 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
         });
     }
 
+    // Post-processing: restore per-activity durationType
+    if (Object.keys(actDurationTypes).length > 0) {
+        activities.forEach(a => {
+            if (actDurationTypes[a.id]) (a as any).durationType = actDurationTypes[a.id];
+        });
+    }
+
     return {
         projName,
         projStart,
         defCal,
         statusDate,
+        durationType: projDurationType,
         resourcePool,
         activities,
         progressHistory,
@@ -831,10 +758,7 @@ export async function loadFromSupabase(projectId: string): Promise<Partial<Gantt
         ppcHistory,
         leanRestrictions,
         scenarios,
-        columnViews,
-        savedGlobalChanges,
-        _hiddenOtherData: hiddenOtherData,
-        riskState: (await loadRiskStateFromSupabase(projectId)) as RiskAnalysisState,
+        riskState: await loadRiskStateFromSupabase(projectId) as RiskAnalysisState,
     };
 }
 
@@ -1141,112 +1065,57 @@ export async function deleteProjectFromSupabase(supabaseId: string): Promise<voi
     if (error) throw error;
 }
 
-/** List projects from Supabase respecting the user's role:
- *  - superadmin: returns ALL projects from all companies (with empresaId for filtering)
- *  - others: returns only projects from their own empresa */
-export async function listSupabaseProjects(): Promise<{
-    id: string; projName: string; projStart: string | null;
-    statusDate: string | null; defCal: number; empresaId: string | null;
-}[]> {
-    // Fetch role and empresa_id in parallel
-    const [{ data: role }, { data: empresaId }] = await Promise.all([
-        supabase.rpc('get_auth_user_role'),
-        supabase.rpc('get_user_empresa_id'),
-    ]);
-
-    const isSuperAdmin = role === 'superadmin';
-
-    // Superadmin: no empresa filter — sees everything
-    // Others: must have an empresa_id, filter to own empresa only
-    if (!isSuperAdmin && !empresaId) {
-        return []; // user has no empresa, show nothing
-    }
-
-    let query = supabase
+/** List all projects from Supabase (lightweight — only project metadata) */
+export async function listSupabaseProjects(): Promise<{ id: string; projName: string; projStart: string | null; statusDate: string | null; defCal: number }[]> {
+    const { data, error } = await supabase
         .from('gantt_projects')
-        .select('id, projname, projstart, statusdate, defcal, empresa_id')
+        .select('id, projname, projstart, statusdate, defcal')
         .order('created_at', { ascending: true });
-
-    if (!isSuperAdmin) {
-        query = query.eq('empresa_id', empresaId);
-    }
-    // superadmin: no .eq filter → returns all
-
-    const { data, error } = await query;
     if (error) throw error;
     return (data || []).map((r: any) => ({
         id: r.id,
         projName: r.projname || 'Sin nombre',
         projStart: r.projstart || null,
         statusDate: r.statusdate || null,
-        defCal: r.defcal || 7,
-        empresaId: r.empresa_id || null,
+        defCal: r.defcal != null ? r.defcal : 6,
     }));
 }
 
-/** Save portfolio state (EPS tree + project metadata) to Supabase.
- *  Uses empresa_id as the row key so each company has its own portfolio.
- *  This is required for the RLS policies (rbac_update_portfolio & user_actualizar_portfolio)
- *  which check empresa_id = get_user_empresa_id(). Without empresa_id the upsert fails silently. */
+/** Save portfolio state (EPS tree + project metadata) to Supabase */
 export async function savePortfolioToSupabase(portfolio: {
     epsNodes: any[];
     projects: any[];
     expandedIds: string[];
     activeProjectId: string | null;
 }): Promise<void> {
-    // 1. Get the company ID for the current authenticated user
-    const { data: empresaId, error: rpcError } = await supabase.rpc('get_user_empresa_id');
-    if (rpcError || !empresaId) {
-        // No empresa means we can't pass RLS — bail out silently
-        console.warn('[portfolio] Could not get empresa_id, skipping save:', rpcError?.message);
-        return;
-    }
-
-    // 2. Upsert using empresa_id as the row's id AND as the empresa_id column.
-    //    RLS policies require empresa_id = get_user_empresa_id() on INSERT/UPDATE.
-    //    NOTE: activeProjectId is NOT persisted — it is a per-session preference.
     const { error } = await supabase
         .from('portfolio_state')
         .upsert({
-            id: empresaId,               // row key = empresa (one row per company)
-            empresa_id: empresaId,        // required by RLS policies
+            id: 'default',
             eps_nodes: portfolio.epsNodes,
             projects: portfolio.projects,
             expanded_ids: portfolio.expandedIds,
+            active_project_id: portfolio.activeProjectId,
             updated_at: new Date().toISOString(),
         }, { onConflict: 'id' });
     if (error) throw error;
 }
 
-/** Load portfolio state from Supabase.
- *  Searches by empresa_id (not id='default') so each company loads its own portfolio.
- *  Returns null if no portfolio is found or user has no empresa. */
+/** Load portfolio state from Supabase (returns null if table doesn't exist or no data) */
 export async function loadPortfolioFromSupabase(): Promise<{
     epsNodes: any[];
     projects: any[];
     expandedIds: string[];
     activeProjectId: string | null;
 } | null> {
-    // 1. Get current user's empresa_id
-    const { data: empresaId, error: rpcError } = await supabase.rpc('get_user_empresa_id');
-    if (rpcError || !empresaId) {
-        // If user has no empresa, fall back to id='default' for backward compat
-        console.warn('[portfolio] No empresa_id, trying id=default fallback:', rpcError?.message);
-    }
-
-    // 2. Query: prefer empresa_id match, fallback to id='default'
-    const rowId = empresaId || 'default';
     const { data, error } = await supabase
         .from('portfolio_state')
         .select('*')
-        .eq('id', rowId)
+        .eq('id', 'default')
         .maybeSingle();
-
     if (error) {
         // Table may not exist yet — gracefully return null
         if (error.code === '42P01' || error.message?.includes('does not exist')) return null;
-        // RLS policy blocked the read (no empresa match) — return null
-        if (error.code === 'PGRST116' || error.message?.includes('row-level security')) return null;
         throw error;
     }
     if (!data) return null;
@@ -1254,8 +1123,7 @@ export async function loadPortfolioFromSupabase(): Promise<{
         epsNodes: data.eps_nodes || [],
         projects: data.projects || [],
         expandedIds: data.expanded_ids || [],
-        // activeProjectId is intentionally NOT loaded from Supabase — it is a per-session preference.
-        activeProjectId: null,
+        activeProjectId: data.active_project_id || null,
     };
 }
 
@@ -1384,15 +1252,21 @@ export async function fetchProjectSummaries(
 export async function createSupabaseProject(
     name: string,
     projStart?: string | null,
-    defCal?: number,
+    defCal?: number | string,
     statusDate?: string | null
 ): Promise<string> {
+    // Parse calendar: accept number (5,6,7) or string ('5','6','7', custom id)
+    let calValue: number | string = 6;
+    if (defCal != null) {
+        const n = typeof defCal === 'number' ? defCal : parseInt(String(defCal));
+        calValue = (!isNaN(n) && [5,6,7].includes(n)) ? n : (typeof defCal === 'string' ? defCal : 6);
+    }
     const { data, error } = await supabase
         .from('gantt_projects')
         .insert({
             projname: name,
             projstart: projStart || null,
-            defcal: defCal || 7,
+            defcal: calValue,
             statusdate: statusDate || null,
         })
         .select()
@@ -1401,10 +1275,13 @@ export async function createSupabaseProject(
     return data.id;
 }
 
-export async function updateSupabaseProjectName(projectId: string, projName: string): Promise<void> {
+/** Update the project name in gantt_projects (called when renaming in portfolio view) */
+export async function updateSupabaseProjectName(projectId: string, name: string): Promise<void> {
     const { error } = await supabase
         .from('gantt_projects')
-        .update({ projname: projName })
+        .update({ projname: name })
         .eq('id', projectId);
-    if (error) console.error('Error updating project name in Supabase:', error);
+    if (error) {
+        console.error('Failed to update project name in Supabase:', error);
+    }
 }

@@ -999,8 +999,12 @@ function TabCurvaS({ activityId }: { activityId: string }) {
     const { state } = useGantt();
     const [mode, setMode] = useState<'all' | 'selected'>('all');
 
-    // Left panel matches table width exactly → chart viewport aligns with the Gantt timeline
-    const leftW = state.tableW;
+    // Left panel must match the combined width of everything to the left of the
+    // scrollable time grid so that the S-curve canvas aligns pixel-perfectly.
+    // Gantt view:  tableW + v-resize(4px)
+    // Usage views: tableW + v-resize(4px) + DETAIL_W(100px)
+    const isUsageView = state.currentView === 'usage' || state.currentView === 'resUsage';
+    const leftW = state.tableW + 4 + (isUsageView ? 100 : 0);
 
     return (
         <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
