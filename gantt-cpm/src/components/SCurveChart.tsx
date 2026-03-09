@@ -288,6 +288,7 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
             const d = new Date(time);
             const iso = isoDate(d);
             let actualPct: number | null = null;
+            let projectedPct: number | null = null;
 
             if (time <= sTimeEndOfDay) {
                 let actualEarned = 0;
@@ -302,7 +303,7 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                         else {
                             for (let i = 0; i < tl.length - 1; i++) {
                                 const d1 = tl[i].d, d2 = tl[i + 1].d;
-                                if (time >= d1 && time < d2) { // Changed to strictly < for interpolation
+                                if (time >= d1 && time < d2) {
                                     const totWd = getExactWorkDays(new Date(d1), new Date(d2), t.cal || state.defCal);
                                     const elWd = getExactWorkDays(new Date(d1), new Date(time), t.cal || state.defCal);
                                     const ratio = totWd > 0 ? (elWd / totWd) : 1;
@@ -333,6 +334,81 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                 else if (totalWeight > 0) actualPct = (actualEarned / totalWeight) * 100;
                 else if (fallbackTotalWeight > 0) actualPct = (actFallbackEarned / fallbackTotalWeight) * 100;
                 else actualPct = 0;
+
+                if (time === sTimeEndOfDay) {
+                    projectedPct = actualPct;
+                }
+            } else {
+                let projEarned = 0;
+                let projFallback = 0;
+
+                tasks.forEach(t => {
+                    const tl = taskActTimeline.get(t.id) || [];
+                    let basePct = 0; // % at Status Date
+                    if (tl.length > 0) {
+                        const sTimeAct = sTimeEndOfDay;
+                        if (sTimeAct >= tl[tl.length - 1].d) basePct = tl[tl.length - 1].p;
+                        else if (sTimeAct <= tl[0].d) basePct = 0;
+                        else {
+                            for (let i = 0; i < tl.length - 1; i++) {
+                                const d1 = tl[i].d, d2 = tl[i + 1].d;
+                                if (sTimeAct >= d1 && sTimeAct < d2) {
+                                    const totWd = getExactWorkDays(new Date(d1), new Date(d2), t.cal || state.defCal);
+                                    const elWd = getExactWorkDays(new Date(d1), new Date(sTimeAct), t.cal || state.defCal);
+                                    const curRatio = totWd > 0 ? (elWd / totWd) : 1;
+                                    basePct = tl[i].p + curRatio * (tl[i + 1].p - tl[i].p);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    let w = 0, wBackup = 0;
+                    if (isResUsage) {
+                        w = t.resources?.filter((r: any) => targetResNames.includes(r.name)).reduce((sum: number, r: any) => sum + (r.work || 0), 0) || 0;
+                        wBackup = w;
+                    } else if (isTaskUsage) {
+                        w = t.work || 0; wBackup = t.work || 0;
+                    } else {
+                        const cw = t.work || 0;
+                        w = (t.weight != null && t.weight > 0) ? t.weight : (cw || t.dur || 1);
+                        wBackup = t.dur || 1;
+                    }
+
+                    let earnedHere = w * (basePct / 100);
+                    let fallbackHere = wBackup * (basePct / 100);
+
+                    if (basePct < 100) {
+                        // Project remaining logic
+                        const remStart = t._remES || t.ES;
+                        const remEnd = t._remEF || t.EF;
+                        if (remStart && remEnd) {
+                            const sObj = new Date(remStart); sObj.setHours(0, 0, 0, 0);
+                            const eObj = new Date(remEnd); eObj.setHours(0, 0, 0, 0);
+                            const evalObj = new Date(time); evalObj.setHours(0, 0, 0, 0);
+                            const actS = sObj.getTime() < sTimeEndOfDay ? new Date(sTimeEndOfDay) : sObj; // ensures rem goes strictly into the future avoiding backwards interpolation
+
+                            let ratio = 0;
+                            if (evalObj <= actS) ratio = 0;
+                            else if (evalObj >= eObj) ratio = 1;
+                            else {
+                                const totWd = getExactWorkDays(actS, eObj, t.cal || state.defCal);
+                                const elWd = getExactWorkDays(actS, evalObj, t.cal || state.defCal);
+                                ratio = totWd > 0 ? (elWd / totWd) : 1;
+                            }
+                            earnedHere += w * (1 - basePct / 100) * ratio;
+                            fallbackHere += wBackup * (1 - basePct / 100) * ratio;
+                        }
+                    }
+
+                    projEarned += earnedHere;
+                    projFallback += fallbackHere;
+                });
+
+                if (isHoursMode) projectedPct = projEarned;
+                else if (totalWeight > 0) projectedPct = (projEarned / totalWeight) * 100;
+                else if (fallbackTotalWeight > 0) projectedPct = (projFallback / fallbackTotalWeight) * 100;
+                else projectedPct = 0;
             }
 
             points.push({
@@ -340,7 +416,8 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                 dateISO: iso,
                 dateMs: time,
                 planned: parseFloat(calcPlannedPct(d).toFixed(2)),
-                actual: actualPct !== null ? parseFloat(actualPct.toFixed(2)) : null
+                actual: actualPct !== null ? parseFloat(actualPct.toFixed(2)) : null,
+                projected: projectedPct !== null ? parseFloat(projectedPct.toFixed(2)) : null
             });
         });
 
@@ -355,6 +432,7 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
     const gridColor = state.lightMode ? '#e2e8f0' : '#334155';
     const plannedColor = '#3b82f6'; // Blue
     const actualColor = '#10b981'; // Green
+    const projectedColor = '#f97316'; // Orange
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', background: state.lightMode ? '#fff' : '#0f172a' }}>
@@ -440,6 +518,7 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                             <ReferenceLine x={data.statusDateMs} stroke="#06b6d4" strokeWidth={2} label={{ position: 'insideTopLeft', value: 'Fecha de Corte', fill: '#06b6d4', fontSize: 12 }} />
                             <Line type="monotone" dataKey="planned" name={data.isHoursMode ? "HH Programadas" : "Avance Programado"} stroke={plannedColor} strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 6 }} />
                             <Line type="monotone" dataKey="actual" name={data.isHoursMode ? "HH Reales" : "Avance Real"} stroke={actualColor} strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} connectNulls={true} />
+                            <Line type="monotone" dataKey="projected" name={data.isHoursMode ? "HH Proyectadas" : "Avance Proyectado"} stroke={projectedColor} strokeWidth={3} strokeDasharray="5 5" dot={{ r: 3 }} activeDot={{ r: 6 }} connectNulls={true} />
                         </LineChart>
                     </ResponsiveContainer>
                 </div>
@@ -548,6 +627,7 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, calScale, l
         const textColor = lightMode ? '#334155' : '#94a3b8';
         const plannedColor = '#3b82f6';
         const actualColor = '#10b981';
+        const projectedColor = '#f97316';
 
         // ─── Background ──────────────────────────────────
         ctx.fillStyle = bgColor;
@@ -558,16 +638,24 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, calScale, l
         const lgY = 14;
         // Planned
         ctx.fillStyle = plannedColor;
-        ctx.fillRect(width / 2 - 140, lgY - 6, 14, 3);
-        ctx.beginPath(); ctx.arc(width / 2 - 133, lgY - 5, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.fillRect(width / 2 - 200, lgY - 6, 14, 3);
+        ctx.beginPath(); ctx.arc(width / 2 - 193, lgY - 5, 3, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = textColor;
-        ctx.fillText('Avance Programado', width / 2 - 122, lgY);
+        ctx.fillText(isHours ? 'HH Programadas' : 'Avance Programado', width / 2 - 182, lgY);
         // Actual
         ctx.fillStyle = actualColor;
-        ctx.fillRect(width / 2 + 30, lgY - 6, 14, 3);
-        ctx.beginPath(); ctx.arc(width / 2 + 37, lgY - 5, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.fillRect(width / 2 - 30, lgY - 6, 14, 3);
+        ctx.beginPath(); ctx.arc(width / 2 - 23, lgY - 5, 3, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = textColor;
-        ctx.fillText('Avance Real', width / 2 + 50, lgY);
+        ctx.fillText(isHours ? 'HH Reales' : 'Avance Real', width / 2 - 10, lgY);
+        // Projected
+        ctx.fillStyle = projectedColor;
+        ctx.setLineDash([3, 3]);
+        ctx.fillRect(width / 2 + 100, lgY - 6, 14, 3);
+        ctx.setLineDash([]);
+        ctx.beginPath(); ctx.arc(width / 2 + 107, lgY - 5, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = textColor;
+        ctx.fillText(isHours ? 'HH Proyectadas' : 'Avance Proyectado', width / 2 + 120, lgY);
 
         const chartTop = LEGEND_H + PADDING_T;
         const chartBot = chartTop + chartH;
@@ -756,6 +844,25 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, calScale, l
             ctx.fillStyle = actualColor;
             mappedActual.forEach(p => {
                 ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI * 2); ctx.fill();
+            });
+        }
+
+        // ─── Draw projected curve (smooth bezier) ───────────────
+        const projectedPoints = points.filter(p => p.projected !== null && p.projected !== undefined);
+        const mappedProjected = projectedPoints.map(p => ({ x: msToX(p.dateMs), y: valToY(p.projected!) }));
+
+        if (projectedPoints.length > 0) {
+            ctx.strokeStyle = projectedColor;
+            ctx.lineWidth = 2.5;
+            ctx.setLineDash([5, 5]);
+            drawSmoothCurve(ctx, mappedProjected, chartTop, chartBot);
+            ctx.setLineDash([]);
+            ctx.lineWidth = 1;
+
+            // Dots
+            ctx.fillStyle = projectedColor;
+            mappedProjected.forEach(p => {
+                ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI * 2); ctx.fill();
             });
         }
 
