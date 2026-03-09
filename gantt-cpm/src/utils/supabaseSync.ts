@@ -32,6 +32,8 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
         const { data: { session } } = await supabase.auth.getSession();
         const userId = session?.user?.id || 'anonymous';
 
+        if (state.activities.length <= 1 && currentId) { console.warn('Abortando'); return currentId; }
+
         // 1. Upsert Project
         if (currentId) {
             const { data, error } = await supabase.from('gantt_projects').update({
@@ -54,6 +56,20 @@ export async function saveToSupabase(state: GanttState, projectId: string | null
         }
 
         if (!currentId) throw new Error('Failed to get project ID');
+
+        try { await supabase.from('project_backups').insert({ project_id: currentId, user_id: session?.user?.id || null, activity_count: state.activities.length, snapshot: JSON.parse(JSON.stringify(state)) }); console.log('✅ Backup saving successful'); } catch(e) { console.warn('Backup saving failed', e); }
+
+                try {
+            await supabase.from('project_backups').insert({
+                project_id: currentId,
+                user_id: session?.user?.id || null,
+                activity_count: state.activities.length,
+                snapshot: JSON.parse(JSON.stringify(state))
+            });
+            console.log('✅ Backup del proyecto guardado');
+        } catch(e) { 
+            console.warn('Backup falló', e); 
+        }
 
         // 2. Clear old data (cascade-safe order)
         const d1 = await supabase.from('gantt_activity_resources').delete().eq('project_id', currentId);

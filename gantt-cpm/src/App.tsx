@@ -574,11 +574,13 @@ function AppInner() {
       restoreDatesFromSaved(saved);
       saved.durationType = proj?.durationType; // Inject setting from portfolio
       // ── Use explicit dispatches (not LOAD_STATE merge) to fully replace state ──
-      dispatch({ type: 'SET_PROJECT_CONFIG', config: {
-        projName: saved.projName, projStart: saved.projStart, defCal: saved.defCal,
-        statusDate: saved.statusDate || undefined, durationType: saved.durationType || undefined,
-        customFilters: saved.customFilters || [], filtersMatchAll: saved.filtersMatchAll !== undefined ? saved.filtersMatchAll : true,
-      }});
+      dispatch({
+        type: 'SET_PROJECT_CONFIG', config: {
+          projName: saved.projName, projStart: saved.projStart, defCal: saved.defCal,
+          statusDate: saved.statusDate || undefined, durationType: saved.durationType || undefined,
+          customFilters: saved.customFilters || [], filtersMatchAll: saved.filtersMatchAll !== undefined ? saved.filtersMatchAll : true,
+        }
+      });
       dispatch({ type: 'SET_ACTIVITIES', activities: saved.activities || [] });
       dispatch({ type: 'SET_RESOURCES', resources: saved.resourcePool || [] });
       dispatch({ type: 'SET_PROGRESS_HISTORY', history: saved.progressHistory || [] });
@@ -587,6 +589,30 @@ function AppInner() {
       dispatch({ type: 'SET_SCENARIOS', scenarios: saved.scenarios || [] });
       if (saved.riskState) dispatch({ type: 'LOAD_RISK_STATE', riskState: saved.riskState });
       console.log('[handleOpenProject] BRANCH 1: localStorage loaded via explicit dispatches, defCal=', saved.defCal);
+
+      // ── NEW: Overlay Supabase data to fix stale localStorage ──
+      if (proj?.supabaseId) {
+        try {
+          const data = await loadFromSupabase(proj.supabaseId);
+          if (data && data.activities && data.activities.length) {
+            if (data.projName) dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: data.projName, projStart: data.projStart, defCal: data.defCal, statusDate: data.statusDate || undefined, durationType: proj?.durationType, customFilters: data.customFilters || [], filtersMatchAll: data.filtersMatchAll !== undefined ? data.filtersMatchAll : true } });
+            if (data.resourcePool && data.resourcePool.length) dispatch({ type: 'SET_RESOURCES', resources: data.resourcePool });
+            dispatch({ type: 'SET_ACTIVITIES', activities: data.activities });
+            if (data.progressHistory && data.progressHistory.length) dispatch({ type: 'SET_PROGRESS_HISTORY', history: data.progressHistory });
+            if (data.ppcHistory && data.ppcHistory.length) dispatch({ type: 'SET_PPC_HISTORY', history: data.ppcHistory });
+            if (data.leanRestrictions && data.leanRestrictions.length) dispatch({ type: 'SET_LEAN_RESTRICTIONS', restrictions: data.leanRestrictions });
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            if ((data as any).scenarios && (data as any).scenarios.length) dispatch({ type: 'SET_SCENARIOS', scenarios: (data as any).scenarios });
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            if ((data as any).riskState) dispatch({ type: 'LOAD_RISK_STATE', riskState: (data as any).riskState });
+            if (data.columnViews && data.columnViews.length) dispatch({ type: 'SET_COLUMN_VIEWS', views: data.columnViews });
+            console.log('[handleOpenProject] Overlaid Supabase data over localStorage');
+          }
+        } catch (err) {
+          console.warn('Failed to overlay Supabase data:', err);
+        }
+      }
+
     } else if (proj?.supabaseId) {
       // Set Supabase ID BEFORE dispatching to prevent auto-save race
       localStorage.setItem('sb_current_project_id', proj.supabaseId);
@@ -669,7 +695,7 @@ function AppInner() {
       {activeModule === 'lookAhead' && <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}><LookAheadPage /></div>}
 
       {/* ── Module: Dashboard ── */}
-            {activeModule === 'dashboard' && <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}><DashboardPage /></div>}
+      {activeModule === 'dashboard' && <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}><DashboardPage /></div>}
 
       {/* ── Module: Control (Umbrales) ── */}
       {activeModule === 'control' && <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}><ThresholdsPage /></div>}
