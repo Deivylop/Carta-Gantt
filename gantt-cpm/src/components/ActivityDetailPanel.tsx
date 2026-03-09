@@ -999,16 +999,14 @@ function TabCurvaS({ activityId }: { activityId: string }) {
     const { state } = useGantt();
     const [mode, setMode] = useState<'all' | 'selected'>('all');
 
-    // Left panel must match the combined width of everything to the left of the
-    // scrollable time grid so that the S-curve canvas aligns pixel-perfectly.
-    // Gantt view:  tableW + v-resize(4px)
-    // Usage views: tableW + v-resize(4px) + DETAIL_W(100px)
     const isUsageView = state.currentView === 'usage' || state.currentView === 'resUsage';
-    const leftW = state.tableW + 4 + (isUsageView ? 100 : 0);
+    const leftW = state.tableW;
+    // Spacer = v-resize(4) + DETAIL_W(100) for usage views, v-resize(4) for Gantt
+    const spacerW = 4 + (isUsageView ? 100 : 0);
 
     return (
         <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
-            {/* Left: mode selector – same width as GanttTable so chart aligns with timeline */}
+            {/* Left: mode selector – same width as GanttTable */}
             <div style={{ width: leftW, flexShrink: 0, padding: '12px 14px', borderRight: `1px solid ${state.lightMode ? '#e2e8f0' : '#334155'}`, display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
                 <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', opacity: 0.6, marginBottom: 4 }}>Mostrar</div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, cursor: 'pointer' }}>
@@ -1020,7 +1018,9 @@ function TabCurvaS({ activityId }: { activityId: string }) {
                     Actividad seleccionada
                 </label>
             </div>
-            {/* Right: chart viewport aligns with the Gantt timeline, canvas scrolls to full width */}
+            {/* Spacer to align chart with scrollable grid above */}
+            <div style={{ width: spacerW, flexShrink: 0 }} />
+            {/* Chart viewport = same width as gr-body */}
             <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
                 <SCurveChart
                     hideHeader
