@@ -761,6 +761,11 @@ export default function GanttTable() {
         return undefined;
     };
 
+    // In usage view, the TaskUsageGrid/ResourceUsageGrid header is 50px for week-day (3 header rows)
+    // vs 36px for other zoom levels (2 header rows). Match that here.
+    const isAnyUsageView = isUsageView || state.currentView === 'resUsage';
+    const usageHdrH = (isAnyUsageView && state.calScale === 'week-day') ? 50 : undefined;
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
             {/* Header */}
@@ -768,7 +773,7 @@ export default function GanttTable() {
                 {visCols.map((c) => {
                     const ci = columns.indexOf(c);
                     return (
-                        <div key={c.key} className="col-hdr" style={{ width: colWidths[ci] }}
+                        <div key={c.key} className="col-hdr" style={{ width: colWidths[ci], ...(usageHdrH ? { height: usageHdrH, lineHeight: usageHdrH + 'px' } : {}) }}
                             onContextMenu={e => { e.preventDefault(); setColPickerOpen(true); }}
                             onDoubleClick={() => {
                                 if (c.key.startsWith('txt')) {
