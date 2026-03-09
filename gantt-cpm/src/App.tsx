@@ -7,7 +7,6 @@ import { GanttProvider, useGantt } from './store/GanttContext';
 import Ribbon from './components/Ribbon';
 import GanttTable from './components/GanttTable';
 import GanttTimeline from './components/GanttTimeline';
-import TaskForm from './components/TaskForm';
 import ActivityDetailPanel from './components/ActivityDetailPanel';
 import ResourceSheet from './components/ResourceSheet';
 import ActivityModal from './components/modals/ActivityModal';
@@ -20,13 +19,11 @@ import CalendarModal from './components/modals/CalendarModal';
 import CheckThresholdsModal from './components/modals/CheckThresholdsModal';
 import FilterModal from './components/modals/FilterModal';
 import ThresholdsPage from './components/modules/ThresholdsPage';
-import GlobalChangeModal from './components/modals/GlobalChangeModal';
 import SCurveChart from './components/SCurveChart';
 import TaskUsageGrid from './components/TaskUsageGrid';
 import ResourceUsageTable from './components/ResourceUsageTable';
 import ResourceUsageGrid from './components/ResourceUsageGrid';
-import ResourceForm from './components/ResourceForm';
-import WBSOrgChartView from './components/WBSOrgChartView';
+// ResourceForm removed — ActivityDetailPanel used in all views
 import ModuleTabs, { type ModuleId } from './components/ModuleTabs';
 import InicioPage from './components/modules/InicioPage';
 import LookAheadPage from './components/modules/LookAheadPage';
@@ -38,13 +35,29 @@ import ProjectsPage from './components/modules/ProjectsPage';
 import { PortfolioProvider, usePortfolio } from './store/PortfolioContext';
 import { AuthProvider, useAuth } from './store/AuthContext';
 import LoginPage from './components/modules/LoginPage';
+import SuperAdminPage from './components/modules/SuperAdminPage';
 import { newActivity } from './utils/cpm';
 import { autoId } from './utils/helpers';
 import { saveToSupabase, loadFromSupabase, createSupabaseProject } from './utils/supabaseSync';
-import { supabase } from './lib/supabase';
-import React from 'react';
+import type { CalendarType } from './types/gantt';
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+/** Parse a calendar string/number from portfolio meta into a valid CalendarType */
+function parseCalendarValue(val: string | number | undefined | null): CalendarType | null {
+  if (val == null) return null;
+  // Handle legacy text values from ProjectDetailPanel
+  if (typeof val === 'string') {
+    const lower = val.toLowerCase().trim();
+    if (lower === 'estándar' || lower === 'estandar') return 6;
+    if (lower.startsWith('5')) return 5;
+    if (lower.startsWith('6')) return 6;
+    if (lower.startsWith('7')) return 7;
+  }
+  const n = typeof val === 'number' ? val : parseInt(String(val));
+  if (!isNaN(n) && [5, 6, 7].includes(n)) return n as 5 | 6 | 7;
+  if (typeof val === 'string' && val.length > 0) return val; // custom calendar id
+  return null;
+}
+
 /** Restore ISO-string dates back to Date objects in a saved project snapshot */
 function restoreDatesFromSaved(saved: any): any {
   if (saved.projStart && typeof saved.projStart === 'string') saved.projStart = new Date(saved.projStart);
@@ -77,6 +90,7 @@ function serializeGanttState(state: any): any {
     projName: state.projName,
     projStart: state.projStart instanceof Date ? state.projStart.toISOString() : state.projStart,
     defCal: state.defCal,
+    durationType: state.durationType || 'Fija Duración y Unidades',
     statusDate: state.statusDate instanceof Date ? state.statusDate.toISOString() : state.statusDate,
     activities: state.activities.map((a: any) => ({
       ...a,
@@ -116,11 +130,8 @@ function serializeGanttState(state: any): any {
     activeBaselineIdx: state.activeBaselineIdx,
     showProjRow: state.showProjRow,
     riskState: state.riskState,
-    columnViews: state.columnViews,
-    _hiddenOtherData: state._hiddenOtherData,
   };
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 function AppInner() {
   const { state, dispatch } = useGantt();
@@ -133,10 +144,6 @@ function AppInner() {
     return saved && valid.includes(saved as ModuleId) ? saved as ModuleId : 'projects';
   });
 
-  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
-  const [newRecoveryPassword, setNewRecoveryPassword] = useState('');
-  const [recoveryLoading, setRecoveryLoading] = useState(false);
-
   const hasActiveProject = !!pState.activeProjectId;
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -147,33 +154,23 @@ function AppInner() {
     else html.classList.remove('light');
   }, [state.lightMode]);
 
+  // ── Calendar sync: ensure state.defCal matches portfolio's defaultCalendar ──
+  // This runs every time the active project changes or defCal is out of sync.
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string) => {
-      if (event === 'PASSWORD_RECOVERY') {
-        setShowRecoveryModal(true);
-      }
-    });
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const handleUpdatePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newRecoveryPassword || newRecoveryPassword.length < 6) {
-      alert("La contraseña debe tener al menos 6 caracteres.");
-      return;
+    console.log('[CalendarSync] useEffect fired. activeProjectId=', pState.activeProjectId, 'projects count=', pState.projects.length, 'state.defCal=', state.defCal);
+    if (!pState.activeProjectId) { console.log('[CalendarSync] No activeProjectId, skipping'); return; }
+    const proj = pState.projects.find(p => p.id === pState.activeProjectId);
+    console.log('[CalendarSync] Found project:', proj?.id, 'defaultCalendar=', proj?.defaultCalendar);
+    if (!proj?.defaultCalendar) { console.log('[CalendarSync] No defaultCalendar on project, skipping'); return; }
+    const expected = parseCalendarValue(proj.defaultCalendar);
+    console.log('[CalendarSync] parsed expected=', expected, 'current defCal=', state.defCal, 'match=', String(state.defCal) === String(expected));
+    if (expected == null) return;
+    // Compare: state.defCal may be number or string
+    if (String(state.defCal) !== String(expected)) {
+      console.log('[CalendarSync] Fixing defCal mismatch: state.defCal=', state.defCal, '→', expected, '(from portfolio defaultCalendar=', proj.defaultCalendar, ')');
+      dispatch({ type: 'SET_PROJECT_CONFIG', config: { defCal: expected as any } });
     }
-    setRecoveryLoading(true);
-    const { error } = await supabase.auth.updateUser({ password: newRecoveryPassword });
-    setRecoveryLoading(false);
-
-    if (error) {
-      alert('Error al actualizar la contraseña: ' + error.message);
-    } else {
-      alert('Contraseña actualizada exitosamente.');
-      setShowRecoveryModal(false);
-      setNewRecoveryPassword('');
-    }
-  };
+  }, [pState.activeProjectId, pState.projects, state.defCal, dispatch]);
 
   const loadDemoData = useCallback(() => {
     const d = state.defCal;
@@ -201,6 +198,7 @@ function AppInner() {
       initialLoadingRef.current = true;
       const pid = typeof window !== 'undefined' ? localStorage.getItem('sb_current_project_id') : null;
       const activeId = pState.activeProjectId;
+      console.log('[initApp] START v2 — pid=', pid, 'activeId=', activeId, 'projects=', pState.projects.map(p => ({ id: p.id, name: p.name, supabaseId: p.supabaseId, defCal: p.defaultCalendar })));
 
       // ── Step A: Quick-restore from localStorage (instant, avoids blank screen) ──
       let localLoaded = false;
@@ -219,20 +217,39 @@ function AppInner() {
       if (sbPid) {
         try {
           const data = await loadFromSupabase(sbPid);
+          // Override defCal with portfolio's defaultCalendar (source of truth) to heal stale Supabase values
+          // Try activeId first, then fall back to finding portfolio project by supabaseId
+          const portfolioMatch = activeId
+            ? pState.projects.find(p => p.id === activeId)
+            : pState.projects.find(p => p.supabaseId === sbPid);
+          if (portfolioMatch?.defaultCalendar) {
+            const portfolioCal = parseCalendarValue(portfolioMatch.defaultCalendar);
+            if (portfolioCal != null) data.defCal = portfolioCal;
+          }
+          // Activate portfolio project if not already active
+          if (portfolioMatch && !activeId) {
+            pDispatch({ type: 'SET_ACTIVE_PROJECT', id: portfolioMatch.id });
+          }
+          console.log('[initApp] defCal after portfolio override:', data.defCal, 'portfolioMatch=', portfolioMatch?.id);
           if (data.activities && data.activities.length) {
             // Supabase has real activity data → use it (more authoritative)
-            if (data.projName) dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: data.projName, projStart: data.projStart, defCal: data.defCal, statusDate: data.statusDate || undefined, customFilters: data.customFilters || [], filtersMatchAll: data.filtersMatchAll !== undefined ? data.filtersMatchAll : true, _hiddenOtherData: data._hiddenOtherData } });
+        dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: data.projName, projStart: data.projStart, defCal: data.defCal, statusDate: data.statusDate || undefined, durationType: (data as any).durationType || undefined, customFilters: data.customFilters || [], filtersMatchAll: data.filtersMatchAll !== undefined ? data.filtersMatchAll : true } });
             if (data.resourcePool) dispatch({ type: 'SET_RESOURCES', resources: data.resourcePool });
             dispatch({ type: 'SET_ACTIVITIES', activities: data.activities });
             if (data.progressHistory) dispatch({ type: 'SET_PROGRESS_HISTORY', history: data.progressHistory });
             if (data.ppcHistory && data.ppcHistory.length) dispatch({ type: 'SET_PPC_HISTORY', history: data.ppcHistory });
             if (data.leanRestrictions && data.leanRestrictions.length) dispatch({ type: 'SET_LEAN_RESTRICTIONS', restrictions: data.leanRestrictions });
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             if ((data as any).scenarios && (data as any).scenarios.length) dispatch({ type: 'SET_SCENARIOS', scenarios: (data as any).scenarios });
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             if ((data as any).riskState) dispatch({ type: 'LOAD_RISK_STATE', riskState: (data as any).riskState });
-            if (data.columnViews && data.columnViews.length) dispatch({ type: 'SET_COLUMN_VIEWS', views: data.columnViews });
             if (!pid) localStorage.setItem('sb_current_project_id', sbPid);
+            // FINAL OVERRIDE: ensure portfolio's defaultCalendar is applied (portfolioMatch already found above)
+            if (portfolioMatch?.defaultCalendar) {
+              const portfolioCal2 = parseCalendarValue(portfolioMatch.defaultCalendar);
+              if (portfolioCal2 != null) {
+                console.log('[initApp] FINAL OVERRIDE: setting defCal=', portfolioCal2);
+                dispatch({ type: 'SET_PROJECT_CONFIG', config: { defCal: portfolioCal2 as any } });
+              }
+            }
             console.log('[initApp] Loaded from Supabase:', sbPid);
             initialLoadingRef.current = false;
             return;
@@ -244,6 +261,35 @@ function AppInner() {
             return;
           }
           console.warn('[initApp] Supabase has no activities and no localStorage data');
+          // Even without activities, apply project config from Supabase (especially defCal)
+          // Also try to find portfolio project by supabaseId to get the most accurate calendar
+          const portfolioBySupabase = pState.projects.find(p => p.supabaseId === sbPid);
+          const bestDefCal = (() => {
+            // Priority: portfolio defaultCalendar > Supabase defCal > 6
+            if (portfolioBySupabase?.defaultCalendar) {
+              const pc = parseCalendarValue(portfolioBySupabase.defaultCalendar);
+              if (pc != null) return pc;
+            }
+            return data.defCal ?? 6;
+          })();
+          console.log('[initApp] No-activities path: bestDefCal=', bestDefCal, 'portfolioProj=', portfolioBySupabase?.id, 'data.defCal=', data.defCal);
+          dispatch({ type: 'SET_PROJECT_CONFIG', config: {
+            projName: data.projName || portfolioBySupabase?.name || 'Nuevo Proyecto',
+            projStart: data.projStart,
+            defCal: bestDefCal as any,
+            statusDate: data.statusDate || undefined,
+          }});
+          // Activate the portfolio project so CalendarSync useEffect takes over
+          if (portfolioBySupabase && !activeId) {
+            pDispatch({ type: 'SET_ACTIVE_PROJECT', id: portfolioBySupabase.id });
+          }
+          // Create initial project row with the correct calendar
+          const freshActs = [
+            { ...newActivity('PROY', bestDefCal), name: data.projName || portfolioBySupabase?.name || 'Nuevo Proyecto', type: 'summary' as const, lv: -1, _isProjRow: true },
+          ];
+          dispatch({ type: 'SET_ACTIVITIES', activities: freshActs });
+          initialLoadingRef.current = false;
+          return;
         } catch (err) {
           console.warn('[initApp] Supabase load failed:', err);
           if (localLoaded) { initialLoadingRef.current = false; return; } // localStorage already restored, that's fine
@@ -277,9 +323,7 @@ function AppInner() {
       const currentPid = localStorage.getItem('sb_current_project_id');
       if (!currentPid) return;
       try {
-        const pName = pState.projects.find(p => p.supabaseId === currentPid)?.name || state.projName;
-        const stateToSave = { ...state, projName: pName };
-        const newId = await saveToSupabase(stateToSave, currentPid);
+        const newId = await saveToSupabase(state, currentPid);
         if (newId && newId !== currentPid) localStorage.setItem('sb_current_project_id', newId);
         // Dual-write: also save to localStorage for beforeunload recovery
         if (pState.activeProjectId) {
@@ -294,64 +338,57 @@ function AppInner() {
           try {
             const snapshot = serializeGanttState(state);
             saveProjectState(pState.activeProjectId, snapshot);
-          } catch { /* empty */ }
+          } catch { }
         }
       }
     }, 800);
     return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
-  }, [state.activities, state.resourcePool, state.projName, state.projStart, state.defCal, state.statusDate, state.ppcHistory, state.leanRestrictions, state.progressHistory, state.scenarios, state.columnViews, state.customFilters, state.filtersMatchAll, state.riskState.riskEvents, state.riskState.distributions, state.riskState.simulationRuns, state.riskState.riskScoring, state.riskState.params, pState.activeProjectId, saveProjectState]);
+  }, [state.activities, state.resourcePool, state.projName, state.projStart, state.defCal, state.statusDate, state.ppcHistory, state.leanRestrictions, state.progressHistory, state.scenarios, state.riskState.riskEvents, state.riskState.distributions, state.riskState.simulationRuns, state.riskState.riskScoring, state.riskState.params, pState.activeProjectId, saveProjectState]);
 
   // 3. Listen to Supabase Events
   useEffect(() => {
-    const handleLoad = async (e: Event) => {
-      const customEvent = e as CustomEvent;
-      const pid = customEvent.detail?.projectId;
+    const handleLoad = async (e: any) => {
+      const pid = e.detail?.projectId;
       if (!pid) return;
       try {
         const data = await loadFromSupabase(pid);
-        dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: data.projName, projStart: data.projStart, defCal: data.defCal, statusDate: data.statusDate || undefined, customFilters: data.customFilters || [], filtersMatchAll: data.filtersMatchAll !== undefined ? data.filtersMatchAll : true, _hiddenOtherData: data._hiddenOtherData } });
+        dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: data.projName, projStart: data.projStart, defCal: data.defCal, statusDate: data.statusDate || undefined, durationType: (data as any).durationType || undefined, customFilters: data.customFilters || [], filtersMatchAll: data.filtersMatchAll !== undefined ? data.filtersMatchAll : true } });
         dispatch({ type: 'SET_RESOURCES', resources: data.resourcePool || [] });
         dispatch({ type: 'SET_ACTIVITIES', activities: data.activities || [] });
         dispatch({ type: 'SET_PROGRESS_HISTORY', history: data.progressHistory || [] });
         if (data.ppcHistory && data.ppcHistory.length) dispatch({ type: 'SET_PPC_HISTORY', history: data.ppcHistory });
         if (data.leanRestrictions && data.leanRestrictions.length) dispatch({ type: 'SET_LEAN_RESTRICTIONS', restrictions: data.leanRestrictions });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if ((data as any).scenarios && (data as any).scenarios.length) dispatch({ type: 'SET_SCENARIOS', scenarios: (data as any).scenarios });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if ((data as any).riskState) dispatch({ type: 'LOAD_RISK_STATE', riskState: (data as any).riskState });
-        if (data.columnViews && data.columnViews.length) dispatch({ type: 'SET_COLUMN_VIEWS', views: data.columnViews });
         localStorage.setItem('sb_current_project_id', pid);
         alert('Proyecto cargado exitosamente');
-      } catch (err: unknown) {
-        alert('Error al cargar proyecto: ' + (err instanceof Error ? err.message : String(err)));
+      } catch (err: any) {
+        alert('Error al cargar proyecto: ' + err.message);
       }
     };
-    const handleForceSave = async (e?: Event) => {
+    const handleForceSave = async (e?: any) => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-      const customEvent = e as CustomEvent | undefined;
-      const silent = customEvent?.detail?.silent === true;
+      const silent = e?.detail?.silent === true;
       const pid = localStorage.getItem('sb_current_project_id');
       if (!pid) {
         if (!silent) alert('No hay proyecto conectado. Cree o cargue un proyecto primero desde Configuración.');
         return;
       }
       try {
-        const pName = pState.projects.find(p => p.supabaseId === pid)?.name || state.projName;
-        const stateToSave = { ...state, projName: pName };
-        const newId = await saveToSupabase(stateToSave, pid);
+        const newId = await saveToSupabase(state, pid);
         if (newId && newId !== pid) localStorage.setItem('sb_current_project_id', newId);
         if (!silent) alert('Proyecto guardado exitosamente');
         else console.log('Silent save to Supabase completed');
-      } catch (err: unknown) {
-        if (!silent) alert('Error al guardar: ' + (err instanceof Error ? err.message : String(err)));
+      } catch (err: any) {
+        if (!silent) alert('Error al guardar: ' + err.message);
         else console.error('Silent save error:', err);
       }
     };
-    window.addEventListener('sb-load-project', handleLoad as EventListener);
-    window.addEventListener('sb-force-save', handleForceSave as EventListener);
+    window.addEventListener('sb-load-project', handleLoad as any);
+    window.addEventListener('sb-force-save', handleForceSave as any);
     return () => {
-      window.removeEventListener('sb-load-project', handleLoad as EventListener);
-      window.removeEventListener('sb-force-save', handleForceSave as EventListener);
+      window.removeEventListener('sb-load-project', handleLoad as any);
+      window.removeEventListener('sb-force-save', handleForceSave as any);
     };
   }, [state, dispatch]);
 
@@ -439,7 +476,7 @@ function AppInner() {
     const handleBeforeUnload = () => {
       if (pState.activeProjectId && state.activities.length > 0) {
         const snapshot = serializeGanttState(state);
-        try { localStorage.setItem('gantt-cpm-project-' + pState.activeProjectId, JSON.stringify(snapshot)); } catch { /* empty */ }
+        try { localStorage.setItem('gantt-cpm-project-' + pState.activeProjectId, JSON.stringify(snapshot)); } catch { }
         // Update project metadata
         const tasks = state.activities.filter(a => (a.type === 'task' || a.type === 'milestone') && !a._isProjRow);
         const projRow = state.activities.find(a => a._isProjRow);
@@ -453,7 +490,7 @@ function AppInner() {
         // Compute actualWork per-task to match project view exactly
         const ew = tasks.reduce((sum, a) => sum + ((a.work || 0) * (a.pct || 0) / 100), 0);
         const meta = pState.projects.map(p => p.id === pState.activeProjectId ? {
-          ...p, name: pState.projects.find(p => p.id === pState.activeProjectId)?.name || state.projName,
+          ...p, name: state.projName,
           activityCount: tasks.length,
           completedCount: tasks.filter(a => a.pct === 100).length,
           criticalCount: tasks.filter(a => a.crit).length,
@@ -482,7 +519,7 @@ function AppInner() {
             activeProjectId: pState.activeProjectId,
           };
           localStorage.setItem('gantt-cpm-portfolio', JSON.stringify(portfolioData));
-        } catch { /* empty */ }
+        } catch { }
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
@@ -508,7 +545,7 @@ function AppInner() {
       const earnedWork = tasks.reduce((sum, a) => sum + ((a.work || 0) * (a.pct || 0) / 100), 0);
       pDispatch({
         type: 'UPDATE_PROJECT', id: pState.activeProjectId, updates: {
-          name: pState.projects.find(p => p.id === pState.activeProjectId)?.name || state.projName,
+          name: state.projName,
           activityCount: tasks.length,
           completedCount: tasks.filter(a => a.pct === 100).length,
           criticalCount: tasks.filter(a => a.crit).length,
@@ -547,23 +584,20 @@ function AppInner() {
       saveProjectState(pState.activeProjectId, snapshot);
       // Also save to Supabase (fire-and-forget) so data is persisted remotely
       const oldPid = localStorage.getItem('sb_current_project_id');
-      if (oldPid) {
-        const pName = pState.projects.find(p => p.supabaseId === oldPid)?.name || state.projName;
-        const stateToSave = { ...state, projName: pName };
-        saveToSupabase(stateToSave, oldPid).catch(e => console.warn('Save before switch failed:', e));
-      }
+      if (oldPid) saveToSupabase(state, oldPid).catch(e => console.warn('Save before switch failed:', e));
     }
 
     const proj = pState.projects.find(p => p.id === projectId);
+    console.log('[handleOpenProject] projectId=', projectId, 'proj=', proj, 'proj.defaultCalendar=', proj?.defaultCalendar);
 
-    // Load the target project
-
-    // ── Set active project + module FIRST, before loading data ──
+    // ── Set active project + module FIRST so subsequent dispatches target the right project ──
     pDispatch({ type: 'SET_ACTIVE_PROJECT', id: projectId });
     setActiveModule('gantt');
     localStorage.setItem('gantt_active_module', 'gantt');
 
+    // Load the target project
     const saved = loadProjectState(projectId);
+    console.log('[handleOpenProject] saved from localStorage=', saved ? 'YES (defCal=' + (saved as any).defCal + ')' : 'NO', 'proj.supabaseId=', proj?.supabaseId);
     if (saved) {
       // Set Supabase ID BEFORE dispatching to prevent auto-save race
       if (proj?.supabaseId) {
@@ -572,15 +606,21 @@ function AppInner() {
         localStorage.removeItem('sb_current_project_id');
       }
       restoreDatesFromSaved(saved);
-      saved.durationType = proj?.durationType; // Inject setting from portfolio
+      // If portfolio project has a defaultCalendar, ensure it overrides any stale value from localStorage
+      if (proj?.defaultCalendar) {
+        const portfolioCal = parseCalendarValue(proj.defaultCalendar);
+        if (portfolioCal != null) saved.defCal = portfolioCal;
+      }
       // ── Use explicit dispatches (not LOAD_STATE merge) to fully replace state ──
-      dispatch({
-        type: 'SET_PROJECT_CONFIG', config: {
-          projName: saved.projName, projStart: saved.projStart, defCal: saved.defCal,
-          statusDate: saved.statusDate || undefined, durationType: saved.durationType || undefined,
-          customFilters: saved.customFilters || [], filtersMatchAll: saved.filtersMatchAll !== undefined ? saved.filtersMatchAll : true,
-        }
-      });
+      dispatch({ type: 'SET_PROJECT_CONFIG', config: {
+        projName: saved.projName,
+        projStart: saved.projStart,
+        defCal: saved.defCal,
+        statusDate: saved.statusDate || undefined,
+        durationType: saved.durationType || undefined,
+        customFilters: saved.customFilters || [],
+        filtersMatchAll: saved.filtersMatchAll !== undefined ? saved.filtersMatchAll : true,
+      }});
       dispatch({ type: 'SET_ACTIVITIES', activities: saved.activities || [] });
       dispatch({ type: 'SET_RESOURCES', resources: saved.resourcePool || [] });
       dispatch({ type: 'SET_PROGRESS_HISTORY', history: saved.progressHistory || [] });
@@ -588,43 +628,20 @@ function AppInner() {
       dispatch({ type: 'SET_LEAN_RESTRICTIONS', restrictions: saved.leanRestrictions || [] });
       dispatch({ type: 'SET_SCENARIOS', scenarios: saved.scenarios || [] });
       if (saved.riskState) dispatch({ type: 'LOAD_RISK_STATE', riskState: saved.riskState });
-      console.log('[handleOpenProject] BRANCH 1: localStorage loaded via explicit dispatches, defCal=', saved.defCal);
-
-      // ── NEW: Overlay Supabase data to fix stale localStorage ──
-      if (proj?.supabaseId) {
-        try {
-          const data = await loadFromSupabase(proj.supabaseId);
-          if (data && data.activities && data.activities.length) {
-            if (data.projName) dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: data.projName, projStart: data.projStart, defCal: data.defCal, statusDate: data.statusDate || undefined, durationType: proj?.durationType, customFilters: data.customFilters || [], filtersMatchAll: data.filtersMatchAll !== undefined ? data.filtersMatchAll : true } });
-            if (data.resourcePool && data.resourcePool.length) dispatch({ type: 'SET_RESOURCES', resources: data.resourcePool });
-            dispatch({ type: 'SET_ACTIVITIES', activities: data.activities });
-            if (data.progressHistory && data.progressHistory.length) dispatch({ type: 'SET_PROGRESS_HISTORY', history: data.progressHistory });
-            if (data.ppcHistory && data.ppcHistory.length) dispatch({ type: 'SET_PPC_HISTORY', history: data.ppcHistory });
-            if (data.leanRestrictions && data.leanRestrictions.length) dispatch({ type: 'SET_LEAN_RESTRICTIONS', restrictions: data.leanRestrictions });
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            if ((data as any).scenarios && (data as any).scenarios.length) dispatch({ type: 'SET_SCENARIOS', scenarios: (data as any).scenarios });
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            if ((data as any).riskState) dispatch({ type: 'LOAD_RISK_STATE', riskState: (data as any).riskState });
-            if (data.columnViews && data.columnViews.length) dispatch({ type: 'SET_COLUMN_VIEWS', views: data.columnViews });
-            console.log('[handleOpenProject] Overlaid Supabase data over localStorage');
-          }
-        } catch (err) {
-          console.warn('Failed to overlay Supabase data:', err);
-        }
-      }
-
+      if (saved.activeBaselineIdx !== undefined) dispatch({ type: 'SET_ACTIVE_BASELINE', index: saved.activeBaselineIdx });
+      console.log('[handleOpenProject] BRANCH 1: localStorage loaded, defCal=', saved.defCal, 'activities=', (saved.activities || []).length);
     } else if (proj?.supabaseId) {
       // Set Supabase ID BEFORE dispatching to prevent auto-save race
       localStorage.setItem('sb_current_project_id', proj.supabaseId);
       // No local state but project exists in Supabase — load from there
       // ALWAYS reset to a clean state first, then overlay Supabase data.
       const freshName = proj?.name || 'Nuevo Proyecto';
-      const newDefCal = proj?.defaultCalendar ? parseInt(proj.defaultCalendar) : 7;
+      const projDefCal = parseCalendarValue(proj?.defaultCalendar) || state.defCal || 6;
+      console.log('[handleOpenProject] BRANCH 2: supabase link, projDefCal=', projDefCal);
       const freshActs = [
-        { ...newActivity('PROY', newDefCal as any), name: freshName, type: 'summary' as const, lv: -1, _isProjRow: true },
+        { ...newActivity('PROY', projDefCal), name: freshName, type: 'summary' as const, lv: -1, _isProjRow: true },
       ];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: freshName, projStart: new Date(), defCal: newDefCal as any, statusDate: new Date(), durationType: proj?.durationType } });
+      dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: freshName, projStart: new Date(), defCal: projDefCal as any, statusDate: new Date() } });
       dispatch({ type: 'SET_ACTIVITIES', activities: freshActs });
       dispatch({ type: 'SET_RESOURCES', resources: [] });
       dispatch({ type: 'SET_PROGRESS_HISTORY', history: [] });
@@ -633,16 +650,20 @@ function AppInner() {
       dispatch({ type: 'SET_SCENARIOS', scenarios: [] });
       try {
         const data = await loadFromSupabase(proj.supabaseId);
+        // Override defCal with portfolio's defaultCalendar (source of truth) to heal stale Supabase values
+        if (proj?.defaultCalendar) {
+          const portfolioCal = parseCalendarValue(proj.defaultCalendar);
+          if (portfolioCal != null) data.defCal = portfolioCal;
+        }
+        console.log('[handleOpenProject] BRANCH 2: final defCal=', data.defCal, '(portfolio:', proj?.defaultCalendar, ')');
         // Overlay Supabase data on the clean state (only if project has real data)
-        if (data.projName) dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: data.projName, projStart: data.projStart, defCal: data.defCal, statusDate: data.statusDate || undefined, durationType: proj?.durationType, customFilters: data.customFilters || [], filtersMatchAll: data.filtersMatchAll !== undefined ? data.filtersMatchAll : true } });
+        if (data.projName) dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: data.projName, projStart: data.projStart, defCal: data.defCal, statusDate: data.statusDate || undefined, customFilters: data.customFilters || [], filtersMatchAll: data.filtersMatchAll !== undefined ? data.filtersMatchAll : true } });
         if (data.resourcePool && data.resourcePool.length) dispatch({ type: 'SET_RESOURCES', resources: data.resourcePool });
         if (data.activities && data.activities.length) dispatch({ type: 'SET_ACTIVITIES', activities: data.activities });
         if (data.progressHistory && data.progressHistory.length) dispatch({ type: 'SET_PROGRESS_HISTORY', history: data.progressHistory });
         if (data.ppcHistory && data.ppcHistory.length) dispatch({ type: 'SET_PPC_HISTORY', history: data.ppcHistory });
         if (data.leanRestrictions && data.leanRestrictions.length) dispatch({ type: 'SET_LEAN_RESTRICTIONS', restrictions: data.leanRestrictions });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if ((data as any).scenarios && (data as any).scenarios.length) dispatch({ type: 'SET_SCENARIOS', scenarios: (data as any).scenarios });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if ((data as any).riskState) dispatch({ type: 'LOAD_RISK_STATE', riskState: (data as any).riskState });
         console.log('Loaded project from Supabase:', proj.supabaseId);
       } catch (err) {
@@ -651,12 +672,12 @@ function AppInner() {
     } else {
       // No saved state and no Supabase link — start fresh and auto-create in Supabase
       localStorage.removeItem('sb_current_project_id');
-      const newDefCal = proj?.defaultCalendar ? parseInt(proj.defaultCalendar) : 7;
+      const freshDefCal = parseCalendarValue(proj?.defaultCalendar) || state.defCal || 6;
+      console.log('[handleOpenProject] BRANCH 3: fresh project, freshDefCal=', freshDefCal, 'proj?.defaultCalendar=', proj?.defaultCalendar);
       const freshActs = [
-        { ...newActivity('PROY', newDefCal as any), name: proj?.name || 'Nuevo Proyecto', type: 'summary' as const, lv: -1, _isProjRow: true },
+        { ...newActivity('PROY', freshDefCal), name: proj?.name || 'Nuevo Proyecto', type: 'summary' as const, lv: -1, _isProjRow: true },
       ];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: proj?.name || 'Nuevo Proyecto', projStart: new Date(), defCal: newDefCal as any, statusDate: new Date() } });
+      dispatch({ type: 'SET_PROJECT_CONFIG', config: { projName: proj?.name || 'Nuevo Proyecto', projStart: new Date(), defCal: freshDefCal as any, statusDate: new Date() } });
       dispatch({ type: 'SET_ACTIVITIES', activities: freshActs });
       dispatch({ type: 'SET_RESOURCES', resources: [] });
       dispatch({ type: 'SET_PROGRESS_HISTORY', history: [] });
@@ -666,7 +687,8 @@ function AppInner() {
       // Auto-create in Supabase so auto-save works immediately
       if (proj) {
         try {
-          const sbId = await createSupabaseProject(proj.name, new Date().toISOString(), newDefCal, new Date().toISOString());
+          const calForSupa = parseCalendarValue(proj?.defaultCalendar) || freshDefCal;
+          const sbId = await createSupabaseProject(proj.name, null, calForSupa);
           localStorage.setItem('sb_current_project_id', sbId);
           pDispatch({ type: 'UPDATE_PROJECT', id: projectId, updates: { supabaseId: sbId } });
         } catch (err) {
@@ -675,10 +697,23 @@ function AppInner() {
       }
     }
 
+    // ── FINAL OVERRIDE: always enforce portfolio's defaultCalendar as source of truth ──
+    if (proj?.defaultCalendar) {
+      const finalCal = parseCalendarValue(proj.defaultCalendar);
+      if (finalCal != null) {
+        console.log('[handleOpenProject] FINAL OVERRIDE: setting defCal=', finalCal, 'from portfolio defaultCalendar=', proj.defaultCalendar);
+        dispatch({ type: 'SET_PROJECT_CONFIG', config: { defCal: finalCal as any } });
+      }
+    }
+
+    // (activeProjectId and activeModule already set at the top of handleOpenProject)
 
     // ── Release auto-save guard after a short delay to let React batched dispatches settle ──
     setTimeout(() => { switchingProjectRef.current = false; }, 1200);
   }, [pState.activeProjectId, pState.projects, state, saveProjectState, loadProjectState, dispatch, pDispatch]);
+
+  // DEBUG: log activeModule on every render
+  console.log('[AppInner] activeModule =', activeModule, '| control match =', activeModule === 'control');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
@@ -698,10 +733,13 @@ function AppInner() {
       {activeModule === 'dashboard' && <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}><DashboardPage /></div>}
 
       {/* ── Module: Control (Umbrales) ── */}
-      {activeModule === 'control' && <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}><ThresholdsPage /></div>}
+      {activeModule === 'control' && <div style={{ flex: 1, overflow: 'auto', background: '#ff6600' }}><ThresholdsPage /></div>}
 
       {/* ── Module: Configuración ── */}
       {activeModule === 'config' && <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}><ConfigPage /></div>}
+
+      {/* ── Module: SuperAdmin ── */}
+      {activeModule === 'superadmin' && <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}><SuperAdminPage /></div>}
 
       {/* ── Module: What-If Scenarios ── */}
       {activeModule === 'whatIf' && <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}><WhatIfPage /></div>}
@@ -716,18 +754,6 @@ function AppInner() {
         {state.currentView === 'resources' ? (
           <div style={{ flex: 1, overflow: 'hidden' }}>
             <ResourceSheet />
-          </div>
-        ) : state.currentView === 'wbs' ? (
-          <div style={{ flex: 1, overflow: 'hidden' }}>
-            <WBSOrgChartView
-              activities={state.activities}
-              selectedId={state.activities[state.selIdx]?.id ?? null}
-              onSelect={id => {
-                const idx = state.activities.findIndex(a => a.id === id);
-                if (idx >= 0) dispatch({ type: 'SET_SELECTION', index: idx });
-              }}
-              projectName={state.projName}
-            />
           </div>
         ) : state.currentView === 'scurve' ? (
           <div style={{ flex: 1, overflow: 'hidden' }}>
@@ -753,12 +779,11 @@ function AppInner() {
             </div>
 
             {state.showDetailPanel && <div className={`h-resize ${resizing === 'h' ? 'rsz' : ''}`}
-              onMouseDown={() => setResizing('h')} />}
-
+                onMouseDown={() => setResizing('h')} />}
 
             {/* Form Panel */}
             <div style={{ height: state.showDetailPanel ? formH : 0, flexShrink: 0, overflow: 'hidden', transition: 'height 0.15s ease' }}>
-              <TaskForm />
+              <ActivityDetailPanel />
             </div>
           </div>
         ) : state.currentView === 'resUsage' ? (
@@ -781,12 +806,11 @@ function AppInner() {
             </div>
 
             {state.showDetailPanel && <div className={`h-resize ${resizing === 'h' ? 'rsz' : ''}`}
-              onMouseDown={() => setResizing('h')} />}
-
+                onMouseDown={() => setResizing('h')} />}
 
             {/* Form Panel */}
             <div style={{ height: state.showDetailPanel ? formH : 0, flexShrink: 0, overflow: 'hidden', transition: 'height 0.15s ease' }}>
-              <ResourceForm />
+              <ActivityDetailPanel />
             </div>
           </div>
         ) : (
@@ -809,8 +833,7 @@ function AppInner() {
             </div>
 
             {state.showDetailPanel && <div className={`h-resize ${resizing === 'h' ? 'rsz' : ''}`}
-              onMouseDown={() => setResizing('h')} />}
-
+                onMouseDown={() => setResizing('h')} />}
 
             {/* Form Panel */}
             <div style={{ height: state.showDetailPanel ? formH : 0, flexShrink: 0, overflow: 'hidden', transition: 'height 0.15s ease' }}>
@@ -825,36 +848,13 @@ function AppInner() {
       <ProjectModal />
       {/* Suppress LinkModal when a what-if scenario is active — WhatIfPage renders its own inside ScenarioGanttProvider */}
       {!(activeModule === 'whatIf' && state.activeScenarioId) && <LinkModal />}
+
       <SupabaseModal />
       <SaveProgressModal />
       <BaselineModal />
       <CalendarModal />
       <CheckThresholdsModal />
       <FilterModal />
-      <GlobalChangeModal />
-
-      {/* PASSWORD RECOVERY MODAL */}
-      {showRecoveryModal && (
-        <div className="modal-overlay" style={{ zIndex: 9999 }}>
-          <div className="modal-content" style={{ maxWidth: 400, padding: '2rem' }}>
-            <h3 style={{ marginBottom: '1rem', color: 'var(--text-color)' }}>Restablecer Contraseña</h3>
-            <p style={{ marginBottom: '1rem', color: 'var(--text-muted)' }}>Introduce tu nueva contraseña para acceder a tu cuenta.</p>
-            <form onSubmit={handleUpdatePassword} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <input
-                type="password"
-                placeholder="Nueva contraseña"
-                value={newRecoveryPassword}
-                onChange={e => setNewRecoveryPassword(e.target.value)}
-                required
-                style={{ padding: '0.8rem', border: '1px solid var(--border-color)', borderRadius: '4px', backgroundColor: 'var(--bg-color)', color: 'var(--text-color)' }}
-              />
-              <button type="submit" disabled={recoveryLoading} style={{ padding: '0.8rem', backgroundColor: '#0078d4', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}>
-                {recoveryLoading ? 'Actualizando...' : 'Actualizar Contraseña'}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -868,7 +868,7 @@ function AppRoot() {
         <p style={{ marginBottom: '2rem' }}>{error}</p>
         <button
           onClick={async () => {
-            try { await signOut(); } catch { /* empty */ }
+            try { await signOut(); } catch (e) { }
             localStorage.clear();
             sessionStorage.clear();
             window.location.reload();
