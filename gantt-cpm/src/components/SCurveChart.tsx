@@ -3,7 +3,7 @@ import { useGantt } from '../store/GanttContext';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine
 } from 'recharts';
-import { isoDate, getExactElapsedRatio, getExactWorkDays, dayDiff, addDays } from '../utils/cpm';
+import { isoDate, getExactElapsedRatio, getExactWorkDays, dayDiff, addDays, normDate } from '../utils/cpm';
 import type { ZoomLevel, CalScale } from '../types/gantt';
 
 interface SCurveChartProps {
@@ -383,8 +383,13 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                         const remStart = t._remES || t.ES;
                         const remEnd = t._remEF || t.EF;
                         if (remStart && remEnd) {
-                            const sObj = new Date(remStart); sObj.setHours(0, 0, 0, 0);
-                            const eObj = new Date(remEnd); eObj.setHours(0, 0, 0, 0);
+                            const nS = normDate(remStart);
+                            const nE = normDate(remEnd);
+                            if (!nS || !nE) return;
+                            const sObj = new Date(nS); sObj.setHours(0, 0, 0, 0);
+                            const eObj = new Date(nE); eObj.setHours(0, 0, 0, 0);
+                            // _remEF / EF are already exclusive (day after last work day),
+                            // so NO +1 needed — getExactWorkDays expects exclusive end.
                             const evalObj = new Date(time); evalObj.setHours(0, 0, 0, 0);
                             const actS = sObj.getTime() < sTimeEndOfDay ? new Date(sTimeEndOfDay) : sObj; // ensures rem goes strictly into the future avoiding backwards interpolation
 
@@ -743,7 +748,7 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, calScale, l
         }
 
         // ─── Histogram (Progreso por periodo) ──────────
-        const getValAtMs = (msTarget: number, key: 'planned' | 'actual' = 'planned') => {
+        const getValAtMs = (msTarget: number, key: 'planned' | 'actual' | 'projected' = 'planned') => {
             const pastPoints = points.filter(p => p.dateMs <= msTarget && p[key] !== null && p[key] !== undefined);
             if (pastPoints.length === 0) return 0;
             return pastPoints[pastPoints.length - 1][key];
@@ -776,24 +781,20 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, calScale, l
             histPeriods.push({ startMs, endMs });
         }
 
-        // Draw histogram bars
-        const maxValInHist = Math.max(...histPeriods.map(p => Math.max(
-            getValAtMs(p.endMs, 'planned') - getValAtMs(p.startMs, 'planned'),
-            getValAtMs(p.endMs, 'actual') - getValAtMs(p.startMs, 'actual')
-        )), 1);
-        const yMaxHist = maxValInHist * 1.5; // Scale for histogram to not touch top
-
+        // Draw histogram bars using the SAME Y-axis scale (yMax / chartH) so that
+        // bar heights align with the Y-axis labels (e.g. a 175h bar reaches the 175h mark).
         histPeriods.forEach(p => {
-            const planProg = getValAtMs(p.endMs, 'planned') - getValAtMs(p.startMs, 'planned');
-            const actProg = getValAtMs(p.endMs, 'actual') - getValAtMs(p.startMs, 'actual');
+            const planProg = Math.max(0, getValAtMs(p.endMs, 'planned') - getValAtMs(p.startMs, 'planned'));
+            const actProg = Math.max(0, getValAtMs(p.endMs, 'actual') - getValAtMs(p.startMs, 'actual'));
+            const projProg = Math.max(0, getValAtMs(p.endMs, 'projected') - getValAtMs(p.startMs, 'projected'));
             const xStart = msToX(p.startMs);
             const xEnd = msToX(p.endMs);
             const rawBarW = Math.max(1, xEnd - xStart - 1);
+            const barW = rawBarW / 3;
 
             // Draw planned bar
             if (planProg > 0) {
-                const barW = rawBarW / 2; // Half width for side-by-side
-                const barH = (planProg / yMaxHist) * (chartH / 2);
+                const barH = (planProg / yMax) * chartH;
                 ctx.fillStyle = 'rgba(59, 130, 246, 0.4)'; // Blue transparent
                 ctx.fillRect(xStart + 0.5, chartBot - barH, barW, barH);
                 ctx.strokeStyle = '#3b82f6';
@@ -801,13 +802,21 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, calScale, l
             }
 
             // Draw actual bar
-            if (actProg > 0 && statusDateMs) {
-                const barW = rawBarW / 2; // Half width
-                const barH = (actProg / yMaxHist) * (chartH / 2);
+            if (actProg > 0 && statusDateMs && p.startMs < statusDateMs) {
+                const barH = (actProg / yMax) * chartH;
                 ctx.fillStyle = 'rgba(16, 185, 129, 0.4)'; // Green transparent
                 ctx.fillRect(xStart + 0.5 + barW, chartBot - barH, barW, barH);
                 ctx.strokeStyle = '#10b981';
                 ctx.strokeRect(xStart + 0.5 + barW, chartBot - barH, barW, barH);
+            }
+
+            // Draw projected bar — only for periods starting at or after the status date.
+            if (projProg > 0 && (!statusDateMs || p.startMs >= statusDateMs)) {
+                const barH = (projProg / yMax) * chartH;
+                ctx.fillStyle = 'rgba(249, 115, 22, 0.4)'; // Orange transparent
+                ctx.fillRect(xStart + 0.5 + barW * 2, chartBot - barH, barW, barH);
+                ctx.strokeStyle = '#f97316';
+                ctx.strokeRect(xStart + 0.5 + barW * 2, chartBot - barH, barW, barH);
             }
         });
 
