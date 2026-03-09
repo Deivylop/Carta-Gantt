@@ -203,8 +203,8 @@ export default function ScenarioEditor({ scenario }: Props) {
     if (c.key === 'plannedPct') return Number(a._plannedPct != null ? a._plannedPct : (a.pct || 0)).toFixed(1) + '%';
     if (c.key === 'res') return a.res || '';
     if (c.key === 'work') return a.type === 'milestone' ? '0 hrs' : ((a.work || 0) + ' hrs');
-    if (c.key === 'earnedValue' || c.key === 'remainingWork') {
-      let ev = 0;
+    if (c.key === 'earnedValue' || c.key === 'remainingWork' || c.key === 'actualWork' || c.key === 'plannedValue' || c.key === 'spi' || c.key === 'sv') {
+      let ev = 0, pv = 0;
       if (a.type === 'summary' || a._isProjRow) {
         const startJ = a._isProjRow ? 1 : activities.indexOf(a) + 1;
         for (let j = startJ; j < activities.length; j++) {
@@ -212,8 +212,29 @@ export default function ScenarioEditor({ scenario }: Props) {
           if (!a._isProjRow && ch.lv <= a.lv) break;
           if (ch.type === 'summary') continue;
           ev += (ch.work || 0) * (ch.pct || 0) / 100;
+          pv += (ch.work || 0) * (ch._plannedPct != null ? ch._plannedPct : (ch.pct || 0)) / 100;
         }
-      } else { ev = (a.work || 0) * (a.pct || 0) / 100; }
+      } else {
+        ev = (a.work || 0) * (a.pct || 0) / 100;
+        pv = (a.work || 0) * (a._plannedPct != null ? a._plannedPct : (a.pct || 0)) / 100;
+      }
+
+      if (c.key === 'actualWork') return Math.round(ev * 10) / 10 + ' hrs';
+      if (c.key === 'plannedValue') return Math.round(pv * 10) / 10 + ' hrs';
+      if (c.key === 'spi') {
+        let spi = 1;
+        if (pv > 0) spi = ev / pv;
+        else if (ev > 0) spi = 999;
+        const spiVal = Math.round(spi * 100) / 100;
+        const color = spiVal < 1 ? '#ef4444' : '#10b981';
+        return <span style={{ color, fontWeight: 600 }}>{spiVal.toFixed(2)}</span> as any;
+      }
+      if (c.key === 'sv') {
+        const sv = Math.round((ev - pv) * 10) / 10;
+        const color = sv < 0 ? '#ef4444' : (sv > 0 ? '#10b981' : 'inherit');
+        return <span style={{ color, fontWeight: sv !== 0 ? 600 : 400 }}>{sv > 0 ? '+' : ''}{sv} hrs</span> as any;
+      }
+
       ev = Math.round(ev * 10) / 10;
       if (c.key === 'earnedValue') return ev + ' hrs';
       return Math.round(((a.work || 0) - ev) * 10) / 10 + ' hrs';
@@ -564,8 +585,10 @@ export default function ScenarioEditor({ scenario }: Props) {
                     const critVal = (a.type === 'summary' || a._isProjRow) ? '' : (isCrit ? 'Sí' : 'No');
                     return (
                       <div key={c.key} data-colkey={c.key} className={`tcell ${c.cls}`}
-                        style={{ ...style, textAlign: 'center', fontWeight: isCrit ? 700 : 400,
-                          color: changed ? '#f59e0b' : (isCrit ? '#ef4444' : '#6b7280') }}>
+                        style={{
+                          ...style, textAlign: 'center', fontWeight: isCrit ? 700 : 400,
+                          color: changed ? '#f59e0b' : (isCrit ? '#ef4444' : '#6b7280')
+                        }}>
                         {changed && <span style={{ marginRight: 2 }}>●</span>}{critVal}
                       </div>
                     );

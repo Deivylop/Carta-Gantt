@@ -176,7 +176,11 @@ function ThresholdsPageInner() {
         const activeRules = rows.filter(r => r.active);
         if (activeRules.length === 0) return results;
 
-        const fmt = (d: string | undefined) => d ? new Date(d).toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '-';
+        const fmt = (d: string | Date | undefined | null) => {
+            if (!d) return '-';
+            const dateObj = typeof d === 'string' ? new Date(d) : d;
+            return dateObj.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        };
 
         for (const act of state.activities) {
             if (act.type === 'summary') continue;
@@ -192,13 +196,17 @@ function ThresholdsPageInner() {
                     valBaseline = `${planned.toFixed(1)}%`;
                 } else if (rule.parameter === 'varStart') {
                     if (act.ES && act.blES) {
-                        val = Math.round((new Date(act.ES).getTime() - new Date(act.blES).getTime()) / 86400000);
+                        const esTime = typeof act.ES === 'string' ? new Date(act.ES).getTime() : act.ES.getTime();
+                        const blEsTime = typeof act.blES === 'string' ? new Date(act.blES).getTime() : act.blES.getTime();
+                        val = Math.round((esTime - blEsTime) / 86400000);
                         valActual = fmt(act.ES);
                         valBaseline = fmt(act.blES);
                     }
                 } else if (rule.parameter === 'varEnd') {
                     if (act.EF && act.blEF) {
-                        val = Math.round((new Date(act.EF).getTime() - new Date(act.blEF).getTime()) / 86400000);
+                        const efTime = typeof act.EF === 'string' ? new Date(act.EF).getTime() : act.EF.getTime();
+                        const blEfTime = typeof act.blEF === 'string' ? new Date(act.blEF).getTime() : act.blEF.getTime();
+                        val = Math.round((efTime - blEfTime) / 86400000);
                         valActual = fmt(act.EF);
                         valBaseline = fmt(act.blEF);
                     }
@@ -255,14 +263,14 @@ function ThresholdsPageInner() {
 
             // 2. Llamar edge function UNA sola vez con TODAS las alertas
             const alerts = evaluationResults.map(r => ({
-                actId:       r.actId,
-                actName:     r.actName,
-                param:       r.param,
-                value:       r.value,
-                severity:    r.threshold.severity,
-                operator:    r.threshold.operator,
+                actId: r.actId,
+                actName: r.actName,
+                param: r.param,
+                value: r.value,
+                severity: r.threshold.severity,
+                operator: r.threshold.operator,
                 limit_value: r.threshold.limit_value,
-                valActual:   r.valActual,
+                valActual: r.valActual,
                 valBaseline: r.valBaseline,
             }));
             console.log('[Thresholds] Llamando edge function con', alerts.length, 'alertas, project_id:', projectId);

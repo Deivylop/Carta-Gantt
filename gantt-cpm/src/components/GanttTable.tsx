@@ -442,7 +442,7 @@ export default function GanttTable() {
             const actual = a.pct || 0;
             const planned = a._plannedPct != null ? a._plannedPct : actual;
             const val = actual - planned;
-            return <span style={{ color: val < 0 ? '#ef4444' : val > 0 ? '#10b981' : 'inherit' }}>{val > 0 ? '+' : ''}{val.toFixed(1)}%</span>;
+            return <span style={{ color: val < 0 ? '#ef4444' : val > 0 ? '#10b981' : 'inherit' }}>{val > 0 ? '+' : ''}{val.toFixed(1)}%</span> as any;
         }
         if (c.key === 'simRealPct') {
             if (!spotlightEnabled || !spotlightEnd) return '—';
@@ -456,16 +456,88 @@ export default function GanttTable() {
         }
         if (c.key === 'res') return a.res || '';
         if (c.key === 'work') return a.type === 'milestone' ? '0 hrs' : ((a.work || 0) + ' hrs');
+        if (c.key === 'actualWork') {
+            let actualWork: number;
+            if (a.type === 'summary' || a._isProjRow) {
+                actualWork = 0;
+                const startJ = a._isProjRow ? 1 : activities.indexOf(a) + 1;
+                for (let j = startJ; j < activities.length; j++) {
+                    const ch = activities[j];
+                    if (!a._isProjRow && ch.lv <= a.lv) break;
+                    if (ch.type === 'summary') continue;
+                    actualWork += (ch.work || 0) * (ch.pct || 0) / 100;
+                }
+            } else {
+                actualWork = (a.work || 0) * (a.pct || 0) / 100;
+            }
+            return Math.round(actualWork * 10) / 10 + ' hrs';
+        }
+        if (c.key === 'plannedValue') {
+            let pv: number;
+            if (a.type === 'summary' || a._isProjRow) {
+                pv = 0;
+                const startJ = a._isProjRow ? 1 : activities.indexOf(a) + 1;
+                for (let j = startJ; j < activities.length; j++) {
+                    const ch = activities[j];
+                    if (!a._isProjRow && ch.lv <= a.lv) break;
+                    if (ch.type === 'summary') continue;
+                    pv += (ch.work || 0) * (ch._plannedPct != null ? ch._plannedPct : (ch.pct || 0)) / 100;
+                }
+            } else {
+                pv = (a.work || 0) * (a._plannedPct != null ? a._plannedPct : (a.pct || 0)) / 100;
+            }
+            return Math.round(pv * 10) / 10 + ' hrs';
+        }
+        if (c.key === 'spi') {
+            let ev = 0, pv = 0;
+            if (a.type === 'summary' || a._isProjRow) {
+                const startJ = a._isProjRow ? 1 : activities.indexOf(a) + 1;
+                for (let j = startJ; j < activities.length; j++) {
+                    const ch = activities[j];
+                    if (!a._isProjRow && ch.lv <= a.lv) break;
+                    if (ch.type === 'summary') continue;
+                    ev += (ch.work || 0) * (ch.pct || 0) / 100;
+                    pv += (ch.work || 0) * (ch._plannedPct != null ? ch._plannedPct : (ch.pct || 0)) / 100;
+                }
+            } else {
+                ev = (a.work || 0) * (a.pct || 0) / 100;
+                pv = (a.work || 0) * (a._plannedPct != null ? a._plannedPct : (a.pct || 0)) / 100;
+            }
+            let spi = 1;
+            if (pv > 0) spi = ev / pv;
+            else if (ev > 0) spi = 999;
+            const spiVal = Math.round(spi * 100) / 100;
+            const color = spiVal < 1 ? '#ef4444' : '#10b981';
+            return <span style={{ color, fontWeight: 600 }}>{spiVal.toFixed(2)}</span> as any;
+        }
+        if (c.key === 'sv') {
+            let ev = 0, pv = 0;
+            if (a.type === 'summary' || a._isProjRow) {
+                const startJ = a._isProjRow ? 1 : activities.indexOf(a) + 1;
+                for (let j = startJ; j < activities.length; j++) {
+                    const ch = activities[j];
+                    if (!a._isProjRow && ch.lv <= a.lv) break;
+                    if (ch.type === 'summary') continue;
+                    ev += (ch.work || 0) * (ch.pct || 0) / 100;
+                    pv += (ch.work || 0) * (ch._plannedPct != null ? ch._plannedPct : (ch.pct || 0)) / 100;
+                }
+            } else {
+                ev = (a.work || 0) * (a.pct || 0) / 100;
+                pv = (a.work || 0) * (a._plannedPct != null ? a._plannedPct : (a.pct || 0)) / 100;
+            }
+            const sv = Math.round((ev - pv) * 10) / 10;
+            const color = sv < 0 ? '#ef4444' : (sv > 0 ? '#10b981' : 'inherit');
+            return <span style={{ color, fontWeight: sv !== 0 ? 600 : 400 }}>{sv > 0 ? '+' : ''}{sv} hrs</span> as any;
+        }
         if (c.key === 'earnedValue' || c.key === 'remainingWork') {
             let ev: number;
             if (a.type === 'summary' || a._isProjRow) {
-                // Bottom-up: sum earned value of all leaf descendants (non-summary)
                 ev = 0;
                 const startJ = a._isProjRow ? 1 : activities.indexOf(a) + 1;
                 for (let j = startJ; j < activities.length; j++) {
                     const ch = activities[j];
                     if (!a._isProjRow && ch.lv <= a.lv) break;
-                    if (ch.type === 'summary') continue; // skip sub-summaries, count only leaves
+                    if (ch.type === 'summary') continue;
                     ev += (ch.work || 0) * (ch.pct || 0) / 100;
                 }
             } else {

@@ -30,8 +30,8 @@ const COLUMN_GROUPS: { group: string; keys: string[] }[] = [
         keys: ['res', 'cal'],
     },
     {
-        group: 'Trabajo / EVM',
-        keys: ['work', 'earnedValue', 'remainingWork', 'weight'],
+        group: 'EVM (Desempeño y Valor Ganado)',
+        keys: ['work', 'actualWork', 'earnedValue', 'plannedValue', 'spi', 'sv', 'remainingWork', 'weight'],
     },
     {
         group: 'Línea Base',

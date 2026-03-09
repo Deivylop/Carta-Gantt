@@ -83,7 +83,11 @@ export const DEFAULT_COLS: ColumnDef[] = [
     { key: 'simProgPct', label: 'Avance Sim. Prog.', w: 90, edit: false, cls: 'tcell-pct', visible: false },
     { key: 'res', label: 'Recursos', w: 110, edit: true, cls: 'tcell-res', visible: false },
     { key: 'work', label: 'Trabajo', w: 70, edit: true, cls: 'tcell-dur', visible: true },
-    { key: 'earnedValue', label: 'Valor Ganado', w: 85, edit: false, cls: 'tcell-dur', visible: false },
+    { key: 'earnedValue', label: 'Valor Ganado (EV)', w: 100, edit: false, cls: 'tcell-dur', visible: false },
+    { key: 'plannedValue', label: 'Valor Planificado (PV)', w: 125, edit: false, cls: 'tcell-dur', visible: false },
+    { key: 'actualWork', label: 'Trabajo Real', w: 90, edit: false, cls: 'tcell-dur', visible: false },
+    { key: 'spi', label: 'SPI', w: 60, edit: false, cls: 'tcell-dur', visible: false },
+    { key: 'sv', label: 'Variación Crono. (SV)', w: 125, edit: false, cls: 'tcell-dur', visible: false },
     { key: 'remainingWork', label: 'Trab. Restante', w: 90, edit: false, cls: 'tcell-dur', visible: false },
     { key: 'weight', label: 'Peso %', w: 65, edit: true, cls: 'tcell-pct', visible: false },
     { key: 'cal', label: 'Calendario', w: 60, edit: 'select', cls: 'tcell-cal', visible: false },
@@ -588,6 +592,74 @@ function buildVisRows(
                     }
                     return Math.round(((a.work || 0) - ev) * 10) / 10;
                 }
+                case 'actualWork': {
+                    let ev: number;
+                    if (a.type === 'summary' || a._isProjRow) {
+                        ev = 0;
+                        const startJ = a._isProjRow ? 1 : activities.indexOf(a) + 1;
+                        for (let j = startJ; j < activities.length; j++) {
+                            const ch = activities[j];
+                            if (!a._isProjRow && ch.lv <= a.lv) break;
+                            if (ch.type === 'summary') continue;
+                            ev += (ch.work || 0) * (ch.pct || 0) / 100;
+                        }
+                    } else {
+                        ev = (a.work || 0) * (a.pct || 0) / 100;
+                    }
+                    return Math.round(ev * 10) / 10;
+                }
+                case 'plannedValue': {
+                    let pv: number;
+                    if (a.type === 'summary' || a._isProjRow) {
+                        pv = 0;
+                        const startJ = a._isProjRow ? 1 : activities.indexOf(a) + 1;
+                        for (let j = startJ; j < activities.length; j++) {
+                            const ch = activities[j];
+                            if (!a._isProjRow && ch.lv <= a.lv) break;
+                            if (ch.type === 'summary') continue;
+                            pv += (ch.work || 0) * (ch._plannedPct != null ? ch._plannedPct : (ch.pct || 0)) / 100;
+                        }
+                    } else {
+                        pv = (a.work || 0) * (a._plannedPct != null ? a._plannedPct : (a.pct || 0)) / 100;
+                    }
+                    return Math.round(pv * 10) / 10;
+                }
+                case 'spi': {
+                    let ev = 0, pv = 0;
+                    if (a.type === 'summary' || a._isProjRow) {
+                        const startJ = a._isProjRow ? 1 : activities.indexOf(a) + 1;
+                        for (let j = startJ; j < activities.length; j++) {
+                            const ch = activities[j];
+                            if (!a._isProjRow && ch.lv <= a.lv) break;
+                            if (ch.type === 'summary') continue;
+                            ev += (ch.work || 0) * (ch.pct || 0) / 100;
+                            pv += (ch.work || 0) * (ch._plannedPct != null ? ch._plannedPct : (ch.pct || 0)) / 100;
+                        }
+                    } else {
+                        ev = (a.work || 0) * (a.pct || 0) / 100;
+                        pv = (a.work || 0) * (a._plannedPct != null ? a._plannedPct : (a.pct || 0)) / 100;
+                    }
+                    if (pv === 0 && ev === 0) return 1;
+                    if (pv === 0) return ev > 0 ? 999 : 1;
+                    return Math.round((ev / pv) * 100) / 100;
+                }
+                case 'sv': {
+                    let ev = 0, pv = 0;
+                    if (a.type === 'summary' || a._isProjRow) {
+                        const startJ = a._isProjRow ? 1 : activities.indexOf(a) + 1;
+                        for (let j = startJ; j < activities.length; j++) {
+                            const ch = activities[j];
+                            if (!a._isProjRow && ch.lv <= a.lv) break;
+                            if (ch.type === 'summary') continue;
+                            ev += (ch.work || 0) * (ch.pct || 0) / 100;
+                            pv += (ch.work || 0) * (ch._plannedPct != null ? ch._plannedPct : (ch.pct || 0)) / 100;
+                        }
+                    } else {
+                        ev = (a.work || 0) * (a.pct || 0) / 100;
+                        pv = (a.work || 0) * (a._plannedPct != null ? a._plannedPct : (a.pct || 0)) / 100;
+                    }
+                    return Math.round((ev - pv) * 10) / 10;
+                }
                 case 'cal': return a.cal ?? '';
                 case 'type': return a.type === 'milestone' ? 'Hito' : a.type === 'summary' ? 'Resumen' : 'Tarea';
                 case 'lv': return a.lv;
@@ -921,7 +993,7 @@ function reducer(state: GanttState, action: Action): GanttState {
             // Track actualStart: when pct goes from 0 to >0, record the current start date
             const oldPct = orig.pct || 0;
             const newPct = updated.pct || 0;
-            
+
             if (!action._skipAutoDate) {
                 if (oldPct === 0 && newPct > 0 && !updated.actualStart) {
                     if (orig.ES) {
@@ -1196,7 +1268,7 @@ function reducer(state: GanttState, action: Action): GanttState {
             if (action.zoom === 'day') fitPx = 30;
             else if (action.zoom === 'week') fitPx = 10;
             else if (action.zoom === 'month') fitPx = 2;
-            
+
             return { ...state, zoom: action.zoom, pxPerDay: fitPx };
         }
 

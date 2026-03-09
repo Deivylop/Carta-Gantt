@@ -3,8 +3,8 @@ import { useGantt } from '../store/GanttContext';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine
 } from 'recharts';
-import { isoDate, getExactElapsedRatio, getExactWorkDays, dayDiff, addDays, getUsageDailyValues } from '../utils/cpm';
-import type { ZoomLevel } from '../types/gantt';
+import { isoDate, getExactElapsedRatio, getExactWorkDays, dayDiff, addDays } from '../utils/cpm';
+import type { ZoomLevel, CalScale } from '../types/gantt';
 
 interface SCurveChartProps {
     hideHeader?: boolean;
@@ -251,17 +251,17 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
         datesToEvaluate.add(sTimeEndOfDay);
 
         // ─── Task Actual Progress Timelines ─────────────────
-        const taskActTimeline = new Map<string, {d: number, p: number}[]>();
+        const taskActTimeline = new Map<string, { d: number, p: number }[]>();
         tasks.forEach(t => {
-            const tl: {d: number, p: number}[] = [];
+            const tl: { d: number, p: number }[] = [];
             const es = t.actualStart || t.ES || t.blES;
             if (es) {
-                const startD = new Date(es); startD.setHours(0,0,0,0);
+                const startD = new Date(es); startD.setHours(0, 0, 0, 0);
                 tl.push({ d: startD.getTime(), p: 0 });
             }
             history.forEach(h => {
                 if (h.details && h.details[t.id] !== undefined) {
-                    const hd = new Date(h.date + 'T00:00:00'); hd.setHours(0,0,0,0);
+                    const hd = new Date(h.date + 'T00:00:00'); hd.setHours(0, 0, 0, 0);
                     // Progress reported on a date means progress at the END of that date.
                     // To align with our 00:00:00-based math, we push it to the next day's 00:00:00.
                     hd.setDate(hd.getDate() + 1);
@@ -272,12 +272,12 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                 // Current % complete applies to the end of the Status Date
                 tl.push({ d: sTime + 86400000, p: t.pct });
             }
-            tl.sort((a,b) => a.d - b.d);
+            tl.sort((a, b) => a.d - b.d);
             let mp = 0;
             tl.forEach(pt => { if (pt.p < mp) pt.p = mp; else mp = pt.p; });
             const unique = [];
-            for (let i=0; i<tl.length; i++) {
-                if (i === tl.length - 1 || tl[i].d !== tl[i+1].d) unique.push(tl[i]);
+            for (let i = 0; i < tl.length; i++) {
+                if (i === tl.length - 1 || tl[i].d !== tl[i + 1].d) unique.push(tl[i]);
             }
             taskActTimeline.set(t.id, unique);
         });
@@ -292,27 +292,27 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
             if (time <= sTimeEndOfDay) {
                 let actualEarned = 0;
                 let actFallbackEarned = 0;
-                
+
                 tasks.forEach(t => {
                     const tl = taskActTimeline.get(t.id) || [];
                     let curPct = 0;
                     if (tl.length > 0) {
                         if (time <= tl[0].d) curPct = 0;
-                        else if (time >= tl[tl.length-1].d) curPct = tl[tl.length-1].p;
+                        else if (time >= tl[tl.length - 1].d) curPct = tl[tl.length - 1].p;
                         else {
-                            for (let i=0; i<tl.length-1; i++) {
-                                const d1 = tl[i].d, d2 = tl[i+1].d;
+                            for (let i = 0; i < tl.length - 1; i++) {
+                                const d1 = tl[i].d, d2 = tl[i + 1].d;
                                 if (time >= d1 && time < d2) { // Changed to strictly < for interpolation
                                     const totWd = getExactWorkDays(new Date(d1), new Date(d2), t.cal || state.defCal);
                                     const elWd = getExactWorkDays(new Date(d1), new Date(time), t.cal || state.defCal);
                                     const ratio = totWd > 0 ? (elWd / totWd) : 1;
-                                    curPct = tl[i].p + ratio * (tl[i+1].p - tl[i].p);
+                                    curPct = tl[i].p + ratio * (tl[i + 1].p - tl[i].p);
                                     break;
                                 }
                             }
                         }
                     }
-                    
+
                     let w = 0, wBackup = 0;
                     if (isResUsage) {
                         w = t.resources?.filter((r: any) => targetResNames.includes(r.name)).reduce((sum: number, r: any) => sum + (r.work || 0), 0) || 0;
@@ -324,11 +324,11 @@ export default function SCurveChart({ hideHeader, forcedActivityId, multiSelectI
                         w = (t.weight != null && t.weight > 0) ? t.weight : (cw || t.dur || 1);
                         wBackup = t.dur || 1;
                     }
-                    
+
                     actualEarned += w * (curPct / 100);
                     actFallbackEarned += wBackup * (curPct / 100);
                 });
-                
+
                 if (isHoursMode) actualPct = actualEarned;
                 else if (totalWeight > 0) actualPct = (actualEarned / totalWeight) * 100;
                 else if (fallbackTotalWeight > 0) actualPct = (actFallbackEarned / fallbackTotalWeight) * 100;
@@ -694,15 +694,14 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, calScale, l
             getValAtMs(p.endMs, 'actual') - getValAtMs(p.startMs, 'actual')
         )), 1);
         const yMaxHist = maxValInHist * 1.5; // Scale for histogram to not touch top
-        const histToY = (val: number) => chartBot - (val / yMaxHist) * (chartH / 2); // occupy bottom half
 
         histPeriods.forEach(p => {
             const planProg = getValAtMs(p.endMs, 'planned') - getValAtMs(p.startMs, 'planned');
             const actProg = getValAtMs(p.endMs, 'actual') - getValAtMs(p.startMs, 'actual');
             const xStart = msToX(p.startMs);
             const xEnd = msToX(p.endMs);
-            const rawBarW = Math.max(1, xEnd - xStart - 1); 
-            
+            const rawBarW = Math.max(1, xEnd - xStart - 1);
+
             // Draw planned bar
             if (planProg > 0) {
                 const barW = rawBarW / 2; // Half width for side-by-side
@@ -712,7 +711,7 @@ function SCurveCanvas({ width, projStart, totalDays, pxPerDay, zoom, calScale, l
                 ctx.strokeStyle = '#3b82f6';
                 ctx.strokeRect(xStart + 0.5, chartBot - barH, barW, barH);
             }
-            
+
             // Draw actual bar
             if (actProg > 0 && statusDateMs) {
                 const barW = rawBarW / 2; // Half width

@@ -72,7 +72,11 @@ const COL_DEFS: ColDef[] = [
   { key: 'cal', label: 'Calendario', defaultWidth: 60, minWidth: 40, align: 'center' },
   /* ── Trabajo / EVM ── */
   { key: 'work', label: 'Trabajo', defaultWidth: 70, minWidth: 45, align: 'center' },
-  { key: 'earnedValue', label: 'Valor Ganado', defaultWidth: 85, minWidth: 55, align: 'center' },
+  { key: 'earnedValue', label: 'Valor Ganado (EV)', defaultWidth: 100, minWidth: 55, align: 'center' },
+  { key: 'plannedValue', label: 'Valor Planif. (PV)', defaultWidth: 110, minWidth: 55, align: 'center' },
+  { key: 'actualWork', label: 'Trabajo Real', defaultWidth: 90, minWidth: 55, align: 'center' },
+  { key: 'spi', label: 'SPI', defaultWidth: 60, minWidth: 40, align: 'center' },
+  { key: 'sv', label: 'Variación SV', defaultWidth: 100, minWidth: 55, align: 'center' },
   { key: 'remainingWork', label: 'Trab. Restante', defaultWidth: 90, minWidth: 55, align: 'center' },
   { key: 'weight', label: 'Peso %', defaultWidth: 65, minWidth: 40, align: 'center' },
   /* ── Línea Base ── */
@@ -109,7 +113,7 @@ const LA_COLUMN_GROUPS: { group: string; keys: string[] }[] = [
   { group: 'Relaciones', keys: ['predStr'] },
   { group: 'Avance', keys: ['pct', 'pctProgr', 'plannedPct'] },
   { group: 'Recursos', keys: ['res', 'cal'] },
-  { group: 'Trabajo / EVM', keys: ['work', 'earnedValue', 'remainingWork', 'weight'] },
+  { group: 'EVM (Desempeño y Valor Ganado)', keys: ['work', 'actualWork', 'earnedValue', 'plannedValue', 'spi', 'sv', 'remainingWork', 'weight'] },
   { group: 'Línea Base', keys: ['blDur', 'blStart', 'blEnd'] },
   { group: 'Holguras', keys: ['TF', 'FF', 'floatPath'] },
   { group: 'CPM', keys: ['crit', 'activityCount'] },
@@ -585,6 +589,31 @@ export default function LookAheadGrid({ windowStart, windowEnd }: Props) {
       case 'earnedValue': {
         const ev = Math.round((act.work || 0) * (act.pct || 0) / 100 * 10) / 10;
         return <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{ev} hrs</span>;
+      }
+      case 'actualWork': {
+        const ev = Math.round((act.work || 0) * (act.pct || 0) / 100 * 10) / 10;
+        return <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{ev} hrs</span>;
+      }
+      case 'plannedValue': {
+        const pv = Math.round((act.work || 0) * ((act as any)._plannedPct != null ? (act as any)._plannedPct : (act.pct || 0)) / 100 * 10) / 10;
+        return <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{pv} hrs</span>;
+      }
+      case 'spi': {
+        const ev = (act.work || 0) * (act.pct || 0) / 100;
+        const pv = (act.work || 0) * ((act as any)._plannedPct != null ? (act as any)._plannedPct : (act.pct || 0)) / 100;
+        let spi = 1;
+        if (pv > 0) spi = ev / pv;
+        else if (ev > 0) spi = 999;
+        const spiVal = Math.round(spi * 100) / 100;
+        const color = spiVal < 1 ? '#ef4444' : '#10b981';
+        return <span style={{ color, fontWeight: 600, fontSize: 10 }}>{spiVal.toFixed(2)}</span>;
+      }
+      case 'sv': {
+        const ev = (act.work || 0) * (act.pct || 0) / 100;
+        const pv = (act.work || 0) * ((act as any)._plannedPct != null ? (act as any)._plannedPct : (act.pct || 0)) / 100;
+        const sv = Math.round((ev - pv) * 10) / 10;
+        const color = sv < 0 ? '#ef4444' : (sv > 0 ? '#10b981' : 'var(--text-secondary)');
+        return <span style={{ color, fontWeight: sv !== 0 ? 600 : 400, fontSize: 10 }}>{sv > 0 ? '+' : ''}{sv} hrs</span>;
       }
       case 'remainingWork': {
         const ev2 = (act.work || 0) * (act.pct || 0) / 100;
